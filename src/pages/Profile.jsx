@@ -284,8 +284,8 @@ export default function Profile() {
           {/* Role */}
           <div>
             <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2 block">{t('role')}</label>
-            <div className="grid grid-cols-3 gap-2">
-              {['passenger', 'driver', 'admin'].map(r => (
+            <div className="grid grid-cols-2 gap-2">
+              {['passenger', 'driver'].map(r => (
                 <button
                   key={r}
                   onClick={() => setForm({ ...form, role: r, driver_status: r === 'driver' ? (user?.driver_status || 'pending') : form.driver_status })}
@@ -299,6 +299,12 @@ export default function Profile() {
                 </button>
               ))}
             </div>
+            {/* Если пользователь уже admin — показываем бейдж, но не даём менять */}
+            {form.role === 'admin' && (
+              <div className="mt-2 rounded-lg p-2.5 text-xs font-medium flex items-center gap-2 text-purple-700 bg-purple-50 dark:bg-purple-900/30 dark:text-purple-300">
+                <span>🛡️</span> Администратор — назначено администратором системы
+              </div>
+            )}
             {form.role === 'driver' && (
               <div className={`mt-2 rounded-lg p-2.5 text-xs font-medium flex items-center gap-2 ${
                 statusInfo[form.driver_status]?.cls || statusInfo.pending.cls
