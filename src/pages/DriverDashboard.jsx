@@ -39,13 +39,13 @@ export default function DriverDashboard() {
   }, []);
 
   if (!user) return (
-    <div className="p-8 text-center text-gray-500">{t('loading')}</div>
+    <div className="p-8 text-center text-gray-500 dark:text-gray-400">{t('loading')}</div>
   );
 
   if (user.role !== 'driver') return (
     <div className="p-8 text-center space-y-4">
       <div className="text-5xl">🚌</div>
-      <p className="text-gray-600 text-sm">{t('chooseRole')}: <strong>{t('driver')}</strong></p>
+      <p className="text-gray-600 dark:text-gray-300 text-sm">{t('chooseRole')}: <strong>{t('driver')}</strong></p>
       <Link to="/profile" className="inline-block bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold">
         {t('editProfile')}
       </Link>
@@ -57,15 +57,15 @@ export default function DriverDashboard() {
   if (driverStatus === 'blocked') return (
     <div className="p-8 text-center space-y-2">
       <div className="text-5xl">🚫</div>
-      <p className="font-semibold text-red-600 text-lg">{t('blocked')}</p>
+      <p className="font-semibold text-red-600 dark:text-red-400 text-lg">{t('blocked')}</p>
     </div>
   );
 
   if (driverStatus === 'pending') return (
     <div className="p-8 text-center space-y-3">
       <div className="text-5xl">⏳</div>
-      <p className="font-semibold text-gray-900 text-lg">{t('pending')}</p>
-      <p className="text-sm text-gray-500">{t('waitingApproval')}</p>
+      <p className="font-semibold text-gray-900 dark:text-gray-100 text-lg">{t('pending')}</p>
+      <p className="text-sm text-gray-500 dark:text-gray-400">{t('waitingApproval')}</p>
     </div>
   );
 
@@ -147,7 +147,7 @@ export default function DriverDashboard() {
   const currentRoute = routes.find(r => r.id === selectedRoute);
 
   return (
-    <div className="h-full overflow-y-auto bg-gray-50 p-4">
+    <div className="h-full overflow-y-auto bg-gray-50 dark:bg-gray-900 p-4">
       <div className="max-w-md mx-auto space-y-4">
         {/* Status banner */}
         <div className={`rounded-2xl p-5 text-white transition-colors ${isTracking ? 'bg-green-600' : 'bg-blue-700'}`}>
@@ -168,14 +168,14 @@ export default function DriverDashboard() {
         </div>
 
         {/* Controls */}
-        <div className="bg-white rounded-2xl p-5 shadow-sm space-y-4">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('city')}</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1.5">{t('city')}</label>
             <select
               value={selectedCity}
               onChange={e => { setSelectedCity(e.target.value); setSelectedRoute(''); }}
               disabled={isTracking}
-              className="w-full border rounded-xl px-4 py-3 text-sm disabled:opacity-50 bg-white"
+              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-sm disabled:opacity-50 bg-white dark:bg-gray-700 dark:text-gray-100"
             >
               <option value="">{t('selectCity')}</option>
               {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -183,12 +183,12 @@ export default function DriverDashboard() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('selectYourRoute')}</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1.5">{t('selectYourRoute')}</label>
             <select
               value={selectedRoute}
               onChange={e => setSelectedRoute(e.target.value)}
               disabled={isTracking || !selectedCity}
-              className="w-full border rounded-xl px-4 py-3 text-sm disabled:opacity-50 bg-white"
+              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-sm disabled:opacity-50 bg-white dark:bg-gray-700 dark:text-gray-100"
             >
               <option value="">{t('selectRoute')}</option>
               {routes.map(r => (
@@ -215,9 +215,9 @@ export default function DriverDashboard() {
 
         {/* GPS coords */}
         {isTracking && gpsInfo.lat !== 0 && (
-          <div className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-2">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm flex items-center gap-2">
             <Navigation size={16} className="text-green-600 flex-shrink-0" />
-            <p className="text-xs text-gray-500 font-mono">
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">
               {gpsInfo.lat.toFixed(5)}, {gpsInfo.lng.toFixed(5)}
             </p>
           </div>

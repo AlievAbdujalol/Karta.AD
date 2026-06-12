@@ -6,7 +6,7 @@ import { supabase } from '@/api/supabase';
  * Совместим с паттерном, который использовался с Base44.
  */
 export function useCurrentUser() {
-  const { user, isLoadingAuth: loading, checkUserAuth: refetch } = useAuth();
+  const { user, isLoadingAuth: loading, checkUserAuth: refetch, refreshUser, patchUser } = useAuth();
 
   /**
    * Обновить поля профиля текущего пользователя
@@ -14,6 +14,10 @@ export function useCurrentUser() {
    */
   const update = async (data) => {
     if (!user?.id) return;
+
+    // Мгновенно обновляем локальный стейт — Layout/Profile получат новую роль сразу
+    patchUser(data);
+
     const { error } = await supabase
       .from('profiles')
       .update(data)
@@ -21,11 +25,10 @@ export function useCurrentUser() {
 
     if (error) {
       console.error('[useCurrentUser] update error:', error.message);
+      // Откатываем локальный патч если БД вернула ошибку
+      refreshUser().catch(console.error);
       throw new Error(error.message);
     }
-
-    // Обновляем сессию чтобы user в контексте был актуальным
-    await refetch();
   };
 
   return {

@@ -12,9 +12,11 @@ import AdminPanel from './pages/AdminPanel';
 import Profile from './pages/Profile';
 import Reviews from './pages/Reviews';
 import DriverSchedule from './pages/DriverSchedule';
+import Login from './pages/Login';
+import ErrorBoundary, { BusMapErrorFallback } from '@/components/ErrorBoundary';
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
+  const { isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated } = useAuth();
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
@@ -27,37 +29,48 @@ const AuthenticatedApp = () => {
   if (authError) {
     if (authError.type === 'user_not_registered') {
       return <UserNotRegisteredError />;
-    } else if (authError.type === 'auth_required') {
-      navigateToLogin();
-      return null;
     }
   }
 
+  // Если не авторизован — показываем страницу входа
+  if (!isAuthenticated) {
+    return <Login />;
+  }
+
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route path="/" element={<Home />} />
-        <Route path="/driver" element={<DriverDashboard />} />
-        <Route path="/admin" element={<AdminPanel />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/reviews" element={<Reviews />} />
-        <Route path="/driver-schedule" element={<DriverSchedule />} />
-      </Route>
-      <Route path="*" element={<PageNotFound />} />
-    </Routes>
+    <ErrorBoundary>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<ErrorBoundary fallback={(err) => <BusMapErrorFallback error={err} />}><Home /></ErrorBoundary>} />
+          <Route path="/driver" element={<ErrorBoundary><DriverDashboard /></ErrorBoundary>} />
+          <Route path="/admin" element={<ErrorBoundary><AdminPanel /></ErrorBoundary>} />
+          <Route path="/profile" element={<ErrorBoundary><Profile /></ErrorBoundary>} />
+          <Route path="/reviews" element={<ErrorBoundary><Reviews /></ErrorBoundary>} />
+          <Route path="/driver-schedule" element={<ErrorBoundary><DriverSchedule /></ErrorBoundary>} />
+        </Route>
+        <Route path="*" element={<PageNotFound />} />
+      </Routes>
+    </ErrorBoundary>
   );
 };
 
+import { ThemeProvider } from 'next-themes';
+import { NotificationProvider } from '@/lib/NotificationContext';
+
 function App() {
   return (
-    <AuthProvider>
-      <QueryClientProvider client={queryClientInstance}>
-        <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-          <AuthenticatedApp />
-        </Router>
-        <Toaster />
-      </QueryClientProvider>
-    </AuthProvider>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <NotificationProvider>
+        <AuthProvider>
+          <QueryClientProvider client={queryClientInstance}>
+            <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+              <AuthenticatedApp />
+            </Router>
+            <Toaster />
+          </QueryClientProvider>
+        </AuthProvider>
+      </NotificationProvider>
+    </ThemeProvider>
   )
 }
 

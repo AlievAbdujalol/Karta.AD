@@ -12,14 +12,34 @@ export const AuthProvider = ({ children }) => {
   const [authChecked, setAuthChecked] = useState(false);
 
   // Загружаем профиль пользователя из таблицы profiles
+  // Если профиль не существует — создаём его автоматически
   const loadUserProfile = async (authUser) => {
     if (!authUser) return null;
-    const { data: profile } = await supabase
+    const { data: profile, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', authUser.id)
       .single();
-    return profile;
+
+    if (profile) return profile;
+
+    // Профиль не найден — создаём с базовыми данными из OAuth
+    const newProfile = {
+      id: authUser.id,
+      email: authUser.email,
+      full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || null,
+      photo_url: authUser.user_metadata?.avatar_url || authUser.user_metadata?.picture || null,
+      role: 'passenger',
+      language: 'ru',
+    };
+
+    const { data: created } = await supabase
+      .from('profiles')
+      .insert(newProfile)
+      .select()
+      .single();
+
+    return created || newProfile;
   };
 
   useEffect(() => {
@@ -98,6 +118,20 @@ export const AuthProvider = ({ children }) => {
     setAuthChecked(true);
   };
 
+  // Тихое обновление профиля без блокировки UI (setIsLoadingAuth не трогаем)
+  const refreshUser = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      const profile = await loadUserProfile(session.user);
+      if (profile) setUser(profile);
+    }
+  };
+
+  // Мгновенное локальное обновление user (без запроса к серверу)
+  const patchUser = (data) => {
+    setUser(prev => prev ? { ...prev, ...data } : prev);
+  };
+
   // Повторная проверка состояния приложения (совместимость с App.jsx)
   const checkAppState = checkUserAuth;
 
@@ -113,6 +147,8 @@ export const AuthProvider = ({ children }) => {
       logout,
       navigateToLogin,
       checkUserAuth,
+      refreshUser,
+      patchUser,
       checkAppState,
     }}>
       {children}

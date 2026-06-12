@@ -56,7 +56,7 @@ export default function HomeHeader({
     setSearchOpen(false);
   };
   return (
-    <div className="flex-shrink-0 z-30" style={{ background: 'linear-gradient(160deg, #0f2660 0%, #1a3f8f 50%, #1e56d0 100%)' }}>
+    <div className="flex-shrink-0 z-30 dark:bg-gray-800 dark:text-gray-100" style={{ background: 'linear-gradient(160deg, #0f2660 0%, #1a3f8f 50%, #1e56d0 100%)' }}>
       {/* Top row */}
       <div className="flex items-center gap-2.5 px-4 pt-4 pb-2.5">
         {/* Logo */}
@@ -159,7 +159,7 @@ export default function HomeHeader({
           <select
             value={selectedCountry}
             onChange={e => { setSelectedCountry(e.target.value); setSelectedCity(null); }}
-            className="text-xs font-semibold text-gray-700 bg-transparent outline-none appearance-none cursor-pointer"
+            className="text-xs font-semibold text-gray-700 dark:text-gray-100 bg-transparent outline-none appearance-none cursor-pointer"
             style={{ minWidth: '64px' }}
           >
             <option value="">Страна</option>
@@ -172,7 +172,7 @@ export default function HomeHeader({
           <select
             value={selectedCity?.id || ''}
             onChange={e => { const city = cities.find(c => c.id === e.target.value); setSelectedCity(city || null); }}
-            className="text-xs font-semibold text-gray-700 bg-transparent outline-none appearance-none cursor-pointer"
+            className="text-xs font-semibold text-gray-700 dark:text-gray-100 bg-transparent outline-none appearance-none cursor-pointer"
             style={{ minWidth: '60px' }}
           >
             <option value="">Город</option>
@@ -185,7 +185,7 @@ export default function HomeHeader({
           <select
             value={selectedType}
             onChange={e => setSelectedType(e.target.value)}
-            className="text-xs font-semibold text-gray-700 bg-transparent outline-none appearance-none cursor-pointer"
+            className="text-xs font-semibold text-gray-700 dark:text-gray-100 bg-transparent outline-none appearance-none cursor-pointer"
             style={{ minWidth: '90px' }}
           >
             <option value="all">Все виды</option>
@@ -196,7 +196,7 @@ export default function HomeHeader({
 
         {/* Now */}
         <Pill icon={<Clock size={12} className="text-blue-400" />}>
-          <span className="text-xs font-semibold text-gray-700">Сейчас</span>
+          <span className="text-xs font-semibold text-gray-700 dark:text-gray-100">Сейчас</span>
         </Pill>
 
         {/* Route */}
@@ -230,7 +230,7 @@ export default function HomeHeader({
 
 function Pill({ icon, children }) {
   return (
-    <div className="flex items-center gap-1.5 bg-white rounded-2xl px-3 py-2 flex-shrink-0" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid rgba(0,0,0,0.05)' }}>
+    <div className="flex items-center gap-1.5 bg-white dark:bg-gray-700 rounded-2xl px-3 py-2 flex-shrink-0" style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid rgba(0,0,0,0.05)' }}>
       {icon}
       {children}
     </div>

@@ -9,6 +9,7 @@ import HomeHeader from '@/components/HomeHeader';
 import { WifiOff } from 'lucide-react';
 import { saveCache, loadCache } from '@/hooks/useOfflineCache';
 import { useCurrentUser } from '@/lib/useCurrentUser';
+import ErrorBoundary, { BusMapErrorFallback } from '@/components/ErrorBoundary';
 
 export default function Home() {
   const { t, lang, setLang } = useLanguage();
@@ -230,7 +231,9 @@ export default function Home() {
           <StopWatcher route={selectedRoute} watchedStop={watchedStop} onWatch={stop => setWatchedStop(stop)} />
         </div>
 
-        <BusMap vehicles={vehicles} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} showDefault={true} />
+        <ErrorBoundary fallback={(error) => <BusMapErrorFallback error={error} />}>
+          <BusMap vehicles={vehicles} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} showDefault={true} />
+        </ErrorBoundary>
         <SchedulePanel route={selectedRoute} />
       </div>
 

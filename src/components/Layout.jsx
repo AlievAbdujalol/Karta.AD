@@ -22,13 +22,13 @@ export default function Layout() {
   ];
 
   return (
-    <div className="flex flex-col bg-white" style={{ height: '100dvh' }}>
+    <div className="flex flex-col bg-white dark:bg-gray-900" style={{ height: '100dvh' }}>
       <main className="flex-1 overflow-hidden" style={{ minHeight: 0, width: '100%' }}>
         <Outlet />
       </main>
 
       <nav
-        className="bg-white flex justify-around items-center flex-shrink-0 z-50"
+        className="bg-white dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100 flex justify-around items-center flex-shrink-0 z-50 border-t"
         style={{ boxShadow: '0 -1px 0 #e5e7eb, 0 -4px 16px rgba(0,0,0,0.06)', paddingBottom: 'env(safe-area-inset-bottom, 8px)', paddingTop: '8px', minHeight: 60 }}
       >
         {navLinks.map(({ to, icon: Icon, label }) => {
