@@ -36,5 +36,6 @@ export function useCurrentUser() {
     loading,
     refetch,
     update,
+    patchUser,
   };
 }

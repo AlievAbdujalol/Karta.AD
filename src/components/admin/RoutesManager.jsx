@@ -24,12 +24,19 @@ export default function RoutesManager() {
   useEffect(() => { load(); }, []);
 
   const handleAdd = async () => {
-    if (!form.number || !form.city_id) return;
-    await base44.entities.Route.create(form);
-    setForm({ number: '', name: '', type: 'bus', city_id: '', color: '#1565C0' });
-    setAdding(false);
-    load();
-    toast.success(t('save'));
+    if (!form.number || !form.city_id) {
+      toast.error('Заполните номер и город');
+      return;
+    }
+    try {
+      await base44.entities.Route.create(form);
+      setForm({ number: '', name: '', type: 'bus', city_id: '', color: '#1565C0' });
+      setAdding(false);
+      load();
+      toast.success(t('save'));
+    } catch (err) {
+      toast.error(err.message || 'Ошибка сохранения');
+    }
   };
 
   const handleDelete = async (id) => {

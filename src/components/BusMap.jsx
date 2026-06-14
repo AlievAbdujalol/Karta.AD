@@ -4,6 +4,9 @@ import L from 'leaflet';
 import { useEffect, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import MapControls, { TILE_LAYERS } from './MapControls';
+import { useCurrentUser } from '@/lib/useCurrentUser';
+import { supabase } from '@/api/supabase';
+import { toast } from 'sonner';
 
 // Inject CSS to hide leaflet attribution
 const style = document.createElement('style');
@@ -26,8 +29,6 @@ function MapController({ center }) {
   }, [lat, lng]);
   return null;
 }
-
-
 
 function createBusIcon(routeNumber, type) {
   const color = type === 'minibus' ? '#2e7d32' : '#1565c0';
@@ -62,7 +63,9 @@ function createBusIcon(routeNumber, type) {
 }
 
 function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
+  const { user, refetch } = useCurrentUser();
   const [pos, setPos] = useState([vehicle.lat, vehicle.lng]);
+  const [paying, setPaying] = useState(false);
   const targetRef = useRef([vehicle.lat, vehicle.lng]);
   const currentRef = useRef([vehicle.lat, vehicle.lng]);
   const rafRef = useRef(null);
@@ -93,6 +96,42 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [vehicle.lat, vehicle.lng]);
 
+  const handlePay = async () => {
+    if (!user) {
+      toast.error('Войдите в аккаунт, чтобы оплатить проезд');
+      return;
+    }
+    if (!user.phone) {
+      toast.error('Пожалуйста, добавьте номер телефона в профиле перед оплатой.');
+      return;
+    }
+
+    const fare = vehicle.type === 'minibus' ? 3.00 : 2.50;
+    const userBalance = Number(user.balance || 0);
+
+    if (userBalance < fare) {
+      toast.error(`Недостаточно средств. Стоимость: ${fare} TJS. Ваш баланс: ${userBalance.toFixed(2)} TJS.`);
+      return;
+    }
+
+    if (window.confirm(`Оплатить проезд на маршруте #${vehicle.route_number} стоимостью ${fare} TJS?`)) {
+      setPaying(true);
+      try {
+        const { data, error } = await supabase.rpc('create_payment', {
+          driver_id: vehicle.driver_id,
+          amount: fare
+        });
+        if (error) throw new Error(error.message);
+        toast.success('Запрос на оплату отправлен водителю! Ожидайте подтверждения.');
+        refetch(); // Обновляем баланс в кэше/стейтах
+      } catch (err) {
+        toast.error(err.message || 'Ошибка отправки оплаты');
+      } finally {
+        setPaying(false);
+      }
+    }
+  };
+
   const icon = createBusIcon(vehicle.route_number || '?', vehicle.type);
   const eta = getEtaLabel(vehicle);
 
@@ -115,6 +154,34 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
             <div style={{ marginTop: 8, background: '#e3f2fd', borderRadius: 8, padding: '5px 10px', fontSize: 12, color: '#1565c0', fontWeight: 600 }}>
               ⏱ {eta.stop?.name ? `${eta.stop.name}: ` : ''}{eta.etaMinutes} мин
             </div>
+          )}
+
+          {user && vehicle.driver_id && user.id !== vehicle.driver_id && (
+            <button
+              disabled={paying}
+              onClick={handlePay}
+              style={{
+                width: '100%',
+                marginTop: 10,
+                background: '#16a34a',
+                color: 'white',
+                border: 'none',
+                borderRadius: 10,
+                padding: '8px 12px',
+                fontSize: 12,
+                fontWeight: 750,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+                boxShadow: '0 2px 6px rgba(22,163,74,0.3)',
+                transition: 'all 0.2s',
+              }}
+              className="hover:bg-green-700 active:scale-95 disabled:opacity-50"
+            >
+              {paying ? 'Отправка...' : `Оплатить ${vehicle.type === 'minibus' ? '3.00' : '2.50'} TJS`}
+            </button>
           )}
         </div>
       </Popup>

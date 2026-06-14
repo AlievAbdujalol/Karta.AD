@@ -162,8 +162,8 @@ export default function HomeHeader({
             className="text-xs font-semibold text-gray-700 dark:text-gray-100 bg-transparent outline-none appearance-none cursor-pointer"
             style={{ minWidth: '64px' }}
           >
-            <option value="">Страна</option>
-            {countries.map(c => <option key={c} value={c}>{c}</option>)}
+            <option value="" className="text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800">Страна</option>
+            {countries.map(c => <option key={c} value={c} className="text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800">{c}</option>)}
           </select>
         </Pill>
 
@@ -175,8 +175,8 @@ export default function HomeHeader({
             className="text-xs font-semibold text-gray-700 dark:text-gray-100 bg-transparent outline-none appearance-none cursor-pointer"
             style={{ minWidth: '60px' }}
           >
-            <option value="">Город</option>
-            {filteredCities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <option value="" className="text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800">Город</option>
+            {filteredCities.map(c => <option key={c.id} value={c.id} className="text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800">{c.name}</option>)}
           </select>
         </Pill>
 
@@ -188,9 +188,9 @@ export default function HomeHeader({
             className="text-xs font-semibold text-gray-700 dark:text-gray-100 bg-transparent outline-none appearance-none cursor-pointer"
             style={{ minWidth: '90px' }}
           >
-            <option value="all">Все виды</option>
-            <option value="bus">Автобус</option>
-            <option value="minibus">Маршрутка</option>
+            <option value="all" className="text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800">Все виды</option>
+            <option value="bus" className="text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800">Автобус</option>
+            <option value="minibus" className="text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800">Маршрутка</option>
           </select>
         </Pill>
 
@@ -213,8 +213,8 @@ export default function HomeHeader({
               className="text-xs font-bold text-white bg-transparent outline-none appearance-none cursor-pointer"
               style={{ minWidth: '80px' }}
             >
-              <option value="" className="text-black">Маршрут</option>
-              {filteredRoutes.map(r => <option key={r.id} value={r.id} className="text-black">#{r.number} {r.name || ''}</option>)}
+              <option value="" className="text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800">Маршрут</option>
+              {filteredRoutes.map(r => <option key={r.id} value={r.id} className="text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800">#{r.number} {r.name || ''}</option>)}
             </select>
             {selectedRoute && (
               <button onClick={e => { e.stopPropagation(); toggleFavorite(selectedRoute); }}>

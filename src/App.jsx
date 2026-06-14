@@ -60,16 +60,16 @@ import { NotificationProvider } from '@/lib/NotificationContext';
 function App() {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-      <NotificationProvider>
-        <AuthProvider>
+      <AuthProvider>
+        <NotificationProvider>
           <QueryClientProvider client={queryClientInstance}>
             <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
               <AuthenticatedApp />
             </Router>
             <Toaster />
           </QueryClientProvider>
-        </AuthProvider>
-      </NotificationProvider>
+        </NotificationProvider>
+      </AuthProvider>
     </ThemeProvider>
   )
 }

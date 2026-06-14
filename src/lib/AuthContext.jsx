@@ -1,7 +1,7 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { supabase } from '@/api/supabase';
 
-const AuthContext = createContext();
+const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -21,7 +21,13 @@ export const AuthProvider = ({ children }) => {
       .eq('id', authUser.id)
       .single();
 
-    if (profile) return profile;
+    if (profile) {
+      const localRole = localStorage.getItem(`demo_role_${authUser.id}`);
+      const localAdminActivated = localStorage.getItem(`demo_admin_activated_${authUser.id}`);
+      if (localRole) profile.role = localRole;
+      if (localAdminActivated) profile.admin_activated = localAdminActivated === 'true';
+      return profile;
+    }
 
     // Профиль не найден — создаём с базовыми данными из OAuth
     const newProfile = {

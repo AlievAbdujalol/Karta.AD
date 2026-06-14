@@ -10,6 +10,7 @@ import { WifiOff } from 'lucide-react';
 import { saveCache, loadCache } from '@/hooks/useOfflineCache';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import ErrorBoundary, { BusMapErrorFallback } from '@/components/ErrorBoundary';
+import { useNotificationCount } from '@/lib/NotificationContext';
 
 export default function Home() {
   const { t, lang, setLang } = useLanguage();
@@ -23,9 +24,9 @@ export default function Home() {
   const [selectedType, setSelectedType] = useState('all');
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [watchedStop, setWatchedStop] = useState(null);
+  const { notifications, clear: clearNotifications, addLocalNotification } = useNotificationCount();
   const [favorites, setFavorites] = useState([]);
   const [isOffline, setIsOffline] = useState(false);
-  const [notifications, setNotifications] = useState([]);
   const [locating, setLocating] = useState(false);
 
   // ── Автоопределение ближайшего города по геолокации ────────────────────────
@@ -99,7 +100,7 @@ export default function Home() {
     vehicles,
     watchedStop,
     route: selectedRoute,
-    onNotification: (n) => setNotifications(prev => [...prev, n]),
+    onNotification: (n) => addLocalNotification(n),
   });
 
   useEffect(() => {
@@ -183,7 +184,7 @@ export default function Home() {
         favorites={favorites} toggleFavorite={toggleFavorite}
         logTrip={logTrip}
         notifications={notifications}
-        onClearNotifications={() => setNotifications([])}
+        onClearNotifications={clearNotifications}
       />
 
       {isOffline && (

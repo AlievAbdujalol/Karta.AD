@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import 'leaflet/dist/leaflet.css';
 
 // Fix default icon
+// @ts-ignore
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -90,6 +91,7 @@ export default function RouteMapEditor() {
 
   const getCityName = (id) => cities.find(c => c.id === id)?.name || '';
 
+  /** @type {[number, number]} */
   const mapCenter = stops.length > 0
     ? [stops[0].lat, stops[0].lng]
     : [38.559, 68.773];
@@ -108,7 +110,7 @@ export default function RouteMapEditor() {
             const r = routes.find(x => x.id === e.target.value);
             if (r) selectRoute(r);
           }}
-          className="w-full border rounded-xl px-3 py-2.5 text-sm bg-white"
+          className="w-full border rounded-xl px-3 py-2.5 text-sm bg-white text-gray-800"
         >
           <option value="">— Выберите маршрут —</option>
           {routes.map(r => (

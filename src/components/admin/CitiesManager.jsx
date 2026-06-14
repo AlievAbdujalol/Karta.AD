@@ -3,6 +3,7 @@ import { base44 } from '@/api/base44Client';
 import { useLanguage } from '@/lib/useLanguage';
 import { Plus, Trash2, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
+import MapLocationPicker from './MapLocationPicker';
 
 export default function CitiesManager() {
   const { t } = useLanguage();
@@ -14,17 +15,28 @@ export default function CitiesManager() {
   useEffect(() => { load(); }, []);
 
   const handleAdd = async () => {
-    if (!form.name || !form.country) return;
-    await base44.entities.City.create({
-      name: form.name,
-      country: form.country,
-      lat: parseFloat(form.lat) || 0,
-      lng: parseFloat(form.lng) || 0,
-    });
-    setForm({ name: '', country: '', lat: '', lng: '' });
-    setAdding(false);
-    load();
-    toast.success(t('save'));
+    if (!form.name || !form.country) {
+      toast.error('Введите название города и страну');
+      return;
+    }
+    if (!form.lat || !form.lng) {
+      toast.error('Выберите местоположение города на карте');
+      return;
+    }
+    try {
+      await base44.entities.City.create({
+        name: form.name,
+        country: form.country,
+        lat: parseFloat(form.lat),
+        lng: parseFloat(form.lng),
+      });
+      setForm({ name: '', country: '', lat: '', lng: '' });
+      setAdding(false);
+      load();
+      toast.success(t('save'));
+    } catch (err) {
+      toast.error(err.message || 'Ошибка сохранения');
+    }
   };
 
   const handleDelete = async (id) => {
@@ -46,41 +58,40 @@ export default function CitiesManager() {
 
       {adding && (
         <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 space-y-3">
+          {/* Название и страна */}
           <div className="grid grid-cols-2 gap-2">
             <input
               placeholder={t('name')}
               value={form.name}
               onChange={e => setForm({ ...form, name: e.target.value })}
-              className="border rounded-lg px-3 py-2 text-sm"
+              className="border rounded-lg px-3 py-2 text-sm bg-white"
             />
             <input
               placeholder={t('country')}
               value={form.country}
               onChange={e => setForm({ ...form, country: e.target.value })}
-              className="border rounded-lg px-3 py-2 text-sm"
-            />
-            <input
-              placeholder={t('latitude')}
-              value={form.lat}
-              onChange={e => setForm({ ...form, lat: e.target.value })}
-              className="border rounded-lg px-3 py-2 text-sm"
-              type="number"
-              step="any"
-            />
-            <input
-              placeholder={t('longitude')}
-              value={form.lng}
-              onChange={e => setForm({ ...form, lng: e.target.value })}
-              className="border rounded-lg px-3 py-2 text-sm"
-              type="number"
-              step="any"
+              className="border rounded-lg px-3 py-2 text-sm bg-white"
             />
           </div>
+
+          {/* Карта для выбора координат */}
+          <MapLocationPicker
+            value={form.lat ? { lat: parseFloat(form.lat), lng: parseFloat(form.lng) } : null}
+            onChange={({ lat, lng }) => setForm(prev => ({ ...prev, lat: String(lat), lng: String(lng) }))}
+            height="280px"
+          />
+
           <div className="flex gap-2">
-            <button onClick={handleAdd} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">
+            <button
+              onClick={handleAdd}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+            >
               {t('save')}
             </button>
-            <button onClick={() => setAdding(false)} className="border text-gray-600 px-4 py-2 rounded-lg text-sm">
+            <button
+              onClick={() => { setAdding(false); setForm({ name: '', country: '', lat: '', lng: '' }); }}
+              className="border text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-100 transition-colors"
+            >
               {t('cancel')}
             </button>
           </div>
@@ -98,7 +109,7 @@ export default function CitiesManager() {
                 <p className="font-medium text-sm text-gray-900">{city.name}</p>
                 <p className="text-xs text-gray-500">
                   {city.country}
-                  {city.lat ? ` · ${city.lat.toFixed(3)}, ${city.lng.toFixed(3)}` : ''}
+                  {city.lat ? ` · ${Number(city.lat).toFixed(4)}, ${Number(city.lng).toFixed(4)}` : ''}
                 </p>
               </div>
             </div>

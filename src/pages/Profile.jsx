@@ -3,10 +3,11 @@ import { base44 } from '@/api/base44Client';
 import { useLanguage } from '@/lib/useLanguage';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useAuth } from '@/lib/AuthContext';
-import { User, Save, Heart, History, Camera, Loader2, LogOut, ChevronDown, Search } from 'lucide-react';
+import { User, Save, Heart, History, Camera, Loader2, LogOut, ChevronDown, Search, Wallet } from 'lucide-react';
 import FavoriteRoutes from '@/components/profile/FavoriteRoutes';
 import TripHistory from '@/components/profile/TripHistory';
 import { toast } from 'sonner';
+import { supabase } from '@/api/supabase';
 
 const LANGS = [
   { code: 'ru', label: 'Русский' },
@@ -123,12 +124,14 @@ function CountryCodePicker({ value, onChange }) {
   );
 }
 
+
 export default function Profile() {
   const { t, setLang } = useLanguage();
-  const { user, update } = useCurrentUser();
+  const { user, refetch, update, patchUser } = useCurrentUser();
   const { logout } = useAuth();
   const [cities, setCities] = useState([]);
   const [vehicles, setVehicles] = useState([]);
+  const [transactions, setTransactions] = useState([]);
   const [form, setForm] = useState({
     role: 'passenger',
     language: 'ru',
@@ -142,6 +145,31 @@ export default function Profile() {
   const [bioForm, setBioForm] = useState('');
   const [profileTab, setProfileTab] = useState('settings');
   const [countryCode, setCountryCode] = useState('+992');
+
+  useEffect(() => {
+    if (user?.id) {
+      const fetchTransactions = async () => {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select(`
+            id,
+            amount,
+            status,
+            created_at,
+            sender_id,
+            recipient_id,
+            sender:profiles!transactions_sender_id_fkey(full_name, email),
+            recipient:profiles!transactions_recipient_id_fkey(full_name, email)
+          `)
+          .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
+          .order('created_at', { ascending: false });
+        if (!error) {
+          setTransactions(data || []);
+        }
+      };
+      fetchTransactions();
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     base44.entities.City.list().then(setCities);
@@ -196,8 +224,10 @@ export default function Profile() {
     setSaving(true);
     try {
       const fullPhone = form.phone ? `${countryCode}${form.phone}` : '';
+      // Only save non-role fields — role is changed via handleRoleChange
       const data = { ...form, phone: fullPhone, bio: bioForm };
-      if (data.role !== 'driver') {
+      delete data.role; // role is managed by activate_subscription RPC
+      if (form.role !== 'driver') {
         delete data.driver_status;
         delete data.vehicle_number;
       }
@@ -209,6 +239,117 @@ export default function Profile() {
       toast.error('Не удалось сохранить профиль');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Смена роли с оплатой подписки
+  const handleRoleChange = async (newRole) => {
+    if (newRole === user?.role) return;
+
+    const hasActiveSub = user?.subscription_status === 'active' && new Date(user?.subscription_paid_until || 0) > new Date();
+
+    let fee = 0;
+    if (!hasActiveSub) {
+      if (newRole === 'driver') fee = 20;
+      if (newRole === 'admin') fee = user?.admin_activated ? 25 : 100;
+    }
+
+    // Показываем подтверждение
+    const confirmed = window.confirm(
+      `Сменить роль на "${newRole === 'passenger' ? 'Пассажир' : newRole === 'driver' ? 'Водитель' : 'Администратор'}"?\n` +
+      (fee > 0 ? `\nСтоимость: ${fee} TJS\nБаланс: ${Number(user?.balance || 0).toFixed(2)} TJS` : `\nУ вас уже активна подписка. Смена бесплатна.`)
+    );
+    if (!confirmed) return;
+
+    try {
+      if (fee > 0 && Number(user?.balance || 0) < fee) {
+        throw new Error('Недостаточно средств на балансе. Пополните кошелек.');
+      }
+
+      /** @type {Record<string, any>} */
+      const updates = { 
+        role: newRole,
+      };
+
+      if (newRole === 'admin' && !user?.admin_activated) {
+        updates.admin_activated = true;
+      }
+
+      /** @type {Record<string, any>} */
+      const dbUpdates = { ...updates };
+      delete dbUpdates.role;
+      delete dbUpdates.admin_activated;
+
+      if (fee > 0) {
+        dbUpdates.balance = Math.max(0, Number(user?.balance || 0) - fee);
+        dbUpdates.subscription_status = 'active';
+        const nextMonth = new Date();
+        nextMonth.setDate(nextMonth.getDate() + 30);
+        dbUpdates.subscription_paid_until = nextMonth.toISOString();
+      }
+      
+      if (newRole === 'driver') {
+        dbUpdates.driver_status = 'pending';
+      }
+
+      await update(dbUpdates);
+      
+      localStorage.setItem(`demo_role_${user?.id}`, newRole);
+      if (updates.admin_activated) {
+        localStorage.setItem(`demo_admin_activated_${user?.id}`, 'true');
+      }
+
+      // Обновляем локальный стейт
+      setForm(prev => ({ ...prev, role: newRole, driver_status: newRole === 'driver' ? 'pending' : prev.driver_status }));
+      
+      // Патчим контекст пользователя напрямую, так как мы удалили role из dbUpdates
+      /** @type {Record<string, any>} */
+      const patchData = { role: newRole };
+      if (updates.admin_activated) patchData.admin_activated = true;
+      if (newRole === 'driver') patchData.driver_status = 'pending';
+      if (fee > 0) {
+        patchData.balance = dbUpdates.balance;
+        patchData.subscription_status = dbUpdates.subscription_status;
+        patchData.subscription_paid_until = dbUpdates.subscription_paid_until;
+      }
+      patchUser(patchData);
+      
+      toast.success(
+        newRole === 'passenger'
+          ? '✅ Вы перешли на роль Пассажира!'
+          : fee > 0
+          ? `✅ Подписка активирована! Списано ${fee} TJS.`
+          : `✅ Роль изменена. Подписка активна.`
+      );
+    } catch (err) {
+      console.error('[Profile] role change error:', err);
+      toast.error(err.message || 'Не удалось сменить роль');
+    }
+  };
+
+  // Продление подписки
+  const handleRenewSubscription = async () => {
+    const fee = form.role === 'driver' ? 20 : 25;
+    const confirmed = window.confirm(`Продлить подписку на 1 месяц?\nСтоимость: ${fee} TJS\nБаланс: ${Number(user?.balance || 0).toFixed(2)} TJS`);
+    if (!confirmed) return;
+    try {
+      if (Number(user?.balance || 0) < fee) {
+        throw new Error('Недостаточно средств на балансе. Пополните кошелек.');
+      }
+
+      const nextMonth = new Date();
+      nextMonth.setDate(nextMonth.getDate() + 30);
+
+      await update({
+        balance: Math.max(0, Number(user?.balance || 0) - fee),
+        subscription_status: 'active',
+        subscription_paid_until: nextMonth.toISOString()
+      });
+      // Убираем await refetch();
+      toast.success(`✅ Подписка продлена на 1 месяц! Списано ${fee} TJS.`);
+    } catch (err) {
+      console.error('[Profile] renew error:', err);
+      toast.error(err.message || 'Не удалось продлить подписку');
     }
   };
 
@@ -261,6 +402,7 @@ export default function Profile() {
           {[
             { id: 'settings', label: 'Профиль', icon: User },
             { id: 'favorites', label: 'Избранное', icon: Heart },
+            { id: 'wallet', label: 'Кошелек', icon: Wallet },
             { id: 'history', label: 'История', icon: History },
           ].map(({ id, label, icon: Icon }) => (
             <button
@@ -276,43 +418,280 @@ export default function Profile() {
           ))}
         </div>
 
-        {profileTab === 'favorites' && <FavoriteRoutes user={user} />}
+        {profileTab === 'favorites' && <FavoriteRoutes />}
+        
+        {profileTab === 'wallet' && (
+          <div className="space-y-4">
+            {/* Balance Card */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 flex items-center justify-between">
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Баланс кошелька</p>
+                <p className="text-3xl font-black text-gray-900 dark:text-gray-100">
+                  {Number(user?.balance || 0).toFixed(2)} <span className="text-lg font-bold text-gray-500">TJS</span>
+                </p>
+              </div>
+              <button
+                onClick={async () => {
+                  const amount = window.prompt("Введите сумму для пополнения (TJS):", "50");
+                  if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) return;
+                  try {
+                    const { data, error } = await supabase.rpc('mock_top_up', { amount: Number(amount) });
+                    if (error) throw new Error(error.message);
+                    toast.success(`Баланс успешно пополнен на ${amount} TJS!`);
+                    
+                    // Refresh balance and transactions
+                    await refetch();
+                    const { data: txs } = await supabase
+                      .from('transactions')
+                      .select(`
+                        id, amount, status, created_at, sender_id, recipient_id,
+                        sender:profiles!transactions_sender_id_fkey(full_name, email),
+                        recipient:profiles!transactions_recipient_id_fkey(full_name, email)
+                      `)
+                      .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
+                      .order('created_at', { ascending: false });
+                    setTransactions(txs || []);
+                  } catch (err) {
+                    toast.error(err.message || "Ошибка при пополнении баланса");
+                  }
+                }}
+                className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer transition-all active:scale-95 shadow-md shadow-green-500/20"
+              >
+                ➕ Пополнить
+              </button>
+            </div>
+
+            {/* Transactions List */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+              <h3 className="font-bold text-sm text-gray-800 dark:text-gray-200 mb-3">История транзакций</h3>
+              {transactions.length === 0 ? (
+                <div className="text-center py-6 text-gray-400 text-xs">Нет транзакций</div>
+              ) : (
+                <div className="space-y-3">
+                  {transactions.map((t) => {
+                    const isSender = t.sender_id === user.id;
+                    const isTopUp = t.recipient_id === null;
+                    const amountFormatted = `${isSender && !isTopUp ? '-' : '+'}${Number(t.amount).toFixed(2)} TJS`;
+                    
+                    let title = '';
+                    let desc = '';
+                    let colorClass = '';
+
+                    if (isTopUp) {
+                      title = 'Пополнение кошелька';
+                      desc = 'Через платежную систему';
+                      colorClass = 'text-green-600 dark:text-green-400 font-bold';
+                    } else if (isSender) {
+                      title = 'Оплата проезда';
+                      desc = `Водителю ${t.recipient?.full_name || t.recipient?.email || '...'}`;
+                      colorClass = 'text-red-500 dark:text-red-400 font-semibold';
+                    } else {
+                      title = 'Получена оплата';
+                      desc = `От пассажира ${t.sender?.full_name || t.sender?.email || '...'}`;
+                      colorClass = 'text-green-600 dark:text-green-400 font-bold';
+                    }
+
+                    return (
+                      <div key={t.id} className="flex justify-between items-start border-b border-gray-50 dark:border-gray-700/50 pb-2.5 last:border-0 last:pb-0">
+                        <div>
+                          <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">{title}</p>
+                          <p className="text-[10px] text-gray-400 mt-0.5">{desc}</p>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full mt-1 inline-block ${
+                            t.status === 'completed' 
+                              ? 'bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400' 
+                              : t.status === 'pending'
+                                ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400'
+                                : 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400'
+                          }`}>
+                            {t.status === 'completed' ? 'Успешно' : t.status === 'pending' ? 'Ожидает' : 'Отклонено'}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <p className={`text-xs ${colorClass}`}>{amountFormatted}</p>
+                          <p className="text-[9px] text-gray-400 mt-1">
+                            {new Date(t.created_at).toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {profileTab === 'history' && <TripHistory user={user} />}
 
         {/* Form */}
         {profileTab === 'settings' && <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm space-y-5">
-          {/* Role */}
+          {/* Role + Subscription */}
           <div>
-            <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2 block">{t('role')}</label>
-            <div className="grid grid-cols-2 gap-2">
-              {['passenger', 'driver'].map(r => (
-                <button
-                  key={r}
-                  onClick={() => setForm({ ...form, role: r, driver_status: r === 'driver' ? (user?.driver_status || 'pending') : form.driver_status })}
-                  className={`py-2.5 rounded-xl text-xs font-semibold border-2 transition-all ${
-                    form.role === r
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
-                      : 'border-transparent bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                  }`}
-                >
-                  {t(r)}
-                </button>
-              ))}
+            <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3 block">
+              Роль и подписка
+            </label>
+
+            {/* Subscription Role Cards */}
+            <div className="space-y-2">
+              {/* Passenger */}
+              <div
+                onClick={() => {
+                  if (form.role !== 'passenger') {
+                    handleRoleChange('passenger');
+                  }
+                }}
+                className={`relative rounded-xl border-2 p-3.5 cursor-pointer transition-all ${
+                  form.role === 'passenger'
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                    : 'border-gray-100 dark:border-gray-700 hover:border-blue-200 dark:hover:border-blue-700 bg-gray-50 dark:bg-gray-700/40'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-2xl">🧑‍💼</span>
+                    <div>
+                      <p className="text-sm font-bold text-gray-800 dark:text-gray-100">Пассажир</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Бесплатно навсегда</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-bold px-2.5 py-1 rounded-full">
+                      БЕСПЛАТНО
+                    </span>
+                    {form.role === 'passenger' && (
+                      <span className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center text-white text-[10px]">✓</span>
+                    )}
+                  </div>
+                </div>
+                {form.role === 'passenger' && (
+                  <div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-700/40">
+                    <p className="text-[11px] text-blue-600 dark:text-blue-400">✅ Активна • Без ограничений по времени</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Driver */}
+              <div
+                onClick={() => {
+                  if (form.role !== 'driver') {
+                    handleRoleChange('driver');
+                  }
+                }}
+                className={`relative rounded-xl border-2 p-3.5 cursor-pointer transition-all ${
+                  form.role === 'driver'
+                    ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20'
+                    : 'border-gray-100 dark:border-gray-700 hover:border-orange-200 dark:hover:border-orange-700 bg-gray-50 dark:bg-gray-700/40'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-2xl">🚌</span>
+                    <div>
+                      <p className="text-sm font-bold text-gray-800 dark:text-gray-100">Водитель</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">20 TJS / месяц</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 text-xs font-bold px-2.5 py-1 rounded-full">
+                      20 TJS/мес
+                    </span>
+                    {form.role === 'driver' && (
+                      <span className="w-5 h-5 bg-orange-500 rounded-full flex items-center justify-center text-white text-[10px]">✓</span>
+                    )}
+                  </div>
+                </div>
+                {form.role === 'driver' && (
+                  <div className="mt-2 pt-2 border-t border-orange-200 dark:border-orange-700/40 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <p className={`text-[11px] font-semibold ${
+                        user?.subscription_status === 'active' ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'
+                      }`}>
+                        {user?.subscription_status === 'active' ? '✅ Подписка активна' : '❌ Подписка истекла'}
+                      </p>
+                      {user?.subscription_paid_until && (
+                        <p className="text-[10px] text-gray-400">
+                          до {new Date(user.subscription_paid_until).toLocaleDateString('ru-RU')}
+                        </p>
+                      )}
+                    </div>
+                    {user?.subscription_status !== 'active' && (
+                      <button
+                        type="button"
+                        onClick={async (e) => { e.stopPropagation(); await handleRenewSubscription(); }}
+                        className="w-full text-center text-[11px] bg-orange-500 hover:bg-orange-600 text-white rounded-lg py-1.5 font-semibold transition-all"
+                      >
+                        Продлить — 20 TJS
+                      </button>
+                    )}
+                    <div className={`mt-1 rounded-lg p-2 text-xs font-medium flex items-center gap-2 ${
+                      statusInfo[form.driver_status]?.cls || statusInfo.pending.cls
+                    }`}>
+                      <span>{statusInfo[form.driver_status]?.emoji || '⏳'}</span>
+                      {t(form.driver_status || 'pending')}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Admin */}
+              <div
+                onClick={() => {
+                  if (form.role !== 'admin') {
+                    handleRoleChange('admin');
+                  }
+                }}
+                className={`relative rounded-xl border-2 p-3.5 cursor-pointer transition-all ${
+                  form.role === 'admin'
+                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+                    : 'border-gray-100 dark:border-gray-700 hover:border-purple-200 dark:hover:border-purple-700 bg-gray-50 dark:bg-gray-700/40'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-2xl">🛡️</span>
+                    <div>
+                      <p className="text-sm font-bold text-gray-800 dark:text-gray-100">Администратор</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {user?.admin_activated ? '25 TJS / месяц' : '100 TJS активация + 25 TJS/мес'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 text-xs font-bold px-2.5 py-1 rounded-full">
+                      {user?.admin_activated ? '25 TJS/мес' : '100 TJS/мес'}
+                    </span>
+                    {form.role === 'admin' && (
+                      <span className="w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center text-white text-[10px]">✓</span>
+                    )}
+                  </div>
+                </div>
+                {form.role === 'admin' && (
+                  <div className="mt-2 pt-2 border-t border-purple-200 dark:border-purple-700/40 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <p className={`text-[11px] font-semibold ${
+                        user?.subscription_status === 'active' ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'
+                      }`}>
+                        {user?.subscription_status === 'active' ? '✅ Подписка активна' : '❌ Подписка истекла'}
+                      </p>
+                      {user?.subscription_paid_until && (
+                        <p className="text-[10px] text-gray-400">
+                          до {new Date(user.subscription_paid_until).toLocaleDateString('ru-RU')}
+                        </p>
+                      )}
+                    </div>
+                    {user?.subscription_status !== 'active' && (
+                      <button
+                        type="button"
+                        onClick={async (e) => { e.stopPropagation(); await handleRenewSubscription(); }}
+                        className="w-full text-center text-[11px] bg-purple-500 hover:bg-purple-600 text-white rounded-lg py-1.5 font-semibold transition-all"
+                      >
+                        Продлить — 25 TJS
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-            {/* Если пользователь уже admin — показываем бейдж, но не даём менять */}
-            {form.role === 'admin' && (
-              <div className="mt-2 rounded-lg p-2.5 text-xs font-medium flex items-center gap-2 text-purple-700 bg-purple-50 dark:bg-purple-900/30 dark:text-purple-300">
-                <span>🛡️</span> Администратор — назначено администратором системы
-              </div>
-            )}
-            {form.role === 'driver' && (
-              <div className={`mt-2 rounded-lg p-2.5 text-xs font-medium flex items-center gap-2 ${
-                statusInfo[form.driver_status]?.cls || statusInfo.pending.cls
-              }`}>
-                <span>{statusInfo[form.driver_status]?.emoji || '⏳'}</span>
-                {t(form.driver_status || 'pending')}
-              </div>
-            )}
           </div>
 
           {/* Language */}

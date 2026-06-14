@@ -1,11 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Bell, X, BellOff, CheckCheck } from 'lucide-react';
+import { Bell, X, BellOff, CheckCheck, Loader2, Check, Ban } from 'lucide-react';
+import { useNotificationCount } from '@/lib/NotificationContext';
+import { toast } from 'sonner';
 
 export default function NotificationPanel({ notifications, onClear }) {
+  const { confirmPayment, rejectPayment } = useNotificationCount();
   const [open, setOpen] = useState(false);
   const [readCount, setReadCount] = useState(0);
   const [panelPos, setPanelPos] = useState({ top: 0, right: 0 });
+  const [processingId, setProcessingId] = useState(null);
   const btnRef = useRef(null);
   const panelRef = useRef(null);
 
@@ -55,6 +59,34 @@ export default function NotificationPanel({ notifications, onClear }) {
       window.removeEventListener('resize', close);
     };
   }, [open]);
+
+  const handleConfirm = async (n) => {
+    const txId = n.data?.transaction_id;
+    if (!txId) return;
+    setProcessingId(n.id);
+    try {
+      await confirmPayment(txId);
+      toast.success('Оплата успешно подтверждена');
+    } catch (err) {
+      toast.error(err.message || 'Ошибка подтверждения оплаты');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleReject = async (n) => {
+    const txId = n.data?.transaction_id;
+    if (!txId) return;
+    setProcessingId(n.id);
+    try {
+      await rejectPayment(txId);
+      toast.success('Оплата отклонена');
+    } catch (err) {
+      toast.error(err.message || 'Ошибка отклонения оплаты');
+    } finally {
+      setProcessingId(null);
+    }
+  };
 
   return (
     <>
@@ -126,20 +158,51 @@ export default function NotificationPanel({ notifications, onClear }) {
                 <p className="text-[10px] mt-1 text-gray-300">Выберите маршрут и остановку для слежения</p>
               </div>
             ) : (
-              notifications.slice().reverse().map((n) => (
-                <div
-                  key={n.id}
-                  className={`px-4 py-3 border-b border-gray-50 last:border-0 ${
-                    n.type === 'delay' ? 'bg-amber-50' : 'bg-blue-50/40'
-                  }`}
-                >
-                  <p className="text-xs font-semibold text-gray-800">{n.title}</p>
-                  <p className="text-[11px] text-gray-500 mt-0.5">{n.body}</p>
-                  <p className="text-[10px] text-gray-300 mt-1">
-                    {new Date(n.id).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                </div>
-              ))
+              notifications.slice().reverse().map((n) => {
+                const isPendingPayment = n.type === 'payment_pending';
+                const isProcessing = processingId === n.id;
+                
+                return (
+                  <div
+                    key={n.id}
+                    className={`px-4 py-3 border-b border-gray-50 last:border-0 ${
+                      isPendingPayment 
+                        ? 'bg-blue-50/70 border-l-4 border-l-blue-500' 
+                        : n.type === 'delay' 
+                          ? 'bg-amber-50' 
+                          : 'bg-blue-50/40'
+                    }`}
+                  >
+                    <p className="text-xs font-semibold text-gray-800">{n.title}</p>
+                    <p className="text-[11px] text-gray-500 mt-0.5">{n.body}</p>
+                    
+                    {isPendingPayment && (
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          disabled={isProcessing}
+                          onClick={() => handleConfirm(n)}
+                          className="flex items-center gap-1 bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          {isProcessing ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />}
+                          Подтвердить
+                        </button>
+                        <button
+                          disabled={isProcessing}
+                          onClick={() => handleReject(n)}
+                          className="flex items-center gap-1 bg-red-500 hover:bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          <Ban size={10} />
+                          Отклонить
+                        </button>
+                      </div>
+                    )}
+                    
+                    <p className="text-[10px] text-gray-300 mt-1">
+                      {new Date(n.created_at || n.id).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                );
+              })
             )}
           </div>
         </div>,
