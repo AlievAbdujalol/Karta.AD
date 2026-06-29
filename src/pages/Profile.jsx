@@ -224,13 +224,18 @@ export default function Profile() {
     setSaving(true);
     try {
       const fullPhone = form.phone ? `${countryCode}${form.phone}` : '';
-      // Only save non-role fields — role is changed via handleRoleChange
-      const data = { ...form, phone: fullPhone, bio: bioForm };
-      delete data.role; // role is managed by activate_subscription RPC
+      const data = { ...form, phone: fullPhone };
+
+      if (bioForm?.trim()) {
+        data.bio = bioForm.trim();
+      }
+
+      delete data.role;
       if (form.role !== 'driver') {
         delete data.driver_status;
         delete data.vehicle_number;
       }
+
       await update(data);
       setLang(data.language);
       toast.success(t('saveProfile'));

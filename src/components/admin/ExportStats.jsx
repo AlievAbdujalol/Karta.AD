@@ -26,9 +26,9 @@ export default function ExportStats() {
 
   const exportTrips = async () => {
     setLoading('trips');
-    const trips = await base44.entities.TripLog.list('-created_date', 1000);
+    const trips = await base44.entities.TripLog.list('-created_at', 1000);
     const headers = [
-      { key: 'created_date', label: 'Дата и время' },
+      { key: 'created_at', label: 'Дата и время' },
       { key: 'route_number', label: 'Номер маршрута' },
       { key: 'route_name', label: 'Название маршрута' },
       { key: 'route_type', label: 'Тип' },
@@ -37,7 +37,7 @@ export default function ExportStats() {
     ];
     const rows = trips.map(t => ({
       ...t,
-      created_date: t.created_date ? new Date(t.created_date).toLocaleString('ru') : '',
+      created_at: t.created_at ? new Date(t.created_at).toLocaleString('ru') : '',
     }));
     downloadCSV(toCSV(rows, headers), `trips_${new Date().toISOString().slice(0,10)}.csv`);
     setLoading(null);
@@ -46,7 +46,7 @@ export default function ExportStats() {
   const exportPopularRoutes = async () => {
     setLoading('routes');
     const [trips, routes] = await Promise.all([
-      base44.entities.TripLog.list('-created_date', 1000),
+      base44.entities.TripLog.list('-created_at', 1000),
       base44.entities.Route.list(),
     ]);
 
@@ -79,9 +79,9 @@ export default function ExportStats() {
 
   const exportReviews = async () => {
     setLoading('reviews');
-    const reviews = await base44.entities.Review.list('-created_date', 1000);
+    const reviews = await base44.entities.Review.list('-created_at', 1000);
     const headers = [
-      { key: 'created_date', label: 'Дата' },
+      { key: 'created_at', label: 'Дата' },
       { key: 'route_number', label: 'Маршрут' },
       { key: 'driver_name', label: 'Водитель' },
       { key: 'vehicle_number', label: 'Номер ТС' },
@@ -92,7 +92,7 @@ export default function ExportStats() {
     ];
     const rows = reviews.map(r => ({
       ...r,
-      created_date: r.created_date ? new Date(r.created_date).toLocaleString('ru') : '',
+      created_at: r.created_at ? new Date(r.created_at).toLocaleString('ru') : '',
     }));
     downloadCSV(toCSV(rows, headers), `reviews_${new Date().toISOString().slice(0,10)}.csv`);
     setLoading(null);

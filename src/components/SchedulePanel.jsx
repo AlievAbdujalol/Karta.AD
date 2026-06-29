@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
-import { Clock, ChevronUp, ChevronDown, MapPin } from 'lucide-react';
+import { Clock, ChevronUp, ChevronDown } from 'lucide-react';
 
 function getNextTimes(times, count = 3) {
   if (!times?.length) return [];
@@ -34,8 +34,8 @@ export default function SchedulePanel({ route }) {
   if (!stopsWithTimes.length) return null;
 
   return (
-    <div className="absolute bottom-4 left-3 z-10 w-[min(320px,calc(100%-70px))]">
-      <div className="rounded-2xl overflow-hidden bg-white/[0.97] backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-black/[0.06] dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700">
+    <div className="absolute bottom-20 md:bottom-6 left-4 md:left-[412px] z-[998] w-[min(320px,calc(100%-80px))]">
+      <div className="rounded-[20px] overflow-hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/50 dark:border-slate-800/80 shadow-[0_8px_32px_rgba(15,23,42,0.06)] dark:text-gray-100">
 
         <button
           onClick={() => setExpanded(e => !e)}

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, useMapEvents, Popup, CircleMarker } from 'react-leaflet';
 import L from 'leaflet';
 import { base44 } from '@/api/base44Client';
-import { Save, Trash2, MapPin, Plus, X, ChevronDown } from 'lucide-react';
+import { Save, Trash2, MapPin, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import 'leaflet/dist/leaflet.css';
 

@@ -37,6 +37,9 @@ export const AuthProvider = ({ children }) => {
       photo_url: authUser.user_metadata?.avatar_url || authUser.user_metadata?.picture || null,
       role: 'passenger',
       language: 'ru',
+      driver_status: 'pending',
+      subscription_status: 'active',
+      balance: 0,
     };
 
     const { data: created } = await supabase

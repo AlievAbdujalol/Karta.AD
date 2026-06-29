@@ -55,12 +55,12 @@ export default function AdminDashboard() {
   };
 
   const approveDriver = async (uid) => {
-    await base44.entities.User.update(uid, { is_approved: true });
+    await base44.entities.User.update(uid, { driver_status: 'approved' });
     loadAll();
   };
 
   const blockDriver = async (uid) => {
-    await base44.entities.User.update(uid, { is_approved: false });
+    await base44.entities.User.update(uid, { driver_status: 'blocked' });
     loadAll();
   };
 
@@ -123,7 +123,7 @@ export default function AdminDashboard() {
                   {vehicles.map(v => (
                     <div key={v.id} className="bg-white rounded-xl border border-green-200 p-3 flex items-center gap-3">
                       <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-white text-xs ${v.vehicle_type === 'bus' ? 'bg-blue-600' : 'bg-orange-500'}`}>
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-white text-xs ${v.type === 'bus' ? 'bg-blue-600' : 'bg-orange-500'}`}>
                         {v.route_number}
                       </div>
                       <div className="flex-1">
@@ -262,18 +262,18 @@ export default function AdminDashboard() {
                   <div>
                     <p className="text-sm font-medium text-gray-800">{u.full_name}</p>
                     <p className="text-xs text-gray-400">{u.email}</p>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium mt-1 inline-block ${
-                      u.is_approved ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {u.is_approved ? t(lang, 'approved') : t(lang, 'pendingApproval')}
-                    </span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium mt-1 inline-block ${
+                        u.driver_status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                      }`}>
+                        {u.driver_status === 'approved' ? t(lang, 'approved') : t(lang, 'pendingApproval')}
+                      </span>
                   </div>
                   <div className="flex gap-2">
-                    {!u.is_approved && (
+                    {!u.driver_status || u.driver_status === 'pending' ? (
                       <button onClick={() => approveDriver(u.id)} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg">
                         <CheckCircle size={18} />
                       </button>
-                    )}
+                    ) : null}
                     <button onClick={() => blockDriver(u.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg">
                       <XCircle size={18} />
                     </button>

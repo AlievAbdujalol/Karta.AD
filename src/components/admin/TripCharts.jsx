@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  LineChart, Line, CartesianGrid, Legend
+  LineChart, Line, CartesianGrid
 } from 'recharts';
 import { BarChart2, Clock } from 'lucide-react';
 
@@ -14,7 +14,7 @@ export default function TripCharts() {
   useEffect(() => {
     const load = async () => {
       const [trips, routes] = await Promise.all([
-        base44.entities.TripLog.list('-created_date', 1000),
+        base44.entities.TripLog.list('-created_at', 1000),
         base44.entities.Route.list(),
       ]);
 
@@ -28,8 +28,8 @@ export default function TripCharts() {
           countMap[trip.route_id] = (countMap[trip.route_id] || 0) + 1;
         }
         // by hour
-        if (trip.created_date) {
-          const hour = new Date(trip.created_date).getHours();
+        if (trip.created_at) {
+          const hour = new Date(trip.created_at).getHours();
           hourMap[hour] = (hourMap[hour] || 0) + 1;
         }
       }

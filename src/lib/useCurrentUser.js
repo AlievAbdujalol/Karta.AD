@@ -15,17 +15,36 @@ export function useCurrentUser() {
   const update = async (data) => {
     if (!user?.id) return;
 
-    // Мгновенно обновляем локальный стейт — Layout/Profile получат новую роль сразу
     patchUser(data);
 
-    const { error } = await supabase
+    let payload = { ...data };
+    let { error } = await supabase
       .from('profiles')
-      .update(data)
+      .update(payload)
       .eq('id', user.id);
 
     if (error) {
+      const msg = error.message || '';
+      const isSchemaIssue = msg.includes('schema cache') || msg.includes('Could not find the');
+
+      if (isSchemaIssue) {
+        const allowed = ['language', 'phone', 'full_name', 'photo_url', 'city_id', 'role', 'driver_status', 'vehicle_number', 'bio', 'balance', 'subscription_status', 'subscription_paid_until', 'admin_activated'];
+        const cleaned = Object.fromEntries(
+          Object.entries(payload).filter(([k]) => allowed.includes(k))
+        );
+        const retry = await supabase
+          .from('profiles')
+          .update(cleaned)
+          .eq('id', user.id);
+        if (retry.error) {
+          console.error('[useCurrentUser] update error after retry:', retry.error.message);
+          refreshUser().catch(console.error);
+          throw new Error(retry.error.message);
+        }
+        return;
+      }
+
       console.error('[useCurrentUser] update error:', error.message);
-      // Откатываем локальный патч если БД вернула ошибку
       refreshUser().catch(console.error);
       throw new Error(error.message);
     }

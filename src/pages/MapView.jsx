@@ -109,11 +109,11 @@ export default function MapView() {
 
           {/* Vehicles */}
           {vehicles.map(v => v.lat && v.lng && (
-            <Marker key={v.id} position={[v.lat, v.lng]} icon={busIcon(v.route_number || route?.number, v.vehicle_type)}>
+            <Marker key={v.id} position={[v.lat, v.lng]} icon={busIcon(v.route_number || route?.number, v.type)}>
               <Popup>
                 <div className="text-sm">
                   <strong>{v.driver_name}</strong><br />
-                  №{v.route_number} — {t(lang, v.vehicle_type === 'bus' ? 'bus' : 'minibus')}
+                  №{v.route_number} — {t(lang, v.type === 'bus' ? 'bus' : 'minibus')}
                 </div>
               </Popup>
             </Marker>
