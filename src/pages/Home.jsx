@@ -16,18 +16,18 @@ import BottomSheet from '@/components/BottomSheet';
 
 export default function Home() {
   const { t, lang, setLang } = useLanguage();
-  const { user: currentUser } = useCurrentUser();
-  const [cities, setCities] = useState([]);
-  const [routes, setRoutes] = useState([]);
-  const [vehicles, setVehicles] = useState([]);
-  const [countries, setCountries] = useState([]);
+  const { user: currentUser } = /** @type {any} */ (useCurrentUser());
+  const [cities, setCities] = useState(/** @type {any[]} */ ([]));
+  const [routes, setRoutes] = useState(/** @type {any[]} */ ([]));
+  const [vehicles, setVehicles] = useState(/** @type {any[]} */ ([]));
+  const [countries, setCountries] = useState(/** @type {any[]} */ ([]));
   const [selectedCountry, setSelectedCountry] = useState('');
-  const [selectedCity, setSelectedCity] = useState(null);
+  const [selectedCity, setSelectedCity] = useState(/** @type {any} */ (null));
   const [selectedType, setSelectedType] = useState('all');
-  const [selectedRoute, setSelectedRoute] = useState(null);
-  const [watchedStop, setWatchedStop] = useState(null);
+  const [selectedRoute, setSelectedRoute] = useState(/** @type {any} */ (null));
+  const [watchedStop, setWatchedStop] = useState(/** @type {any} */ (null));
   const { notifications, clear: clearNotifications, addLocalNotification } = useNotificationCount();
-  const [favorites, setFavorites] = useState([]);
+  const [favorites, setFavorites] = useState(/** @type {any[]} */ ([]));
   const [isOffline, setIsOffline] = useState(false);
   const [locating, setLocating] = useState(false);
 
@@ -45,7 +45,7 @@ export default function Home() {
   }, [location.search]);
 
   // ── Автоопределение ближайшего города по геолокации ────────────────────────
-  const autoDetectCity = useCallback((citiesList) => {
+  const autoDetectCity = useCallback(/** @param {any[]} citiesList */ (citiesList) => {
     if (!citiesList?.length) return;
     if (!navigator.geolocation) return;
 
@@ -54,9 +54,9 @@ export default function Home() {
       (pos) => {
         const { latitude, longitude } = pos.coords;
         // Находим ближайший город по расстоянию
-        let nearest = null;
+        /** @type {any} */ let nearest = null;
         let minDist = Infinity;
-        citiesList.forEach(city => {
+        citiesList.forEach(/** @param {any} city */ city => {
           if (!city.lat || !city.lng) return;
           const d = Math.hypot(city.lat - latitude, city.lng - longitude);
           if (d < minDist) { minDist = d; nearest = city; }
@@ -81,7 +81,7 @@ export default function Home() {
     }
   }, [currentUser?.id]);
 
-  const toggleFavorite = async (route) => {
+  const toggleFavorite = async (/** @type {any} */ route) => {
     if (!currentUser) return;
     const isFav = favorites.includes(route.id);
     if (isFav) {
@@ -100,7 +100,7 @@ export default function Home() {
     }
   };
 
-  const logTrip = async (route) => {
+  const logTrip = async (/** @type {any} */ route) => {
     if (!currentUser || !route) return;
     const city = cities.find(c => c.id === route.city_id);
     await base44.entities.TripLog.create({
@@ -115,14 +115,14 @@ export default function Home() {
     vehicles,
     watchedStop,
     route: selectedRoute,
-    onNotification: (n) => addLocalNotification(n),
+    onNotification: /** @param {any} n */ (n) => addLocalNotification(n),
   });
 
   useEffect(() => {
     base44.entities.City.list().then(data => {
       setCities(data);
       saveCache('cities', data);
-      const unique = [...new Set(data.map(c => c.country).filter(Boolean))];
+      const unique = [...new Set(data.map(/** @param {any} c */ c => c.country).filter(Boolean))];
       setCountries(unique);
       setIsOffline(false);
       // Автоопределяем город если ещё не выбран
@@ -131,7 +131,7 @@ export default function Home() {
       const cached = loadCache('cities');
       if (cached) {
         setCities(cached);
-        const unique = [...new Set(cached.map(c => c.country).filter(Boolean))];
+        const unique = [...new Set(cached.map(/** @param {any} c */ c => c.country).filter(Boolean))];
         setCountries(unique);
         setIsOffline(true);
         autoDetectCity(cached);
@@ -189,8 +189,8 @@ export default function Home() {
     <div className="relative w-full h-full bg-slate-50 dark:bg-slate-950 overflow-hidden">
       {/* Map (Background) */}
       <div className="absolute inset-0 w-full h-full z-0">
-        <ErrorBoundary fallback={(error) => <BusMapErrorFallback error={error} />}>
-          <BusMap vehicles={vehicles} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} showDefault={true} />
+        <ErrorBoundary fallback={/** @param {any} error */ (error) => <BusMapErrorFallback error={error} />}>
+          <BusMap vehicles={/** @type {any} */ (vehicles)} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} />
         </ErrorBoundary>
       </div>
 
@@ -202,7 +202,7 @@ export default function Home() {
             countries={countries}
             selectedCountry={selectedCountry} setSelectedCountry={setSelectedCountry}
             cities={cities} filteredCities={filteredCities}
-            selectedCity={selectedCity} setSelectedCity={(city) => { setSelectedCity(city); setSelectedRoute(null); }}
+            selectedCity={selectedCity} setSelectedCity={/** @param {any} city */ (city) => { setSelectedCity(city); setSelectedRoute(null); }}
             selectedType={selectedType} setSelectedType={setSelectedType}
             routes={routes} filteredRoutes={filteredRoutes}
             selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute}
@@ -238,9 +238,9 @@ export default function Home() {
       {/* Interactive Bottom Sheet */}
       <BottomSheet
         selectedCity={selectedCity}
-        routes={routes}
-        vehicles={vehicles}
-        favorites={favorites}
+        routes={/** @type {any} */ (routes)}
+        vehicles={/** @type {any} */ (vehicles)}
+        favorites={/** @type {any} */ (favorites)}
         toggleFavorite={toggleFavorite}
         selectedRoute={selectedRoute}
         setSelectedRoute={setSelectedRoute}
@@ -281,7 +281,7 @@ export default function Home() {
 
       {/* StopWatcher */}
       <div className="absolute right-4 top-24 z-[999] pointer-events-auto">
-        <StopWatcher route={selectedRoute} watchedStop={watchedStop} onWatch={stop => setWatchedStop(stop)} />
+        <StopWatcher route={selectedRoute} watchedStop={watchedStop} onWatch={/** @param {any} stop */ stop => setWatchedStop(stop)} />
       </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

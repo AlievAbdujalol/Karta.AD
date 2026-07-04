@@ -5,19 +5,21 @@ import { useAuth } from '@/lib/AuthContext';
 /**
  * @typedef {Object} NotificationContextValue
  * @property {number} count - Number of unread notifications
- * @property {Array} notifications - List of notification objects
+ * @property {any[]} notifications - List of notification objects
  * @property {() => Promise<void>} clear - Marks all notifications as read
  * @property {(transactionId: string) => Promise<boolean>} confirmPayment - RPC to confirm payment
  * @property {(transactionId: string) => Promise<boolean>} rejectPayment - RPC to reject payment
+ * @property {(n: any) => void} addLocalNotification - Add a local notification
  */
 
 /** @type {import('react').Context<NotificationContextValue>} */
 const NotificationContext = createContext({
   count: 0,
-  notifications: [],
+  notifications: /** @type {any[]} */ ([]),
   clear: async () => {},
-  confirmPayment: async () => false,
-  rejectPayment: async () => false,
+  confirmPayment: /** @type {(transactionId: string) => Promise<boolean>} */ (async () => false),
+  rejectPayment: /** @type {(transactionId: string) => Promise<boolean>} */ (async () => false),
+  addLocalNotification: (/** @type {any} */ n) => {},
 });
 
 /**
@@ -25,8 +27,8 @@ const NotificationContext = createContext({
  * @param {{ children: import('react').ReactNode }} props
  */
 export function NotificationProvider({ children }) {
-  const { user } = useAuth();
-  const [notifications, setNotifications] = useState([]);
+  const { user } = /** @type {any} */ (useAuth());
+  const [notifications, setNotifications] = useState(/** @type {any[]} */ ([]));
 
   // Fetch and subscribe to notifications when user is logged in
   useEffect(() => {
@@ -61,7 +63,7 @@ export function NotificationProvider({ children }) {
           table: 'notifications',
           filter: `user_id=eq.${user.id}`,
         },
-        (payload) => {
+        /** @param {any} payload */ (payload) => {
           if (payload.eventType === 'INSERT') {
             setNotifications(prev => {
               // Avoid duplicates
@@ -100,7 +102,7 @@ export function NotificationProvider({ children }) {
     }
   }, [user?.id]);
 
-  const confirmPayment = useCallback(async (transactionId) => {
+  const confirmPayment = useCallback(async (/** @type {any} */ transactionId) => {
     const { data, error } = await supabase.rpc('confirm_payment', { transaction_id: transactionId });
     if (error) {
       console.error('[NotificationContext] confirmPayment error:', error.message);
@@ -109,7 +111,7 @@ export function NotificationProvider({ children }) {
     return data;
   }, []);
 
-  const rejectPayment = useCallback(async (transactionId) => {
+  const rejectPayment = useCallback(async (/** @type {any} */ transactionId) => {
     const { data, error } = await supabase.rpc('reject_payment', { transaction_id: transactionId });
     if (error) {
       console.error('[NotificationContext] rejectPayment error:', error.message);
@@ -118,7 +120,7 @@ export function NotificationProvider({ children }) {
     return data;
   }, []);
 
-  const addLocalNotification = useCallback((n) => {
+  const addLocalNotification = useCallback(/** @param {any} n */ (n) => {
     setNotifications(prev => [
       {
         id: String(Date.now()),
