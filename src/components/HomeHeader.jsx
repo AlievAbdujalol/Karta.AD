@@ -56,7 +56,7 @@ export default function HomeHeader({
     setSearchOpen(false);
   };
   return (
-    <div className="w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-[24px] border border-slate-200/50 dark:border-slate-800/80 shadow-[0_8px_32px_rgba(15,23,42,0.06)] overflow-hidden flex flex-col pointer-events-auto transition-all duration-300">
+    <div className="w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-[24px] border border-slate-200/50 dark:border-slate-800/80 shadow-[0_8px_32px_rgba(15,23,42,0.06)] overflow-visible flex flex-col pointer-events-auto transition-all duration-300">
       {/* Top row */}
       <div className="flex items-center gap-2 px-3.5 pt-3.5 pb-2">
         {/* Logo */}

@@ -44,7 +44,7 @@ export default function StopWatcher({ route, watchedStop, onWatch }) {
       )}
 
       {open && !watchedStop && (
-        <div className="absolute top-full right-0 mt-2 bg-white rounded-2xl overflow-hidden z-50 min-w-[200px] max-h-56 overflow-y-auto"
+        <div className="absolute top-full right-0 mt-2 bg-white rounded-2xl overflow-hidden z-50 min-w-[200px] max-w-[260px] max-h-56 overflow-y-auto"
           style={{ boxShadow: '0 8px 30px rgba(0,0,0,0.15)', border: '1px solid rgba(0,0,0,0.06)' }}>
           <div className="sticky top-0 bg-white px-3 pt-3 pb-2 border-b border-gray-50">
             <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold flex items-center gap-1">

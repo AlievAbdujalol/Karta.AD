@@ -113,7 +113,7 @@ export default function NotificationPanel({ notifications, onClear }) {
             position: 'fixed',
             top: panelPos.top,
             right: panelPos.right,
-            width: 320,
+            width: 'min(320px, calc(100vw - 32px))',
             zIndex: 99999,
             borderRadius: 16,
             background: 'white',

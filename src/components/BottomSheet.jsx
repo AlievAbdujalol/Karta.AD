@@ -139,7 +139,7 @@ export default function BottomSheet({
     <>
       {/* DESKTOP SIDEBAR - FLOATS ON THE LEFT */}
       <div
-        className="hidden md:flex flex-col absolute left-4 top-24 bottom-6 w-[380px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-[24px] shadow-2xl border border-slate-100 dark:border-slate-800/80 z-[1000] overflow-hidden"
+        className="hidden md:flex flex-col absolute left-4 top-20 bottom-6 w-[380px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-[24px] shadow-2xl border border-slate-100 dark:border-slate-800/80 z-[1000] overflow-hidden"
         onMouseDown={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
@@ -187,7 +187,7 @@ export default function BottomSheet({
         </div>
 
         {/* Content list */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin scrollbar-thumb-slate-200">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-3 scrollbar-thin scrollbar-thumb-slate-200">
           <TabContent
             activeTab={activeTab}
             uniqueStops={uniqueStops}
@@ -333,7 +333,7 @@ function TabContent({
         <div
           key={i}
           onClick={() => handleSelectStop(stop)}
-          className={`flex items-start gap-3 p-3.5 bg-slate-50/60 dark:bg-slate-800/40 rounded-2xl border transition-all cursor-pointer active:scale-[0.98] ${
+          className={`flex items-start gap-3 p-3.5 bg-slate-50/60 dark:bg-slate-800/40 rounded-2xl border transition-all cursor-pointer active:scale-[0.98] overflow-hidden ${
             isWatched
               ? 'border-orange-500/50 bg-orange-50/30 dark:bg-orange-500/5'
               : 'border-slate-100 dark:border-slate-800/50 hover:bg-slate-100/50 dark:hover:bg-slate-800/70'
@@ -388,7 +388,7 @@ function TabContent({
         <div
           key={route.id}
           onClick={() => handleSelectRoute(route)}
-          className={`flex items-center gap-3 p-3.5 bg-slate-50/60 dark:bg-slate-800/40 rounded-2xl border transition-all cursor-pointer active:scale-[0.98] ${
+          className={`flex items-center gap-3 p-3.5 bg-slate-50/60 dark:bg-slate-800/40 rounded-2xl border transition-all cursor-pointer active:scale-[0.98] overflow-hidden ${
             isSelected
               ? 'border-blue-500/50 bg-blue-50/20 dark:bg-blue-500/5'
               : 'border-slate-100 dark:border-slate-800/50 hover:bg-slate-100/50 dark:hover:bg-slate-800/70'
@@ -447,7 +447,7 @@ function TabContent({
         <div
           key={route.id}
           onClick={() => handleSelectRoute(route)}
-          className={`flex items-center gap-3 p-3.5 bg-slate-50/60 dark:bg-slate-800/40 rounded-2xl border transition-all cursor-pointer active:scale-[0.98] ${
+          className={`flex items-center gap-3 p-3.5 bg-slate-50/60 dark:bg-slate-800/40 rounded-2xl border transition-all cursor-pointer active:scale-[0.98] overflow-hidden ${
             isSelected
               ? 'border-blue-500/50 bg-blue-50/20 dark:bg-blue-500/5'
               : 'border-slate-100 dark:border-slate-800/50 hover:bg-slate-100/50 dark:hover:bg-slate-800/70'
@@ -505,7 +505,7 @@ function TabContent({
               type: trip.route_type,
             });
           }}
-          className={`flex items-center gap-3 p-3.5 bg-slate-50/60 dark:bg-slate-800/40 rounded-2xl border border-slate-100 dark:border-slate-800/50 hover:bg-slate-100/50 dark:hover:bg-slate-800/70 transition-all cursor-pointer active:scale-[0.98] ${
+          className={`flex items-center gap-3 p-3.5 bg-slate-50/60 dark:bg-slate-800/40 rounded-2xl border border-slate-100 dark:border-slate-800/50 hover:bg-slate-100/50 dark:hover:bg-slate-800/70 transition-all cursor-pointer active:scale-[0.98] overflow-hidden ${
             isSelected ? 'border-blue-500/50 bg-blue-50/20 dark:bg-blue-500/5' : ''
           }`}
         >

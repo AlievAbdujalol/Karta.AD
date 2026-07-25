@@ -258,7 +258,7 @@ export default function Home() {
       <SchedulePanel route={selectedRoute} />
 
       {/* Info Pills */}
-      <div className="absolute top-24 md:top-4 left-1/2 -translate-x-1/2 z-[998] pointer-events-none flex flex-col gap-2 items-center">
+      <div className="absolute top-24 md:top-[100px] left-1/2 -translate-x-1/2 z-[998] pointer-events-none flex flex-col gap-2 items-center">
         {locating && (
           <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-4 py-2 rounded-full shadow-md border border-white/20 flex items-center gap-2 text-xs font-semibold text-blue-600 dark:text-blue-400">
             <span className="w-3.5 h-3.5 border-2 border-blue-600 dark:border-blue-400 border-t-transparent rounded-full animate-spin" />
@@ -280,7 +280,7 @@ export default function Home() {
       </div>
 
       {/* StopWatcher */}
-      <div className="absolute right-4 top-24 z-[999] pointer-events-auto">
+      <div className="absolute right-4 top-24 z-[999] pointer-events-auto max-w-[200px]">
         <StopWatcher route={selectedRoute} watchedStop={watchedStop} onWatch={/** @param {any} stop */ stop => setWatchedStop(stop)} />
       </div>
 
