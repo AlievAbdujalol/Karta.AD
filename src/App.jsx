@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
@@ -6,15 +7,16 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import Layout from './components/Layout';
-import Home from './pages/Home';
-import DriverDashboard from './pages/DriverDashboard';
-import AdminPanel from './pages/AdminPanel';
-import Profile from './pages/Profile';
-import Reviews from './pages/Reviews';
-import DriverSchedule from './pages/DriverSchedule';
 import Login from './pages/Login';
-import ErrorBoundary, { BusMapErrorFallback } from '@/components/ErrorBoundary';
 
+const Home = lazy(() => import('./pages/Home'));
+const DriverDashboard = lazy(() => import('./pages/DriverDashboard'));
+const AdminPanel = lazy(() => import('./pages/AdminPanel'));
+const Profile = lazy(() => import('./pages/Profile'));
+const Reviews = lazy(() => import('./pages/Reviews'));
+const DriverSchedule = lazy(() => import('./pages/DriverSchedule'));
+
+import ErrorBoundary, { BusMapErrorFallback } from '@/components/ErrorBoundary';
 import { TripProvider } from '@/lib/TripContext';
 
 const AuthenticatedApp = () => {
@@ -42,6 +44,7 @@ const AuthenticatedApp = () => {
   return (
     <ErrorBoundary>
       <TripProvider user={user}>
+      <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center"><div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div></div>}>
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<ErrorBoundary fallback={(err) => <BusMapErrorFallback error={err} />}><Home /></ErrorBoundary>} />
@@ -53,6 +56,7 @@ const AuthenticatedApp = () => {
         </Route>
         <Route path="*" element={<PageNotFound />} />
       </Routes>
+      </Suspense>
       </TripProvider>
     </ErrorBoundary>
   );
