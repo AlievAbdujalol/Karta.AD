@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { base44 } from '@/api/base44Client';
-import { useLanguage } from '@/lib/useLanguage';
+import { City, Vehicle } from '@/api/entities';
+import { useLanguage, LANG_KEY } from '@/lib/useLanguage';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useAuth } from '@/lib/AuthContext';
 import { User, Save, Heart, History, Camera, Loader2, LogOut, ChevronDown, Search, Wallet } from 'lucide-react';
@@ -10,55 +10,34 @@ import { toast } from 'sonner';
 import { supabase } from '@/api/supabase';
 
 const LANGS = [
-  { code: 'ru', label: 'Русский' },
-  { code: 'tg', label: 'Тоҷикӣ' },
-  { code: 'en', label: 'English' },
+  { code: 'ru', label: 'profile.langRu' },
+  { code: 'tg', label: 'profile.langTg' },
+  { code: 'en', label: 'profile.langEn' },
 ];
 
 const COUNTRY_CODES = [
-  { code: '+992', flag: '🇹🇯', country: 'Таджикистан' },
-  { code: '+998', flag: '🇺🇿', country: 'Узбекистан' },
-  { code: '+7',   flag: '🇷🇺', country: 'Россия' },
-  { code: '+77',  flag: '🇰🇿', country: 'Казахстан' },
-  { code: '+996', flag: '🇰🇬', country: 'Кыргызстан' },
-  { code: '+993', flag: '🇹🇲', country: 'Туркменистан' },
-  { code: '+994', flag: '🇦🇿', country: 'Азербайджан' },
-  { code: '+374', flag: '🇦🇲', country: 'Армения' },
-  { code: '+995', flag: '🇬🇪', country: 'Грузия' },
-  { code: '+380', flag: '🇺🇦', country: 'Украина' },
-  { code: '+375', flag: '🇧🇾', country: 'Беларусь' },
-  { code: '+373', flag: '🇲🇩', country: 'Молдова' },
-  { code: '+90',  flag: '🇹🇷', country: 'Турция' },
-  { code: '+98',  flag: '🇮🇷', country: 'Иран' },
-  { code: '+93',  flag: '🇦🇫', country: 'Афганистан' },
-  { code: '+92',  flag: '🇵🇰', country: 'Пакистан' },
-  { code: '+91',  flag: '🇮🇳', country: 'Индия' },
-  { code: '+86',  flag: '🇨🇳', country: 'Китай' },
-  { code: '+82',  flag: '🇰🇷', country: 'Южная Корея' },
-  { code: '+81',  flag: '🇯🇵', country: 'Япония' },
-  { code: '+971',  flag: '🇦🇪', country: 'ОАЭ' },
-  { code: '+966',  flag: '🇸🇦', country: 'Саудовская Аравия' },
-  { code: '+49',  flag: '🇩🇪', country: 'Германия' },
-  { code: '+33',  flag: '🇫🇷', country: 'Франция' },
-  { code: '+44',  flag: '🇬🇧', country: 'Великобритания' },
-  { code: '+39',  flag: '🇮🇹', country: 'Италия' },
-  { code: '+34',  flag: '🇪🇸', country: 'Испания' },
-  { code: '+1',   flag: '🇺🇸', country: 'США / Канада' },
+  { code: '+992', flag: '🇹🇯', country: 'profile.countryTajikistan' },
+  { code: '+998', flag: '🇺🇿', country: 'profile.countryUzbekistan' },
+  { code: '+7',   flag: '🇷🇺', country: 'profile.countryRussia' },
+  { code: '+77',  flag: '🇰🇿', country: 'profile.countryKazakhstan' },
+  { code: '+996', flag: '🇰🇬', country: 'profile.countryKyrgyzstan' },
+  { code: '+374', flag: '🇦🇲', country: 'profile.countryArmenia' },
+  { code: '+995', flag: '🇬🇪', country: 'profile.countryGeorgia' },
+  { code: '+90',  flag: '🇹🇷', country: 'profile.countryTurkey' },
+  { code: '+1',   flag: '🇺🇸', country: 'profile.countryUsaCanada' },
 ];
 
-// Кастомный дропдаун выбора кода страны с флагами
-function CountryCodePicker({ value, onChange }) {
+function CountryCodePicker({ value, onChange, t }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const ref = useRef(null);
 
   const selected = COUNTRY_CODES.find(c => c.code === value) || COUNTRY_CODES[0];
   const filtered = COUNTRY_CODES.filter(c =>
-    c.country.toLowerCase().includes(search.toLowerCase()) ||
+    t(c.country).toLowerCase().includes(search.toLowerCase()) ||
     c.code.includes(search)
   );
 
-  // Закрываем по клику вне
   useEffect(() => {
     const handler = (e) => {
       if (ref.current && !ref.current.contains(e.target)) {
@@ -75,46 +54,41 @@ function CountryCodePicker({ value, onChange }) {
       <button
         type="button"
         onClick={() => { setOpen(!open); setSearch(''); }}
-        className="flex items-center gap-1.5 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-3 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 h-full min-w-[100px] justify-between"
+        className="flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 rounded-2xl px-3.5 py-3 text-xs font-semibold bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
       >
-        <span className="text-xl leading-none">{selected.flag}</span>
-        <span className="font-medium">{selected.code}</span>
-        <ChevronDown size={14} className={`text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <span className="text-base">{selected.flag}</span>
+        <span>{selected.code}</span>
+        <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
-        <div className="absolute z-50 top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-xl overflow-hidden">
-          {/* Поиск */}
-          <div className="p-2 border-b border-gray-100 dark:border-gray-700">
-            <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2">
-              <Search size={13} className="text-gray-400 flex-shrink-0" />
+        <div className="absolute z-50 top-full left-0 mt-1.5 w-60 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
+          <div className="p-2 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 rounded-xl px-3 py-1.5">
+              <Search size={13} className="text-slate-400" />
               <input
                 autoFocus
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Поиск страны..."
-                className="bg-transparent text-sm outline-none w-full dark:text-gray-100 dark:placeholder-gray-400"
+                placeholder={t('search')}
+                className="bg-transparent text-xs outline-none w-full text-slate-800 dark:text-slate-100"
               />
             </div>
           </div>
-          {/* Список */}
-          <div className="max-h-52 overflow-y-auto">
-            {filtered.length === 0 && (
-              <p className="text-center text-xs text-gray-400 py-4">Не найдено</p>
-            )}
+          <div className="max-h-48 overflow-y-auto custom-scrollbar">
             {filtered.map(c => (
               <button
                 key={c.code}
                 type="button"
                 onClick={() => { onChange(c.code); setOpen(false); setSearch(''); }}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left ${
-                  c.code === value ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'text-gray-800 dark:text-gray-200'
+                className={`w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-left hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${
+                  c.code === value ? 'text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50/50 dark:bg-emerald-500/10' : 'text-slate-700 dark:text-slate-300'
                 }`}
               >
-                <span className="text-xl leading-none">{c.flag}</span>
-                <span className="flex-1">{c.country}</span>
-                <span className="text-gray-400 dark:text-gray-500 text-xs font-mono">{c.code}</span>
+                <span className="text-base">{c.flag}</span>
+                <span className="flex-1 truncate">{t(c.country)}</span>
+                <span className="text-slate-400 text-[10px] font-mono">{c.code}</span>
               </button>
             ))}
           </div>
@@ -124,13 +98,14 @@ function CountryCodePicker({ value, onChange }) {
   );
 }
 
-
 export default function Profile() {
-  const { t, setLang } = useLanguage();
-  const { user, refetch, update, patchUser } = useCurrentUser();
+  const { t, lang, setLang } = useLanguage();
+  const { user, refetch, update } = useCurrentUser();
   const { logout } = useAuth();
   const [cities, setCities] = useState([]);
   const [vehicles, setVehicles] = useState([]);
+  const [routes, setRoutes] = useState([]);
+  const [selectedRouteId, setSelectedRouteId] = useState('');
   const [transactions, setTransactions] = useState([]);
   const [form, setForm] = useState({
     role: 'passenger',
@@ -138,7 +113,6 @@ export default function Profile() {
     city_id: '',
     vehicle_number: '',
     phone: '',
-    driver_status: 'pending',
   });
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -151,20 +125,11 @@ export default function Profile() {
       const fetchTransactions = async () => {
         const { data, error } = await supabase
           .from('transactions')
-          .select(`
-            id,
-            amount,
-            status,
-            created_at,
-            sender_id,
-            recipient_id,
-            sender:profiles!transactions_sender_id_fkey(full_name, email),
-            recipient:profiles!transactions_recipient_id_fkey(full_name, email)
-          `)
+          .select('*')
           .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
           .order('created_at', { ascending: false });
-        if (!error) {
-          setTransactions(data || []);
+        if (!error && data) {
+          setTransactions(data);
         }
       };
       fetchTransactions();
@@ -172,23 +137,22 @@ export default function Profile() {
   }, [user?.id]);
 
   useEffect(() => {
-    base44.entities.City.list().then(setCities);
-    base44.entities.Vehicle.list().then(setVehicles);
+    City.list().then(setCities).catch(() => {});
+    Vehicle.list().then(setVehicles).catch(() => {});
+    supabase.from('routes').select('*').not('created_by_id', 'is', null).order('created_at', { ascending: false })
+      .then(({ data }) => setRoutes(data || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
     if (user) {
-      // Нормализуем сохранённый номер: добавляем + если его нет
       const rawPhone = user.phone || '';
       const normalizedPhone = rawPhone && !rawPhone.startsWith('+') ? `+${rawPhone}` : rawPhone;
-
-      // Ищем совпадение кода страны (сортируем по длине кода — длинные первыми, чтобы +77 не перебивал +7)
       const sortedCodes = [...COUNTRY_CODES].sort((a, b) => b.code.length - a.code.length);
       const matched = sortedCodes.find(c => normalizedPhone.startsWith(c.code));
       const detectedCode = matched ? matched.code : '+992';
       const localNumber = matched
         ? normalizedPhone.slice(matched.code.length).trim()
-        : normalizedPhone.replace(/^\+/, ''); // убираем + если код не найден
+        : normalizedPhone.replace(/^\+/, '');
 
       setCountryCode(detectedCode);
       setForm({
@@ -197,24 +161,37 @@ export default function Profile() {
         city_id: user.city_id || '',
         vehicle_number: user.vehicle_number || '',
         phone: localNumber,
-        driver_status: user.driver_status || 'pending',
       });
       setBioForm(user.bio || '');
+      if (user.language && !localStorage.getItem(LANG_KEY)) {
+        setLang(user.language);
+      }
     }
-  }, [user]);
+  }, [user?.id]);
 
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingPhoto(true);
+    if (!file || !user) return;
     try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      await base44.auth.updateMe({ photo_url: file_url });
-      await update({ photo_url: file_url });
-      toast.success('Фото обновлено');
+      setUploadingPhoto(true);
+      const ext = file.name.split('.').pop();
+      const fileName = `${user.id}-${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName);
+
+      await update({ photo_url: publicUrlData.publicUrl });
+      if (refetch) await refetch();
+      toast.success(t('profile.avatarUpdated'));
     } catch (err) {
       console.error('[Profile] photo upload error:', err);
-      toast.error('Не удалось загрузить фото');
+      toast.error(t('profile.photoUploadError'));
     } finally {
       setUploadingPhoto(false);
     }
@@ -230,24 +207,37 @@ export default function Profile() {
         data.bio = bioForm.trim();
       }
 
-      delete data.role;
+      data.role = form.role === 'passenger' ? 'user' : form.role;
+      delete data.driver_status;
       if (form.role !== 'driver') {
-        delete data.driver_status;
         delete data.vehicle_number;
       }
 
-      await update(data);
       setLang(data.language);
+      await update(data);
+
+      // Notify the admin who created the selected route
+      if (form.role === 'driver' && selectedRouteId) {
+        const route = routes.find(r => r.id === selectedRouteId);
+        if (route?.created_by_id) {
+          supabase.from('notifications').insert({
+            user_id: route.created_by_id,
+            title: t('profile.notificationDriverSelectedRoute'),
+            body: `${user.full_name || user.email} ${t('profile.notificationDriverSelectedRoute')} #${route.number} ${route.name || ''}`,
+            type: 'driver_route_selected',
+          }).then().catch(() => {});
+        }
+      }
+
       toast.success(t('saveProfile'));
     } catch (err) {
       console.error('[Profile] save error:', err);
-      toast.error('Не удалось сохранить профиль');
+      toast.error(t('profile.saveError'));
     } finally {
       setSaving(false);
     }
   };
 
-  // Смена роли с оплатой подписки
   const handleRoleChange = async (newRole) => {
     if (newRole === user?.role) return;
 
@@ -259,31 +249,25 @@ export default function Profile() {
       if (newRole === 'admin') fee = user?.admin_activated ? 25 : 100;
     }
 
-    // Показываем подтверждение
+    const roleName = newRole === 'passenger' ? t('profile.rolePassenger') : newRole === 'driver' ? t('profile.roleDriver') : t('profile.roleAdmin');
     const confirmed = window.confirm(
-      `Сменить роль на "${newRole === 'passenger' ? 'Пассажир' : newRole === 'driver' ? 'Водитель' : 'Администратор'}"?\n` +
-      (fee > 0 ? `\nСтоимость: ${fee} TJS\nБаланс: ${Number(user?.balance || 0).toFixed(2)} TJS` : `\nУ вас уже активна подписка. Смена бесплатна.`)
+      `${t('profile.changeRoleConfirmTitle')} "${roleName}"?\n` +
+      (fee > 0 ? `\n${t('profile.costLabel')} ${fee} TJS\n${t('profile.balanceLabel')} ${Number(user?.balance || 0).toFixed(2)} TJS` : `\n${t('profile.subscriptionActiveFree')}`)
     );
     if (!confirmed) return;
 
     try {
       if (fee > 0 && Number(user?.balance || 0) < fee) {
-        throw new Error('Недостаточно средств на балансе. Пополните кошелек.');
+        throw new Error(t('profile.insufficientBalance'));
       }
 
-      /** @type {Record<string, any>} */
-      const updates = { 
-        role: newRole,
-      };
+      const updates = { role: newRole === 'passenger' ? 'user' : newRole };
 
       if (newRole === 'admin' && !user?.admin_activated) {
         updates.admin_activated = true;
       }
 
-      /** @type {Record<string, any>} */
       const dbUpdates = { ...updates };
-      delete dbUpdates.role;
-      delete dbUpdates.admin_activated;
 
       if (fee > 0) {
         dbUpdates.balance = Math.max(0, Number(user?.balance || 0) - fee);
@@ -298,48 +282,29 @@ export default function Profile() {
       }
 
       await update(dbUpdates);
-      
-      localStorage.setItem(`demo_role_${user?.id}`, newRole);
-      if (updates.admin_activated) {
-        localStorage.setItem(`demo_admin_activated_${user?.id}`, 'true');
-      }
 
-      // Обновляем локальный стейт
       setForm(prev => ({ ...prev, role: newRole, driver_status: newRole === 'driver' ? 'pending' : prev.driver_status }));
-      
-      // Патчим контекст пользователя напрямую, так как мы удалили role из dbUpdates
-      /** @type {Record<string, any>} */
-      const patchData = { role: newRole };
-      if (updates.admin_activated) patchData.admin_activated = true;
-      if (newRole === 'driver') patchData.driver_status = 'pending';
-      if (fee > 0) {
-        patchData.balance = dbUpdates.balance;
-        patchData.subscription_status = dbUpdates.subscription_status;
-        patchData.subscription_paid_until = dbUpdates.subscription_paid_until;
-      }
-      patchUser(patchData);
       
       toast.success(
         newRole === 'passenger'
-          ? '✅ Вы перешли на роль Пассажира!'
+          ? t('profile.roleChangedToPassenger')
           : fee > 0
-          ? `✅ Подписка активирована! Списано ${fee} TJS.`
-          : `✅ Роль изменена. Подписка активна.`
+          ? `${t('profile.subscriptionActivated')} ${fee} TJS.`
+          : t('profile.roleChangedSubscriptionActive')
       );
     } catch (err) {
       console.error('[Profile] role change error:', err);
-      toast.error(err.message || 'Не удалось сменить роль');
+      toast.error(err.message || t('profile.roleChangeError'));
     }
   };
 
-  // Продление подписки
   const handleRenewSubscription = async () => {
     const fee = form.role === 'driver' ? 20 : 25;
-    const confirmed = window.confirm(`Продлить подписку на 1 месяц?\nСтоимость: ${fee} TJS\nБаланс: ${Number(user?.balance || 0).toFixed(2)} TJS`);
+    const confirmed = window.confirm(`${t('profile.renewSubscriptionConfirm')}\n${t('profile.costLabel')} ${fee} TJS\n${t('profile.balanceLabel')} ${Number(user?.balance || 0).toFixed(2)} TJS`);
     if (!confirmed) return;
     try {
       if (Number(user?.balance || 0) < fee) {
-        throw new Error('Недостаточно средств на балансе. Пополните кошелек.');
+        throw new Error(t('profile.insufficientBalanceRenew'));
       }
 
       const nextMonth = new Date();
@@ -350,11 +315,10 @@ export default function Profile() {
         subscription_status: 'active',
         subscription_paid_until: nextMonth.toISOString()
       });
-      // Убираем await refetch();
-      toast.success(`✅ Подписка продлена на 1 месяц! Списано ${fee} TJS.`);
+      toast.success(`${t('profile.subscriptionRenewed')} ${fee} TJS.`);
     } catch (err) {
       console.error('[Profile] renew error:', err);
-      toast.error(err.message || 'Не удалось продлить подписку');
+      toast.error(err.message || t('profile.subscriptionRenewError'));
     }
   };
 
@@ -367,13 +331,12 @@ export default function Profile() {
   return (
     <div className="h-full overflow-y-auto bg-gray-50 dark:bg-gray-900 p-4">
       <div className="max-w-md mx-auto space-y-4 pb-6">
-        {/* Avatar card */}
         <div className="bg-gradient-to-br from-blue-700 to-blue-900 rounded-2xl p-6 text-white text-center">
           <div className="relative w-20 h-20 mx-auto mb-3">
             {user?.photo_url ? (
               <img
                 src={user.photo_url}
-                alt="Фото"
+                alt={t('profile.photoAlt')}
                 className="w-20 h-20 rounded-full object-cover border-4 border-white/30 shadow-lg"
               />
             ) : (
@@ -402,13 +365,12 @@ export default function Profile() {
           )}
         </div>
 
-        {/* Profile tabs */}
         <div className="flex bg-white dark:bg-gray-800 rounded-2xl p-1 shadow-sm border border-gray-100 dark:border-gray-700">
           {[
-            { id: 'settings', label: 'Профиль', icon: User },
-            { id: 'favorites', label: 'Избранное', icon: Heart },
-            { id: 'wallet', label: 'Кошелек', icon: Wallet },
-            { id: 'history', label: 'История', icon: History },
+            { id: 'settings', label: t('profile.tabSettings'), icon: User },
+            { id: 'favorites', label: t('profile.tabFavorites'), icon: Heart },
+            { id: 'wallet', label: t('profile.tabWallet'), icon: Wallet },
+            { id: 'history', label: t('profile.tabHistory'), icon: History },
           ].map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -427,50 +389,42 @@ export default function Profile() {
         
         {profileTab === 'wallet' && (
           <div className="space-y-4">
-            {/* Balance Card */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 flex items-center justify-between">
               <div className="space-y-1">
-                <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Баланс кошелька</p>
+                <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">{t('profile.walletBalance')}</p>
                 <p className="text-3xl font-black text-gray-900 dark:text-gray-100">
                   {Number(user?.balance || 0).toFixed(2)} <span className="text-lg font-bold text-gray-500">TJS</span>
                 </p>
               </div>
               <button
                 onClick={async () => {
-                  const amount = window.prompt("Введите сумму для пополнения (TJS):", "50");
+                  const amount = window.prompt(t('profile.walletTopupPrompt'), "50");
                   if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) return;
                   try {
                     const { data, error } = await supabase.rpc('mock_top_up', { amount: Number(amount) });
                     if (error) throw new Error(error.message);
-                    toast.success(`Баланс успешно пополнен на ${amount} TJS!`);
-                    
-                    // Refresh balance and transactions
+                    toast.success(`${t('profile.walletTopupSuccess')} ${amount} TJS!`);
                     await refetch();
                     const { data: txs } = await supabase
                       .from('transactions')
-                      .select(`
-                        id, amount, status, created_at, sender_id, recipient_id,
-                        sender:profiles!transactions_sender_id_fkey(full_name, email),
-                        recipient:profiles!transactions_recipient_id_fkey(full_name, email)
-                      `)
+                      .select('*')
                       .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
                       .order('created_at', { ascending: false });
                     setTransactions(txs || []);
                   } catch (err) {
-                    toast.error(err.message || "Ошибка при пополнении баланса");
+                    toast.error(err.message || t('profile.walletTopupError'));
                   }
                 }}
                 className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer transition-all active:scale-95 shadow-md shadow-green-500/20"
               >
-                ➕ Пополнить
+                {t('profile.walletTopupButton')}
               </button>
             </div>
 
-            {/* Transactions List */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
-              <h3 className="font-bold text-sm text-gray-800 dark:text-gray-200 mb-3">История транзакций</h3>
+              <h3 className="font-bold text-sm text-gray-800 dark:text-gray-200 mb-3">{t('profile.transactionHistory')}</h3>
               {transactions.length === 0 ? (
-                <div className="text-center py-6 text-gray-400 text-xs">Нет транзакций</div>
+                <div className="text-center py-6 text-gray-400 text-xs">{t('profile.noTransactions')}</div>
               ) : (
                 <div className="space-y-3">
                   {transactions.map((t) => {
@@ -483,16 +437,16 @@ export default function Profile() {
                     let colorClass = '';
 
                     if (isTopUp) {
-                      title = 'Пополнение кошелька';
-                      desc = 'Через платежную систему';
+                      title = t('profile.transactionTopup');
+                      desc = t('profile.transactionTopupDesc');
                       colorClass = 'text-green-600 dark:text-green-400 font-bold';
                     } else if (isSender) {
-                      title = 'Оплата проезда';
-                      desc = `Водителю ${t.recipient?.full_name || t.recipient?.email || '...'}`;
+                      title = t('profile.transactionPayment');
+                      desc = `${t('profile.transactionToDriver')} ${t.recipient || '...'}`;
                       colorClass = 'text-red-500 dark:text-red-400 font-semibold';
                     } else {
-                      title = 'Получена оплата';
-                      desc = `От пассажира ${t.sender?.full_name || t.sender?.email || '...'}`;
+                      title = t('profile.transactionReceived');
+                      desc = `${t('profile.transactionFromPassenger')} ${t.sender || '...'}`;
                       colorClass = 'text-green-600 dark:text-green-400 font-bold';
                     }
 
@@ -508,13 +462,13 @@ export default function Profile() {
                                 ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400'
                                 : 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400'
                           }`}>
-                            {t.status === 'completed' ? 'Успешно' : t.status === 'pending' ? 'Ожидает' : 'Отклонено'}
+                            {t.status === 'completed' ? t('profile.transactionStatusCompleted') : t.status === 'pending' ? t('profile.transactionStatusPending') : t('profile.transactionStatusRejected')}
                           </span>
                         </div>
                         <div className="text-right">
                           <p className={`text-xs ${colorClass}`}>{amountFormatted}</p>
                           <p className="text-[9px] text-gray-400 mt-1">
-                            {new Date(t.created_at).toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
+                            {new Date(t.created_at).toLocaleString(lang === 'tg' ? 'tg-TJ' : lang, { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
                           </p>
                         </div>
                       </div>
@@ -528,17 +482,13 @@ export default function Profile() {
 
         {profileTab === 'history' && <TripHistory user={user} />}
 
-        {/* Form */}
         {profileTab === 'settings' && <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm space-y-5">
-          {/* Role + Subscription */}
           <div>
             <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3 block">
-              Роль и подписка
+              {t('profile.roleAndSubscription')}
             </label>
 
-            {/* Subscription Role Cards */}
             <div className="space-y-2">
-              {/* Passenger */}
               <div
                 onClick={() => {
                   if (form.role !== 'passenger') {
@@ -555,13 +505,13 @@ export default function Profile() {
                   <div className="flex items-center gap-2.5">
                     <span className="text-2xl">🧑‍💼</span>
                     <div>
-                      <p className="text-sm font-bold text-gray-800 dark:text-gray-100">Пассажир</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Бесплатно навсегда</p>
+                      <p className="text-sm font-bold text-gray-800 dark:text-gray-100">{t('profile.rolePassengerTitle')}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t('profile.passengerFree')}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-bold px-2.5 py-1 rounded-full">
-                      БЕСПЛАТНО
+                      {t('profile.freeBadge')}
                     </span>
                     {form.role === 'passenger' && (
                       <span className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center text-white text-[10px]">✓</span>
@@ -570,12 +520,11 @@ export default function Profile() {
                 </div>
                 {form.role === 'passenger' && (
                   <div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-700/40">
-                    <p className="text-[11px] text-blue-600 dark:text-blue-400">✅ Активна • Без ограничений по времени</p>
+                    <p className="text-[11px] text-blue-600 dark:text-blue-400">{t('profile.passengerActiveStatus')}</p>
                   </div>
                 )}
               </div>
 
-              {/* Driver */}
               <div
                 onClick={() => {
                   if (form.role !== 'driver') {
@@ -592,13 +541,13 @@ export default function Profile() {
                   <div className="flex items-center gap-2.5">
                     <span className="text-2xl">🚌</span>
                     <div>
-                      <p className="text-sm font-bold text-gray-800 dark:text-gray-100">Водитель</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">20 TJS / месяц</p>
+                      <p className="text-sm font-bold text-gray-800 dark:text-gray-100">{t('profile.roleDriverTitle')}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t('profile.driverPrice')}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 text-xs font-bold px-2.5 py-1 rounded-full">
-                      20 TJS/мес
+                      {t('profile.driverPriceBadge')}
                     </span>
                     {form.role === 'driver' && (
                       <span className="w-5 h-5 bg-orange-500 rounded-full flex items-center justify-center text-white text-[10px]">✓</span>
@@ -611,11 +560,11 @@ export default function Profile() {
                       <p className={`text-[11px] font-semibold ${
                         user?.subscription_status === 'active' ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'
                       }`}>
-                        {user?.subscription_status === 'active' ? '✅ Подписка активна' : '❌ Подписка истекла'}
+                        {user?.subscription_status === 'active' ? t('profile.subscriptionActive') : t('profile.subscriptionExpired')}
                       </p>
                       {user?.subscription_paid_until && (
                         <p className="text-[10px] text-gray-400">
-                          до {new Date(user.subscription_paid_until).toLocaleDateString('ru-RU')}
+                          {t('profile.until')} {new Date(user.subscription_paid_until).toLocaleDateString(lang === 'tg' ? 'tg-TJ' : lang)}
                         </p>
                       )}
                     </div>
@@ -625,20 +574,19 @@ export default function Profile() {
                         onClick={async (e) => { e.stopPropagation(); await handleRenewSubscription(); }}
                         className="w-full text-center text-[11px] bg-orange-500 hover:bg-orange-600 text-white rounded-lg py-1.5 font-semibold transition-all"
                       >
-                        Продлить — 20 TJS
+                        {t('profile.renewDriverButton')}
                       </button>
                     )}
                     <div className={`mt-1 rounded-lg p-2 text-xs font-medium flex items-center gap-2 ${
-                      statusInfo[form.driver_status]?.cls || statusInfo.pending.cls
+                      statusInfo[user?.driver_status]?.cls || statusInfo.pending.cls
                     }`}>
-                      <span>{statusInfo[form.driver_status]?.emoji || '⏳'}</span>
-                      {t(form.driver_status || 'pending')}
+                      <span>{statusInfo[user?.driver_status]?.emoji || '⏳'}</span>
+                      {t(user?.driver_status || 'pending')}
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Admin */}
               <div
                 onClick={() => {
                   if (form.role !== 'admin') {
@@ -655,15 +603,15 @@ export default function Profile() {
                   <div className="flex items-center gap-2.5">
                     <span className="text-2xl">🛡️</span>
                     <div>
-                      <p className="text-sm font-bold text-gray-800 dark:text-gray-100">Администратор</p>
+                      <p className="text-sm font-bold text-gray-800 dark:text-gray-100">{t('profile.roleAdminTitle')}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {user?.admin_activated ? '25 TJS / месяц' : '100 TJS активация + 25 TJS/мес'}
+                        {user?.admin_activated ? t('profile.adminPricePerMonth') : t('profile.adminPriceActivation')}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 text-xs font-bold px-2.5 py-1 rounded-full">
-                      {user?.admin_activated ? '25 TJS/мес' : '100 TJS/мес'}
+                      {user?.admin_activated ? t('profile.adminPriceMonthBadge') : t('profile.adminPriceActivationBadge')}
                     </span>
                     {form.role === 'admin' && (
                       <span className="w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center text-white text-[10px]">✓</span>
@@ -676,11 +624,11 @@ export default function Profile() {
                       <p className={`text-[11px] font-semibold ${
                         user?.subscription_status === 'active' ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'
                       }`}>
-                        {user?.subscription_status === 'active' ? '✅ Подписка активна' : '❌ Подписка истекла'}
+                        {user?.subscription_status === 'active' ? t('profile.adminSubscriptionActive') : t('profile.adminSubscriptionExpired')}
                       </p>
                       {user?.subscription_paid_until && (
                         <p className="text-[10px] text-gray-400">
-                          до {new Date(user.subscription_paid_until).toLocaleDateString('ru-RU')}
+                          {t('profile.until')} {new Date(user.subscription_paid_until).toLocaleDateString(lang === 'tg' ? 'tg-TJ' : lang)}
                         </p>
                       )}
                     </div>
@@ -690,7 +638,7 @@ export default function Profile() {
                         onClick={async (e) => { e.stopPropagation(); await handleRenewSubscription(); }}
                         className="w-full text-center text-[11px] bg-purple-500 hover:bg-purple-600 text-white rounded-lg py-1.5 font-semibold transition-all"
                       >
-                        Продлить — 25 TJS
+                        {t('profile.renewAdminButton')}
                       </button>
                     )}
                   </div>
@@ -699,27 +647,25 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* Language */}
           <div>
             <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2 block">{t('language')}</label>
             <div className="grid grid-cols-3 gap-2">
               {LANGS.map(l => (
                 <button
                   key={l.code}
-                  onClick={() => setForm({ ...form, language: l.code })}
+                  onClick={() => { setForm({ ...form, language: l.code }); setLang(l.code); }}
                   className={`py-2.5 rounded-xl text-xs font-semibold border-2 transition-all ${
                     form.language === l.code
                       ? 'border-orange-400 bg-orange-50 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
                       : 'border-transparent bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                   }`}
                 >
-                  {l.label}
+                  {t(l.label)}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* City */}
           <div>
             <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5 block">{t('city')}</label>
             <select
@@ -734,46 +680,56 @@ export default function Profile() {
             </select>
           </div>
 
-          {/* Vehicle number (driver only) */}
           {form.role === 'driver' && (
             <div>
               <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5 block">{t('vehicleNumber')}</label>
-              <select
+              <input
+                type="text"
                 value={form.vehicle_number}
                 onChange={e => setForm({ ...form, vehicle_number: e.target.value })}
+                placeholder={t('profile.vehicleNumberPlaceholder')}
+                className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-400"
+              />
+            </div>
+          )}
+
+          {form.role === 'driver' && (
+            <div>
+              <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5 block">{t('profile.routeLabel')}</label>
+              <select
+                value={selectedRouteId}
+                onChange={e => setSelectedRouteId(e.target.value)}
                 className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-sm bg-white dark:bg-gray-700 dark:text-gray-100"
               >
-                <option value="">— Выберите транспорт —</option>
-                {vehicles.map(v => (
-                  <option key={v.id} value={v.vehicle_number}>
-                    {v.vehicle_number} {v.route_number ? `· Маршрут ${v.route_number}` : ''} {v.type ? `(${v.type})` : ''}
+                <option value="">{t('profile.routePlaceholder')}</option>
+                {routes.filter(r => !form.city_id || r.city_id === form.city_id).map(r => (
+                  <option key={r.id} value={r.id}>
+                    #{r.number} {r.name || ''} ({r.type === 'bus' ? t('bus') : t('minibus')})
                   </option>
                 ))}
               </select>
             </div>
           )}
 
-          {/* Bio (driver only) */}
           {form.role === 'driver' && (
             <div>
-              <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5 block">О себе</label>
+              <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5 block">{t('profile.bioLabel')}</label>
               <textarea
                 value={bioForm}
                 onChange={e => setBioForm(e.target.value)}
                 rows={3}
                 maxLength={200}
                 className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-sm resize-none bg-white dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-400"
-                placeholder="Краткая информация о вас, которую увидят пассажиры..."
+                placeholder={t('profile.bioPlaceholder')}
               />
               <p className="text-right text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">{bioForm.length}/200</p>
             </div>
           )}
 
-          {/* Phone */}
           <div>
             <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5 block">{t('phone')}</label>
             <div className="flex gap-2">
-              <CountryCodePicker value={countryCode} onChange={setCountryCode} />
+              <CountryCodePicker value={countryCode} onChange={setCountryCode} t={t} />
               <input
                 type="tel"
                 value={form.phone}
@@ -798,7 +754,7 @@ export default function Profile() {
             className="w-full border border-red-200 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 dark:border-red-800 dark:text-red-400 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all active:scale-95"
           >
             <LogOut size={16} />
-            Выйти из аккаунта
+            {t('logout')}
           </button>
         </div>}
       </div>

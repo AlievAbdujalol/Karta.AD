@@ -1,7 +1,9 @@
 import { useAuth } from '@/lib/AuthContext';
+import { useLanguage } from '@/lib/useLanguage';
 
 export default function Login() {
   const { navigateToLogin } = useAuth();
+  const { t } = useLanguage();
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-slate-100 dark:from-gray-900 dark:to-gray-800 px-4">
@@ -15,7 +17,7 @@ export default function Login() {
         {/* Card */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6">
           <p className="text-center text-sm text-gray-500 dark:text-gray-400 mb-5">
-            Войдите, чтобы продолжить
+            {t('login.continuePrompt')}
           </p>
 
           <button
@@ -28,7 +30,7 @@ export default function Login() {
               <path d="M10.886 28.372A14.43 14.43 0 0 1 10.066 24c0-1.512.26-2.978.72-4.372v-6.206H2.88A23.94 23.94 0 0 0 .48 24c0 3.862.924 7.514 2.4 10.578l8.006-6.206z" fill="#FBBC05"/>
               <path d="M24.48 9.602c3.562 0 6.76 1.224 9.276 3.63l6.956-6.956C36.476 2.378 30.998 0 24.48 0 15.076 0 6.862 5.288 2.88 13.422l8.006 6.206c1.91-5.748 7.266-10.026 13.594-10.026z" fill="#EA4335"/>
             </svg>
-            Войти через Google
+            {t('login.loginWithGoogle')}
           </button>
         </div>
 

@@ -3,8 +3,10 @@ import { createPortal } from 'react-dom';
 import { Bell, X, BellOff, CheckCheck, Loader2, Check, Ban } from 'lucide-react';
 import { useNotificationCount } from '@/lib/NotificationContext';
 import { toast } from 'sonner';
+import { useLanguage } from '@/lib/useLanguage';
 
 export default function NotificationPanel({ notifications, onClear }) {
+  const { t } = useLanguage();
   const { confirmPayment, rejectPayment } = useNotificationCount();
   const [open, setOpen] = useState(false);
   const [readCount, setReadCount] = useState(0);
@@ -66,9 +68,9 @@ export default function NotificationPanel({ notifications, onClear }) {
     setProcessingId(n.id);
     try {
       await confirmPayment(txId);
-      toast.success('Оплата успешно подтверждена');
+      toast.success(t('notifications.paymentConfirmed'));
     } catch (err) {
-      toast.error(err.message || 'Ошибка подтверждения оплаты');
+      toast.error(err.message || t('notifications.paymentConfirmError'));
     } finally {
       setProcessingId(null);
     }
@@ -80,9 +82,9 @@ export default function NotificationPanel({ notifications, onClear }) {
     setProcessingId(n.id);
     try {
       await rejectPayment(txId);
-      toast.success('Оплата отклонена');
+      toast.success(t('notifications.paymentRejected'));
     } catch (err) {
-      toast.error(err.message || 'Ошибка отклонения оплаты');
+      toast.error(err.message || t('notifications.paymentRejectError'));
     } finally {
       setProcessingId(null);
     }
@@ -126,7 +128,7 @@ export default function NotificationPanel({ notifications, onClear }) {
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <div className="flex items-center gap-2">
               <Bell size={15} className="text-blue-600" />
-              <span className="font-semibold text-sm text-gray-800">Уведомления</span>
+              <span className="font-semibold text-sm text-gray-800">{t('notifications.title')}</span>
               {notifications.length > 0 && (
                 <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                   {notifications.length}
@@ -140,7 +142,7 @@ export default function NotificationPanel({ notifications, onClear }) {
                   className="text-[11px] text-gray-400 hover:text-red-500 flex items-center gap-1"
                 >
                   <CheckCheck size={12} />
-                  Очистить
+                  {t('notifications.clearAll')}
                 </button>
               )}
               <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600">
@@ -154,8 +156,8 @@ export default function NotificationPanel({ notifications, onClear }) {
             {notifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-gray-400">
                 <BellOff size={28} className="mb-2 opacity-40" />
-                <p className="text-xs">Нет уведомлений</p>
-                <p className="text-[10px] mt-1 text-gray-300">Выберите маршрут и остановку для слежения</p>
+                <p className="text-xs">{t('notifications.empty')}</p>
+                <p className="text-[10px] mt-1 text-gray-300">{t('notifications.emptyHint')}</p>
               </div>
             ) : (
               notifications.slice().reverse().map((n) => {
@@ -184,7 +186,7 @@ export default function NotificationPanel({ notifications, onClear }) {
                           className="flex items-center gap-1 bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
                         >
                           {isProcessing ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />}
-                          Подтвердить
+                          {t('notifications.confirmButton')}
                         </button>
                         <button
                           disabled={isProcessing}
@@ -192,7 +194,7 @@ export default function NotificationPanel({ notifications, onClear }) {
                           className="flex items-center gap-1 bg-red-500 hover:bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
                         >
                           <Ban size={10} />
-                          Отклонить
+                          {t('notifications.rejectButton')}
                         </button>
                       </div>
                     )}

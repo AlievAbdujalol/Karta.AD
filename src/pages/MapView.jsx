@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { useOutletContext, useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { base44 } from '@/api/base44Client';
-import { t } from '@/lib/i18n';
+import { Route, Vehicle } from '@/api/entities';
+import { useLanguage } from '@/lib/useLanguage';
 import { ArrowLeft, Bus, RefreshCw } from 'lucide-react';
 
 // Fix leaflet icon
@@ -28,21 +28,21 @@ const stopIcon = L.divIcon({
 });
 
 export default function MapView() {
-  const { lang } = useOutletContext() || { lang: 'ru' };
   const { routeId } = useParams();
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [route, setRoute] = useState(null);
   const [vehicles, setVehicles] = useState([]);
   const intervalRef = useRef(null);
 
   const fetchVehicles = async () => {
-    const all = await base44.entities.Vehicle.filter({ route_id: routeId, is_active: true });
+    const all = await Vehicle.filter({ route_id: routeId, is_active: true });
     setVehicles(all);
   };
 
   useEffect(() => {
     if (routeId) {
-      base44.entities.Route.get(routeId).then(setRoute);
+      Route.get(routeId).then(setRoute);
       fetchVehicles();
       intervalRef.current = setInterval(fetchVehicles, 5000);
     }
@@ -54,7 +54,23 @@ export default function MapView() {
     ? [stops[0].lat, stops[0].lng]
     : [38.5581, 68.7738]; // Dushanbe default
 
-  const polylinePositions = stops.filter(s => s.lat && s.lng).map(s => [s.lat, s.lng]);
+  const [routeGeometry, setRouteGeometry] = useState([]);
+
+  useEffect(() => {
+    const stopCoords = stops.filter(s => s.lat && s.lng);
+    if (stopCoords.length < 2) { setRouteGeometry([]); return; }
+    const coords = stopCoords.map(s => `${s.lng},${s.lat}`).join(';');
+    fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.routes?.[0]?.geometry?.coordinates) {
+          setRouteGeometry(data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]));
+        }
+      })
+      .catch(() => setRouteGeometry(stopCoords.map(s => [s.lat, s.lng])));
+  }, [route]);
+
+  const polylinePositions = routeGeometry.length > 1 ? routeGeometry : stops.filter(s => s.lat && s.lng).map(s => [s.lat, s.lng]);
 
   return (
     <div className="flex flex-col flex-1 relative">
@@ -72,10 +88,10 @@ export default function MapView() {
             </div>
             <div>
               <p className="font-semibold text-sm text-gray-800">
-                {route.name || `${t(lang, route.type === 'bus' ? 'bus' : 'minibus')} №${route.number}`}
+                {route.name || `${t(route.type === 'bus' ? 'bus' : 'minibus')} №${route.number}`}
               </p>
               <p className="text-xs text-gray-500">
-                {vehicles.length} {t(lang, 'activeDrivers')}
+                {vehicles.length} {t('activeDrivers')}
               </p>
             </div>
           </div>
@@ -113,7 +129,7 @@ export default function MapView() {
               <Popup>
                 <div className="text-sm">
                   <strong>{v.driver_name}</strong><br />
-                  №{v.route_number} — {t(lang, v.type === 'bus' ? 'bus' : 'minibus')}
+                  №{v.route_number} — {t(v.type === 'bus' ? 'bus' : 'minibus')}
                 </div>
               </Popup>
             </Marker>
@@ -125,7 +141,7 @@ export default function MapView() {
       {vehicles.length === 0 && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] bg-white rounded-xl shadow-lg px-5 py-3 flex items-center gap-2 text-sm text-gray-600 border border-gray-200">
           <Bus size={18} className="text-gray-400" />
-          {t(lang, 'noBusesOnRoute')}
+          {t('noBusesOnRoute')}
         </div>
       )}
     </div>

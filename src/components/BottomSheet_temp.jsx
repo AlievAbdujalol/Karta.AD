@@ -351,7 +351,7 @@ function TabContent({
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-xs text-slate-850 dark:text-slate-100 truncate">{stop.name || t('bottomsheet.stopDefaultName')}</h3>
             <p className="text-[10px] text-slate-450 dark:text-slate-400 mt-0.5">
-              ≈ {stop.distance < 1000 ? `${Math.round(stop.distance)} м` : `${(stop.distance / 1000).toFixed(1)} км`} {t('bottomsheet.fromCenter')}
+              ≈ {stop.distance < 1000 ? `${Math.round(stop.distance)} м` : `${(stop.distance / 1000).toFixed(1)} км`} от центра
             </p>
             {stop.passingRoutes && (
               <div className="flex flex-wrap gap-1 mt-2">
@@ -406,17 +406,17 @@ function TabContent({
           </span>
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-xs text-slate-850 dark:text-slate-100 truncate">
-              {route.name || `${t('bottomsheet.routeDefaultName')} #${route.number}`}
+              {route.name || `Маршрут #${route.number}`}
             </h3>
             <div className="flex items-center gap-1.5 text-[10px] text-slate-450 dark:text-slate-400 mt-1">
               <span className={`inline-block w-1.5 h-1.5 rounded-full ${route.activeCount > 0 ? 'bg-green-500' : 'bg-slate-350 dark:bg-slate-650'}`} />
               <span>
                 {route.activeCount > 0
-                  ? `${route.activeCount} ${t('onLine')}`
-                  : t('noVehicles')}
+                  ? `${route.activeCount} на линии`
+                  : 'Нет машин'}
               </span>
               <span>•</span>
-              <span>{route.type === 'minibus' ? t('bottomsheet.minibusLabel') : t('bottomsheet.busLabel')}</span>
+              <span>{route.type === 'minibus' ? 'Маршрутка' : 'Автобус'}</span>
             </div>
           </div>
           <button
@@ -438,9 +438,9 @@ function TabContent({
       return (
         <div className="text-center py-12 text-slate-450 dark:text-slate-500">
           <Heart size={36} className="mx-auto mb-3 opacity-30 text-slate-400" />
-          <p className="text-xs font-semibold">{t('bottomsheet.favoritesEmpty')}</p>
+          <p className="text-xs font-semibold">В избранном пусто</p>
           <p className="text-[10px] text-slate-400 mt-1 px-4">
-            {t('bottomsheet.favoritesHint')}
+            Добавляйте водителей в избранное с помощью сердечка на карте
           </p>
         </div>
       );
@@ -457,7 +457,7 @@ function TabContent({
               <User size={16} className="text-blue-600 dark:text-blue-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-xs text-slate-800 dark:text-slate-200 truncate">{d.driver_name || t('bottomsheet.driverDefault')}</p>
+              <p className="font-semibold text-xs text-slate-800 dark:text-slate-200 truncate">{d.driver_name || 'Водитель'}</p>
               <p className="text-[10px] text-slate-400">
                 {d.vehicle_number && `№ ${d.vehicle_number}`}
                 {d.route_number && ` · #${d.route_number}`}
@@ -485,7 +485,7 @@ function TabContent({
       return (
         <div className="text-center py-10 text-slate-450 dark:text-slate-500">
           <History size={32} className="mx-auto mb-2 opacity-30 text-slate-400" />
-          <p className="text-xs">{t('bottomsheet.historyEmpty')}</p>
+          <p className="text-xs">История поездок пуста</p>
         </div>
       );
     }
@@ -515,10 +515,10 @@ function TabContent({
           </span>
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-xs text-slate-850 dark:text-slate-100 truncate">
-              {trip.route_name || `${t('bottomsheet.routeDefaultName')} #${trip.route_number}`}
+              {trip.route_name || `Маршрут #${trip.route_number}`}
             </h3>
             <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
-              {trip.city_name || t('bottomsheet.cityUnknown')} • {trip.route_type === 'minibus' ? t('bottomsheet.minibusLabel') : t('bottomsheet.busLabel')}
+              {trip.city_name || 'город'} • {trip.route_type === 'minibus' ? 'Маршрутка' : 'Автобус'}
             </p>
           </div>
           <span className="text-[9px] text-slate-400 font-medium">
@@ -531,3 +531,4 @@ function TabContent({
 
   return null;
 }
+

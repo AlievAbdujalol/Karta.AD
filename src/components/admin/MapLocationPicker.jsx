@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapPin, Navigation, X } from 'lucide-react';
+import { useLanguage } from '@/lib/useLanguage';
 
 // Fix leaflet default icon
 // @ts-ignore
@@ -43,6 +44,15 @@ function ClickHandler({ onPick }) {
   return null;
 }
 
+// Центрирует карту при изменении center/zoom
+function MapCenterUpdater({ center, zoom }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, zoom, { animate: true });
+  }, [center[0], center[1], zoom]);
+  return null;
+}
+
 /**
  * MapLocationPicker
  * Props:
@@ -55,10 +65,11 @@ function ClickHandler({ onPick }) {
 export default function MapLocationPicker({
   value,
   onChange,
-  center = [38.5581, 68.7738], // Душанбе по умолчанию
+  center = [38.5581, 68.7738],
   zoom = 12,
   height = '260px',
 }) {
+  const { t } = useLanguage();
   const [picked, setPicked] = useState(value ? { lat: value.lat, lng: value.lng } : null);
 
   // Синхронизируем если пришёл внешний value
@@ -92,7 +103,7 @@ export default function MapLocationPicker({
       <div className="flex items-center justify-between">
         <p className="text-xs text-blue-600 font-medium flex items-center gap-1">
           <MapPin size={12} />
-          Кликните на карте для выбора местоположения
+          {t('admin.mapPicker.clickInstruction')}
         </p>
         {picked && (
           <button
@@ -100,7 +111,7 @@ export default function MapLocationPicker({
             onClick={handleClear}
             className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1 transition-colors"
           >
-            <X size={11} /> Сбросить
+            <X size={11} /> {t('admin.mapPicker.clearButton')}
           </button>
         )}
       </div>
@@ -121,6 +132,7 @@ export default function MapLocationPicker({
             attribution='&copy; OpenStreetMap'
           />
           <ClickHandler onPick={handlePick} />
+          <MapCenterUpdater center={mapCenter} zoom={zoom} />
           {picked && (
             <Marker
               position={[picked.lat, picked.lng]}
@@ -141,13 +153,13 @@ export default function MapLocationPicker({
         <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
           <Navigation size={13} className="text-blue-500 flex-shrink-0" />
           <div className="flex gap-4 text-xs font-mono text-blue-700">
-            <span>Ш: <strong>{picked.lat.toFixed(6)}</strong></span>
-            <span>Д: <strong>{picked.lng.toFixed(6)}</strong></span>
+            <span>{t('admin.mapPicker.latAbbr')} <strong>{picked.lat.toFixed(6)}</strong></span>
+            <span>{t('admin.mapPicker.lngAbbr')} <strong>{picked.lng.toFixed(6)}</strong></span>
           </div>
         </div>
       ) : (
         <div className="text-xs text-gray-400 text-center py-1">
-          Местоположение не выбрано
+          {t('admin.mapPicker.noLocation')}
         </div>
       )}
     </div>

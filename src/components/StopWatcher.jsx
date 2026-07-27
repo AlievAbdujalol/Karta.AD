@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Bell, BellOff, ChevronDown, MapPin } from 'lucide-react';
+import { useLanguage } from '@/lib/useLanguage';
 
 export default function StopWatcher({ route, watchedStop, onWatch }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [permission, setPermission] = useState(Notification.permission);
 
@@ -38,7 +40,7 @@ export default function StopWatcher({ route, watchedStop, onWatch }) {
           style={{ background: 'rgba(255,255,255,0.97)', boxShadow: '0 4px 14px rgba(0,0,0,0.12)', border: '1px solid rgba(0,0,0,0.06)' }}
         >
           <Bell size={13} className="text-blue-600" />
-          <span>Уведомить</span>
+          <span>{t('stopwatcher.notifyButton')}</span>
           <ChevronDown size={12} className={`text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
         </button>
       )}
@@ -48,7 +50,7 @@ export default function StopWatcher({ route, watchedStop, onWatch }) {
           style={{ boxShadow: '0 8px 30px rgba(0,0,0,0.15)', border: '1px solid rgba(0,0,0,0.06)' }}>
           <div className="sticky top-0 bg-white px-3 pt-3 pb-2 border-b border-gray-50">
             <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold flex items-center gap-1">
-              <MapPin size={9} /> Выберите остановку
+              <MapPin size={9} /> {t('stopwatcher.selectStop')}
             </p>
           </div>
           {stops.map((s, i) => (

@@ -1,22 +1,24 @@
 import { useState, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
+import { UserProfile } from '@/api/entities';
 import { useLanguage } from '@/lib/useLanguage';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 import { CheckCircle2, XCircle, User } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/api/supabase';
 
 export default function DriversManager() {
   const { t } = useLanguage();
+  const { user } = useCurrentUser();
   const [drivers, setDrivers] = useState([]);
 
   const load = () => {
-    base44.entities.User.list().then(users => {
-      setDrivers(users.filter(u => u.driver_status && ['pending', 'approved', 'blocked'].includes(u.driver_status)));
-    });
+    supabase.rpc('get_admin_driver_requests')
+      .then(({ data }) => setDrivers(data || []));
   };
   useEffect(() => { load(); }, []);
 
   const updateStatus = async (id, status) => {
-    await base44.entities.User.update(id, { driver_status: status });
+    await UserProfile.update(id, { driver_status: status, created_by_id: user?.id });
     load();
     toast.success(status === 'approved' ? t('approved') : t('blocked'));
   };

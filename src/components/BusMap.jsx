@@ -7,6 +7,8 @@ import MapControls, { TILE_LAYERS } from './MapControls';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { supabase } from '@/api/supabase';
 import { toast } from 'sonner';
+import { Heart } from 'lucide-react';
+import { useLanguage } from '@/lib/useLanguage';
 
 // Inject CSS to hide leaflet attribution
 const style = document.createElement('style');
@@ -30,7 +32,20 @@ function MapController({ center }) {
   return null;
 }
 
-function createBusIcon(routeNumber, type) {
+function FlyToHandler({ flyTo, onDone }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!flyTo) return;
+    map.flyTo([flyTo.lat, flyTo.lng], flyTo.zoom || 15, { duration: 1 });
+    if (onDone) {
+      const timer = setTimeout(() => onDone(), 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [flyTo?.lat, flyTo?.lng]);
+  return null;
+}
+
+function createBusIcon(routeNumber, type, t) {
   const color = type === 'minibus' ? '#2e7d32' : '#1565c0';
   const glow = type === 'minibus' ? 'rgba(46,125,50,0.3)' : 'rgba(21,101,192,0.3)';
 
@@ -52,7 +67,7 @@ function createBusIcon(routeNumber, type) {
         gap:1px;
       ">
         <span style="color:#fff;font-size:11px;font-weight:800;line-height:1;letter-spacing:-0.5px;">#${routeNumber}</span>
-        <span style="color:rgba(255,255,255,0.75);font-size:8px;font-weight:500;">${type === 'minibus' ? 'Маршр.' : 'Автобус'}</span>
+        <span style="color:rgba(255,255,255,0.75);font-size:8px;font-weight:500;">${type === 'minibus' ? t('busmap.minibusAbbr') : t('busmap.busLabel')}</span>
       </div>
       <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid ${color};margin-top:-1px;"></div>
     </div>`,
@@ -64,8 +79,10 @@ function createBusIcon(routeNumber, type) {
 
 function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
   const { user, refetch } = useCurrentUser();
+  const { t } = useLanguage();
   const [pos, setPos] = useState([vehicle.lat, vehicle.lng]);
   const [paying, setPaying] = useState(false);
+  const [isFav, setIsFav] = useState(false);
   const targetRef = useRef([vehicle.lat, vehicle.lng]);
   const currentRef = useRef([vehicle.lat, vehicle.lng]);
   const rafRef = useRef(null);
@@ -98,11 +115,11 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
 
   const handlePay = async () => {
     if (!user) {
-      toast.error('Войдите в аккаунт, чтобы оплатить проезд');
+      toast.error(t('busmap.paymentLoginRequired'));
       return;
     }
     if (!user.phone) {
-      toast.error('Пожалуйста, добавьте номер телефона в профиле перед оплатой.');
+      toast.error(t('busmap.paymentPhoneRequired'));
       return;
     }
 
@@ -110,11 +127,11 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
     const userBalance = Number(user.balance || 0);
 
     if (userBalance < fare) {
-      toast.error(`Недостаточно средств. Стоимость: ${fare} TJS. Ваш баланс: ${userBalance.toFixed(2)} TJS.`);
+      toast.error(`${t('busmap.paymentInsufficientBalance')} ${fare} TJS. ${t('profile.balanceLabel')} ${userBalance.toFixed(2)} TJS.`);
       return;
     }
 
-    if (window.confirm(`Оплатить проезд на маршруте #${vehicle.route_number} стоимостью ${fare} TJS?`)) {
+    if (window.confirm(`${t('busmap.paymentConfirmTitle')} #${vehicle.route_number} ${t('schedulePanel.somoni')} ${fare} TJS?`)) {
       setPaying(true);
       try {
         const { data, error } = await supabase.rpc('create_payment', {
@@ -122,17 +139,45 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
           amount: fare
         });
         if (error) throw new Error(error.message);
-        toast.success('Запрос на оплату отправлен водителю! Ожидайте подтверждения.');
+        toast.success(t('busmap.paymentSent'));
         refetch(); // Обновляем баланс в кэше/стейтах
       } catch (err) {
-        toast.error(err.message || 'Ошибка отправки оплаты');
+        toast.error(err.message || t('busmap.paymentError'));
       } finally {
         setPaying(false);
       }
     }
   };
 
-  const icon = createBusIcon(vehicle.route_number || '?', vehicle.type);
+  useEffect(() => {
+    if (!user || !vehicle.driver_id) return;
+    supabase.from('favorite_drivers').select('id').eq('user_id', user.id).eq('driver_id', vehicle.driver_id).maybeSingle()
+      .then(({ data }) => setIsFav(!!data)).catch(() => {});
+  }, [user?.id, vehicle.driver_id]);
+
+  const toggleFavDriver = async () => {
+    if (!user || !vehicle.driver_id) return;
+    try {
+      if (isFav) {
+        await supabase.from('favorite_drivers').delete().eq('user_id', user.id).eq('driver_id', vehicle.driver_id);
+        setIsFav(false);
+        toast.success(t('busmap.favDriverRemoved'));
+      } else {
+        await supabase.from('favorite_drivers').insert({
+          user_id: user.id,
+          driver_id: vehicle.driver_id,
+          driver_name: vehicle.driver_name || '',
+          vehicle_number: vehicle.vehicle_number || '',
+          route_number: vehicle.route_number || '',
+          route_name: route?.name || '',
+        });
+        setIsFav(true);
+        toast.success(t('busmap.favDriverAdded'));
+      }
+    } catch { toast.error(t('error')); }
+  };
+
+  const icon = createBusIcon(vehicle.route_number || '?', vehicle.type, t);
   const eta = getEtaLabel(vehicle);
 
   return (
@@ -145,14 +190,23 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
                 #{vehicle.route_number}
               </span>
             </div>
-            <span style={{ fontSize: 11, color: '#888', fontWeight: 500 }}>{vehicle.type === 'minibus' ? 'Маршрутка' : 'Автобус'}</span>
+            <span style={{ fontSize: 11, color: '#888', fontWeight: 500 }}>{vehicle.type === 'minibus' ? t('busmap.minibusLabel') : t('busmap.busLabel')}</span>
           </div>
-          {vehicle.driver_name && <div style={{ fontSize: 12, color: '#555', marginBottom: 2 }}>👤 {vehicle.driver_name}</div>}
-          {vehicle.vehicle_number && <div style={{ fontSize: 12, color: '#555', marginBottom: 2 }}>🚌 № {vehicle.vehicle_number}</div>}
-          {vehicle.speed > 0 && <div style={{ fontSize: 12, color: '#999' }}>⚡ {Math.round(vehicle.speed)} км/ч</div>}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              {vehicle.driver_name && <div style={{ fontSize: 12, color: '#555', marginBottom: 2 }}>👤 {vehicle.driver_name}</div>}
+              {vehicle.vehicle_number && <div style={{ fontSize: 12, color: '#555', marginBottom: 2 }}>🚌 № {vehicle.vehicle_number}</div>}
+            </div>
+            {user && vehicle.driver_id && user.id !== vehicle.driver_id && (
+              <button onClick={toggleFavDriver} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+                <Heart size={18} fill={isFav ? '#ef4444' : 'none'} stroke={isFav ? '#ef4444' : '#999'} />
+              </button>
+            )}
+          </div>
+          {vehicle.speed > 0 && <div style={{ fontSize: 12, color: '#999' }}>⚡ {Math.round(vehicle.speed)} {t('speedUnit')}</div>}
           {eta && (
             <div style={{ marginTop: 8, background: '#e3f2fd', borderRadius: 8, padding: '5px 10px', fontSize: 12, color: '#1565c0', fontWeight: 600 }}>
-              ⏱ {eta.stop?.name ? `${eta.stop.name}: ` : ''}{eta.etaMinutes} мин
+              ⏱ {eta.stop?.name ? `${eta.stop.name}: ` : ''}{eta.etaMinutes} {t('minutes')}
             </div>
           )}
 
@@ -180,7 +234,7 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
               }}
               className="hover:bg-green-700 active:scale-95 disabled:opacity-50"
             >
-              {paying ? 'Отправка...' : `Оплатить ${vehicle.type === 'minibus' ? '3.00' : '2.50'} TJS`}
+              {paying ? t('busmap.sending') : `${t('busmap.payButton')} ${vehicle.type === 'minibus' ? '3.00' : '2.50'} TJS`}
             </button>
           )}
         </div>
@@ -189,10 +243,27 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
   );
 }
 
-export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null }) {
+export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null }) {
   const [tileIndex, setTileIndex] = useState(0);
+  const [routeGeometry, setRouteGeometry] = useState([]);
   const getEtaLabel = (vehicle) => getNextStopEta(vehicle, route) || null;
-  const polyline = route?.stops?.length > 1 ? route.stops.map(s => [s.lat, s.lng]) : null;
+  const { t } = useLanguage();
+
+  useEffect(() => {
+    const stops = route?.stops?.filter(s => s.lat && s.lng);
+    if (!stops || stops.length < 2) { setRouteGeometry([]); return; }
+    const coords = stops.map(s => `${s.lng},${s.lat}`).join(';');
+    fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.routes?.[0]?.geometry?.coordinates) {
+          setRouteGeometry(data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]));
+        }
+      })
+      .catch(() => setRouteGeometry(stops.map(s => [s.lat, s.lng])));
+  }, [route]);
+
+  const polyline = routeGeometry.length > 1 ? routeGeometry : (route?.stops?.length > 1 ? route.stops.map(s => [s.lat, s.lng]) : null);
 
   return (
     <div className="w-full h-full dark:bg-gray-800">
@@ -207,6 +278,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         url={TILE_LAYERS[tileIndex].url}
       />
       <MapController center={center} />
+      <FlyToHandler flyTo={flyTo} onDone={onFlyDone} />
       <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} />
 
       {polyline && (
@@ -249,14 +321,14 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
           <Marker key={`stop-${index}`} position={[stop.lat, stop.lng]} icon={icon}>
             <Popup>
               <div style={{ fontFamily: 'Inter, sans-serif', minWidth: 140 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>{stop.name || `Остановка ${index + 1}`}</div>
-                <div style={{ fontSize: 11, color: '#888' }}>Остановка {index + 1} из {total}</div>
+                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>{stop.name || `${t('busmap.stopDefaultName')} ${index + 1}`}</div>
+                <div style={{ fontSize: 11, color: '#888' }}>{`${t('busmap.stopLabel')} ${index + 1} ${t('busmap.of')} ${total}`}</div>
                 <div style={{ marginTop: 6, fontSize: 11, padding: '3px 8px', borderRadius: 6, display: 'inline-block',
                   background: remaining > 0 ? '#e3f2fd' : '#e8f5e9',
                   color: remaining > 0 ? '#1565c0' : '#2e7d32',
                   fontWeight: 600,
                 }}>
-                  {remaining > 0 ? `До конца: ${remaining} ост.` : 'Конечная остановка'}
+                  {remaining > 0 ? `${t('busmap.remainingStops')} ${remaining}` : t('busmap.lastStop')}
                 </div>
               </div>
             </Popup>

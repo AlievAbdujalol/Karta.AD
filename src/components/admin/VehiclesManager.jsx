@@ -1,18 +1,23 @@
 import { useState, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
+import { FavoriteRoute } from '@/api/entities';
+import { useCurrentUser } from '@/lib/useCurrentUser';
+import { useLanguage } from '@/lib/useLanguage';
 import { Heart, HeartOff, Bus, MapPin } from 'lucide-react';
 
-export default function FavoriteRoutes({ user }) {
+export default function FavoriteRoutes({ user: propUser }) {
+  const { t } = useLanguage();
+  const { user: contextUser } = useCurrentUser();
+  const user = propUser || contextUser;
   const [favorites, setFavorites] = useState([]);
 
   useEffect(() => {
     if (user?.id) {
-      base44.entities.FavoriteRoute.filter({ user_id: user.id }).then(setFavorites);
+      FavoriteRoute.filter({ user_id: user.id }).then(setFavorites);
     }
   }, [user?.id]);
 
   const remove = async (fav) => {
-    await base44.entities.FavoriteRoute.delete(fav.id);
+    await FavoriteRoute.delete(fav.id);
     setFavorites(f => f.filter(x => x.id !== fav.id));
   };
 
@@ -20,8 +25,8 @@ export default function FavoriteRoutes({ user }) {
     return (
       <div className="text-center py-10 text-gray-400">
         <Heart size={32} className="mx-auto mb-2 opacity-30" />
-        <p className="text-sm">Нет избранных маршрутов</p>
-        <p className="text-xs mt-1">Нажмите ♡ рядом с маршрутом на главном экране</p>
+        <p className="text-sm">{t('admin.vehicles.noFavorites')}</p>
+        <p className="text-xs mt-1">{t('admin.vehicles.noFavoritesHint')}</p>
       </div>
     );
   }
@@ -38,14 +43,14 @@ export default function FavoriteRoutes({ user }) {
           </span>
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-gray-800 text-sm truncate">
-              {fav.route_name || `Маршрут #${fav.route_number}`}
+              {fav.route_name || t('admin.vehicles.routeDefaultName')}
             </p>
             <div className="flex items-center gap-1 text-gray-400 text-xs mt-0.5">
               <MapPin size={10} />
               <span>{fav.city_name || '—'}</span>
               <span className="mx-1">·</span>
               <Bus size={10} />
-              <span>{fav.route_type === 'minibus' ? 'Маршрутка' : 'Автобус'}</span>
+              <span>{fav.route_type === 'minibus' ? t('admin.vehicles.minibusLabel') : t('admin.vehicles.busLabel')}</span>
             </div>
           </div>
           <button onClick={() => remove(fav)} className="text-red-400 hover:text-red-600 transition-colors">

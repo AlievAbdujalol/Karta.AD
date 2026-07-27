@@ -1,25 +1,38 @@
-import { useState, useEffect, useRef } from 'react';
-import { base44 } from '@/api/base44Client';
+import { useState, useEffect } from 'react';
+import { City } from '@/api/entities';
 import { useLanguage } from '@/lib/useLanguage';
 import { useCurrentUser } from '@/lib/useCurrentUser';
-import { Play, Square, Navigation } from 'lucide-react';
+import { useTrip } from '@/lib/TripContext';
+import { Play, Square, Navigation, Bus, Gauge, Truck } from 'lucide-react';
+import { supabase } from '@/api/supabase';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
 
 export default function DriverDashboard() {
   const { t } = useLanguage();
   const { user } = useCurrentUser();
+  const { isTracking, gpsInfo, activeRoute, startTrip, endTrip } = useTrip();
   const [cities, setCities] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [selectedCity, setSelectedCity] = useState('');
   const [selectedRoute, setSelectedRoute] = useState('');
-  const [isTracking, setIsTracking] = useState(false);
-  const [gpsInfo, setGpsInfo] = useState({ speed: 0, lat: 0, lng: 0 });
-  const watchIdRef = useRef(null);
-  const vehicleIdRef = useRef(null);
+  const [vehicleNumber, setVehicleNumber] = useState(user?.vehicle_number || '');
+  const [liveStatus, setLiveStatus] = useState(null);
+  const [liveRole, setLiveRole] = useState(null);
+
+  const fetchStatus = () => {
+    if (!user?.id) return;
+    supabase.from('profiles').select('driver_status, role').eq('id', user.id).maybeSingle()
+      .then(({ data, error }) => {
+        if (!error && data) {
+          setLiveStatus(data.driver_status);
+          setLiveRole(data.role);
+        }
+      }).catch(() => {});
+  };
 
   useEffect(() => {
-    base44.entities.City.list().then(setCities);
+    City.list().then(setCities).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -27,155 +40,121 @@ export default function DriverDashboard() {
   }, [user]);
 
   useEffect(() => {
-    if (selectedCity) {
-      base44.entities.Route.filter({ city_id: selectedCity }).then(setRoutes);
-    }
+    const q = supabase.from('routes').select('*').not('created_by_id', 'is', null);
+    if (selectedCity) q.eq('city_id', selectedCity);
+    q.order('created_at', { ascending: false });
+    q.then(({ data }) => setRoutes(data || [])).catch(() => {});
   }, [selectedCity]);
 
   useEffect(() => {
-    return () => {
-      if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
-    };
-  }, []);
+    const to = setTimeout(fetchStatus, 2000);
+    const iv = setInterval(fetchStatus, 15000);
+    return () => { clearTimeout(to); clearInterval(iv); };
+  }, [user?.id]);
 
   if (!user) return (
-    <div className="p-8 text-center text-gray-500 dark:text-gray-400">{t('loading')}</div>
+    <div className="p-8 text-center text-slate-400 font-medium">{t('loading')}</div>
   );
 
-  if (user.role !== 'driver') return (
-    <div className="p-8 text-center space-y-4">
-      <div className="text-5xl">🚌</div>
-      <p className="text-gray-600 dark:text-gray-300 text-sm">{t('chooseRole')}: <strong>{t('driver')}</strong></p>
-      <Link to="/profile" className="inline-block bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold">
-        {t('editProfile')}
-      </Link>
+  const effectiveRole = liveRole || user.role;
+
+  if (effectiveRole !== 'driver') return (
+    <div className="min-h-full flex items-center justify-center p-6 bg-slate-50 dark:bg-slate-950 select-none">
+      <div className="max-w-md w-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl rounded-3xl p-8 border border-slate-200/60 dark:border-slate-800/80 shadow-2xl text-center space-y-4">
+        <div className="w-16 h-16 rounded-3xl bg-amber-50 dark:bg-amber-950/50 text-amber-500 flex items-center justify-center mx-auto border border-amber-200 dark:border-amber-800">
+          <Bus size={32} />
+        </div>
+        <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">{t('driver.driversOnly')}</h2>
+        <p className="text-xs text-slate-500 dark:text-slate-400">{t('driver.passengerRoleMessage')}</p>
+        <Link to="/profile" className="inline-block bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-6 py-3 rounded-2xl text-xs font-bold uppercase tracking-wider shadow-lg shadow-emerald-600/20 active:scale-95 transition-all">
+          {t('driver.goToProfile')}
+        </Link>
+      </div>
     </div>
   );
 
-  const driverStatus = user.driver_status || 'pending';
+  const driverStatus = liveStatus || user.driver_status || 'pending';
 
   if (driverStatus === 'blocked') return (
     <div className="p-8 text-center space-y-2">
       <div className="text-5xl">🚫</div>
-      <p className="font-semibold text-red-600 dark:text-red-400 text-lg">{t('blocked')}</p>
+      <p className="font-bold text-rose-600 dark:text-rose-400 text-base">{t('blocked')}</p>
     </div>
   );
 
   if (driverStatus === 'pending') return (
-    <div className="p-8 text-center space-y-3">
-      <div className="text-5xl">⏳</div>
-      <p className="font-semibold text-gray-900 dark:text-gray-100 text-lg">{t('pending')}</p>
-      <p className="text-sm text-gray-500 dark:text-gray-400">{t('waitingApproval')}</p>
+    <div className="min-h-full flex items-center justify-center p-6 bg-slate-50 dark:bg-slate-950 select-none">
+      <div className="max-w-md w-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl rounded-3xl p-8 border border-slate-200/60 dark:border-slate-800/80 shadow-2xl text-center space-y-3">
+        <div className="text-4xl">⏳</div>
+        <h3 className="font-extrabold text-slate-900 dark:text-white text-base">{t('pending')}</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400">{t('waitingApproval')}</p>
+      </div>
     </div>
   );
 
-  const startTrip = async () => {
+  const currentRoute = activeRoute || routes.find(r => r.id === selectedRoute);
+
+  const handleStart = async () => {
     if (!selectedRoute || !user) return;
-    const route = routes.find(r => r.id === selectedRoute);
-
-    const existingVehicles = await base44.entities.Vehicle.filter({ driver_id: user.id });
-    let vId;
-
-    if (existingVehicles.length > 0) {
-      vId = existingVehicles[0].id;
-      await base44.entities.Vehicle.update(vId, {
-        route_id: selectedRoute,
-        route_number: route?.number || '',
-        is_active: true,
-        type: route?.type || 'bus',
-        driver_name: user.full_name || user.email,
-        vehicle_number: user.vehicle_number || '',
-      });
-    } else {
-      const v = await base44.entities.Vehicle.create({
-        driver_id: user.id,
-        route_id: selectedRoute,
-        route_number: route?.number || '',
-        is_active: true,
-        type: route?.type || 'bus',
-        driver_name: user.full_name || user.email,
-        vehicle_number: user.vehicle_number || '',
-        lat: 0,
-        lng: 0,
-      });
-      vId = v.id;
+    try {
+      await startTrip({ routeId: selectedRoute, vNumber: vehicleNumber, driverRoutes: routes, user });
+    } catch (err) {
+      toast.error(err.message || t('driver.startTripError'));
     }
-
-    vehicleIdRef.current = vId;
-
-    if (!navigator.geolocation) {
-      toast.error(t('locationAccess'));
-      return;
-    }
-
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      async (pos) => {
-        const { latitude, longitude, speed: spd } = pos.coords;
-        const speedKmh = spd ? Math.round(spd * 3.6) : 0;
-        setGpsInfo({ speed: speedKmh, lat: latitude, lng: longitude });
-        if (vehicleIdRef.current) {
-          await base44.entities.Vehicle.update(vehicleIdRef.current, {
-            lat: latitude,
-            lng: longitude,
-            speed: spd ? spd * 3.6 : 0,
-            last_updated: new Date().toISOString(),
-          });
-        }
-      },
-      () => toast.error(t('locationAccess')),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
-    );
-
-    setIsTracking(true);
-    toast.success(t('startTrip'));
   };
 
-  const endTrip = async () => {
-    if (watchIdRef.current) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
+  const handleEnd = async () => {
+    try {
+      await endTrip();
+    } catch (err) {
+      toast.error(err.message || t('driver.endTripError'));
     }
-    if (vehicleIdRef.current) {
-      await base44.entities.Vehicle.update(vehicleIdRef.current, { is_active: false });
-      vehicleIdRef.current = null;
-    }
-    setIsTracking(false);
-    setGpsInfo({ speed: 0, lat: 0, lng: 0 });
-    toast.success(t('endTrip'));
   };
-
-  const currentRoute = routes.find(r => r.id === selectedRoute);
 
   return (
-    <div className="h-full overflow-y-auto bg-gray-50 dark:bg-gray-900 p-4">
-      <div className="max-w-md mx-auto space-y-4">
-        {/* Status banner */}
-        <div className={`rounded-2xl p-5 text-white transition-colors ${isTracking ? 'bg-green-600' : 'bg-blue-700'}`}>
-          <div className="flex items-center gap-3">
-            {isTracking && <span className="w-3 h-3 bg-white rounded-full animate-pulse flex-shrink-0" />}
-            <div>
-              <p className="font-bold text-lg">{isTracking ? t('tracking') : t('driverPanel')}</p>
+    <div className="w-full h-full overflow-y-auto custom-scrollbar bg-slate-50 dark:bg-slate-950 p-4 md:p-8 select-none">
+      <div className="max-w-xl mx-auto space-y-6 pb-20">
+        <div className={`rounded-3xl p-6 text-white transition-all shadow-xl ${
+          isTracking
+            ? 'bg-gradient-to-r from-emerald-600 to-teal-600 shadow-emerald-600/20'
+            : 'bg-gradient-to-r from-slate-800 to-slate-900 dark:from-slate-900 dark:to-slate-950 border border-slate-800'
+        }`}>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                {isTracking && <span className="w-2.5 h-2.5 bg-white rounded-full animate-ping" />}
+                <span className="text-xs font-black uppercase tracking-wider opacity-90">
+                  {isTracking ? t('driver.tripActive') : t('driver.driverPanel')}
+                </span>
+              </div>
+              <h2 className="text-xl font-extrabold">
+                {isTracking && currentRoute ? `${t('driver.routeLabel')} #${currentRoute.number}` : t('driver.readyToStart')}
+              </h2>
               {isTracking && currentRoute && (
-                <p className="text-sm opacity-90">
-                  {currentRoute.type === 'bus' ? t('bus') : t('minibus')} #{currentRoute.number}
-                </p>
-              )}
-              {isTracking && gpsInfo.speed > 0 && (
-                <p className="text-sm opacity-80">{gpsInfo.speed} {t('speed')}</p>
+                <p className="text-xs opacity-80">{currentRoute.name || t('driver.cityRouteDefault')}</p>
               )}
             </div>
+
+            {isTracking && (
+              <div className="text-right bg-white/10 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/20">
+                <div className="flex items-center gap-1 text-xs font-bold">
+                  <Gauge size={14} />
+                  <span>{gpsInfo.speed} {t('speedUnit')}</span>
+                </div>
+                <span className="text-[9px] uppercase tracking-wider opacity-70">{t('driver.speedLabel')}</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Controls */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm space-y-4">
+        <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl rounded-3xl p-6 border border-slate-200/60 dark:border-slate-800/80 shadow-xl space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1.5">{t('city')}</label>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t('city')}</label>
             <select
               value={selectedCity}
               onChange={e => { setSelectedCity(e.target.value); setSelectedRoute(''); }}
               disabled={isTracking}
-              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-sm disabled:opacity-50 bg-white dark:bg-gray-700 dark:text-gray-100"
+              className="w-full border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-semibold bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 outline-none disabled:opacity-50"
             >
               <option value="">{t('selectCity')}</option>
               {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -183,12 +162,26 @@ export default function DriverDashboard() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1.5">{t('selectYourRoute')}</label>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+              <Truck size={14} className="inline mr-1" />{t('vehicleNumber')}
+            </label>
+            <input
+              type="text"
+              value={vehicleNumber}
+              onChange={e => setVehicleNumber(e.target.value)}
+              disabled={isTracking}
+              placeholder={t('driver.vehicleNumberPlaceholder')}
+              className="w-full border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-semibold bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 outline-none disabled:opacity-50"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t('selectYourRoute')}</label>
             <select
-              value={selectedRoute}
+              value={isTracking ? activeRoute?.id || '' : selectedRoute}
               onChange={e => setSelectedRoute(e.target.value)}
-              disabled={isTracking || !selectedCity}
-              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-sm disabled:opacity-50 bg-white dark:bg-gray-700 dark:text-gray-100"
+              disabled={isTracking}
+              className="w-full border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-semibold bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 outline-none disabled:opacity-50"
             >
               <option value="">{t('selectRoute')}</option>
               {routes.map(r => (
@@ -200,26 +193,30 @@ export default function DriverDashboard() {
           </div>
 
           <button
-            onClick={isTracking ? endTrip : startTrip}
+            onClick={isTracking ? handleEnd : handleStart}
             disabled={!isTracking && !selectedRoute}
-            className={`w-full py-4 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all disabled:opacity-50 text-base ${
+            className={`w-full py-4 rounded-2xl font-bold text-xs uppercase tracking-wider text-white flex items-center justify-center gap-2 transition-all disabled:opacity-50 shadow-lg active:scale-95 ${
               isTracking
-                ? 'bg-red-500 hover:bg-red-600 active:scale-95'
-                : 'bg-green-600 hover:bg-green-700 active:scale-95'
+                ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20'
+                : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-emerald-600/20'
             }`}
           >
-            {isTracking ? <Square size={20} /> : <Play size={20} fill="currentColor" />}
+            {isTracking ? <Square size={16} /> : <Play size={16} fill="currentColor" />}
             {isTracking ? t('endTrip') : t('startTrip')}
           </button>
         </div>
 
-        {/* GPS coords */}
         {isTracking && gpsInfo.lat !== 0 && (
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm flex items-center gap-2">
-            <Navigation size={16} className="text-green-600 flex-shrink-0" />
-            <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">
-              {gpsInfo.lat.toFixed(5)}, {gpsInfo.lng.toFixed(5)}
-            </p>
+          <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl rounded-2xl p-4 border border-slate-200/60 dark:border-slate-800/80 shadow-md flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-500 flex items-center justify-center">
+              <Navigation size={16} />
+            </div>
+            <div>
+              <div className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{t('driver.currentGpsCoords')}</div>
+              <p className="text-xs text-slate-800 dark:text-slate-200 font-mono font-bold mt-0.5">
+                {gpsInfo.lat.toFixed(5)}, {gpsInfo.lng.toFixed(5)}
+              </p>
+            </div>
           </div>
         )}
       </div>

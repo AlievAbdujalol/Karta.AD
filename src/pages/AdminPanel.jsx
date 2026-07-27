@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
+import { City, Route, Vehicle } from '@/api/entities';
+import { supabase } from '@/api/supabase';
 import { useLanguage } from '@/lib/useLanguage';
 import { useCurrentUser } from '@/lib/useCurrentUser';
-import { Building2, Map, Users, TrendingUp, Download } from 'lucide-react';
+import { Building2, Map, Users, TrendingUp } from 'lucide-react';
 import CitiesManager from '@/components/admin/CitiesManager';
 import RouteStats from '@/components/admin/RouteStats';
 import TripCharts from '@/components/admin/TripCharts';
 import RoutesManager from '@/components/admin/RoutesManager';
 import DriversManager from '@/components/admin/DriversManager';
 import VehiclesManager from '@/components/admin/VehiclesManager';
-import ExportStats from '@/components/admin/ExportStats';
+
 import RouteMapEditor from '@/components/admin/RouteMapEditor';
 import { Link } from 'react-router-dom';
 
@@ -20,11 +21,12 @@ export default function AdminPanel() {
   const [stats, setStats] = useState({ cities: 0, routes: 0, active: 0, pending: 0 });
 
   useEffect(() => {
+    if (!user?.id) return;
     Promise.all([
-      base44.entities.City.list(),
-      base44.entities.Route.list(),
-      base44.entities.Vehicle.filter({ is_active: true }),
-      base44.entities.User.filter({ role: 'driver', driver_status: 'pending' }),
+      City.list(),
+      Route.filter({ created_by_id: user.id }),
+      Vehicle.filter({ is_active: true }),
+      supabase.rpc('get_admin_driver_requests').then(({ data }) => data || []),
     ]).then(([cities, routes, vehicles, pending]) => {
       setStats({
         cities: cities.length,
@@ -33,7 +35,7 @@ export default function AdminPanel() {
         pending: pending.length,
       });
     });
-  }, []);
+  }, [user?.id]);
 
   if (!user) return <div className="p-8 text-center text-gray-500">{t('loading')}</div>;
 
@@ -48,13 +50,12 @@ export default function AdminPanel() {
   );
 
   const tabs = [
-    { id: 'map', label: 'Карта', icon: Map },
-    { id: 'stats', label: 'Аналитика', icon: TrendingUp },
-    { id: 'export', label: 'Экспорт', icon: Download },
+    { id: 'map', label: t('admin.tabMap'), icon: Map },
+    { id: 'stats', label: t('admin.tabAnalytics'), icon: TrendingUp },
     { id: 'cities', label: t('cities'), icon: Building2 },
     { id: 'routes', label: t('routes'), icon: Map },
     { id: 'drivers', label: t('drivers'), icon: Users },
-    { id: 'vehicles', label: 'Транспорт', icon: Map },
+    { id: 'vehicles', label: t('admin.tabVehicles'), icon: Map },
   ];
 
   const statCards = [
@@ -67,7 +68,6 @@ export default function AdminPanel() {
   return (
     <div className="h-full overflow-y-auto bg-gray-50">
       <div className="max-w-2xl mx-auto p-4 space-y-4">
-        {/* Stats */}
         <div className="grid grid-cols-2 gap-3">
           {statCards.map(s => (
             <div key={s.label} className={`${s.bg} text-white rounded-2xl p-4`}>
@@ -77,31 +77,28 @@ export default function AdminPanel() {
           ))}
         </div>
 
-        {/* Tabs */}
-        <div className="flex bg-white rounded-2xl p-1 shadow-sm border border-gray-100">
+        <div className="flex bg-white rounded-2xl p-1 shadow-sm border border-gray-100 overflow-x-auto scrollbar-hide">
           {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setTab(id)}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+              className={`flex-shrink-0 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                 tab === id
                   ? 'bg-blue-600 text-white shadow'
                   : 'text-gray-500 hover:text-gray-800'
               }`}
             >
               <Icon size={15} />
-              <span>{label}</span>
+              <span className="whitespace-nowrap">{label}</span>
             </button>
           ))}
         </div>
 
-        {/* Content */}
         {tab === 'stats' && <div className="space-y-4"><TripCharts /><RouteStats /></div>}
         {tab === 'cities' && <CitiesManager />}
         {tab === 'routes' && <RoutesManager />}
         {tab === 'drivers' && <DriversManager />}
         {tab === 'vehicles' && <VehiclesManager />}
-        {tab === 'export' && <ExportStats />}
         {tab === 'map' && <RouteMapEditor />}
       </div>
     </div>

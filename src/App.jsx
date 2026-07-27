@@ -15,8 +15,10 @@ import DriverSchedule from './pages/DriverSchedule';
 import Login from './pages/Login';
 import ErrorBoundary, { BusMapErrorFallback } from '@/components/ErrorBoundary';
 
+import { TripProvider } from '@/lib/TripContext';
+
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated } = useAuth();
+  const { isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated, user } = useAuth();
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
@@ -39,6 +41,7 @@ const AuthenticatedApp = () => {
 
   return (
     <ErrorBoundary>
+      <TripProvider user={user}>
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<ErrorBoundary fallback={(err) => <BusMapErrorFallback error={err} />}><Home /></ErrorBoundary>} />
@@ -50,6 +53,7 @@ const AuthenticatedApp = () => {
         </Route>
         <Route path="*" element={<PageNotFound />} />
       </Routes>
+      </TripProvider>
     </ErrorBoundary>
   );
 };
