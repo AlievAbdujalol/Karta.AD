@@ -155,8 +155,10 @@ export default function Profile() {
         : normalizedPhone.replace(/^\+/, '');
 
       setCountryCode(detectedCode);
+      const roleFromDb = user.role || 'passenger';
+      const normalizedRole = roleFromDb === 'user' ? 'passenger' : roleFromDb;
       setForm({
-        role: user.role || 'passenger',
+        role: normalizedRole,
         language: user.language || 'ru',
         city_id: user.city_id || '',
         vehicle_number: user.vehicle_number || '',
@@ -239,7 +241,8 @@ export default function Profile() {
   };
 
   const handleRoleChange = async (newRole) => {
-    if (newRole === user?.role) return;
+    const dbRole = newRole === 'passenger' ? 'user' : newRole;
+    if (dbRole === user?.role) return;
 
     const hasActiveSub = user?.subscription_status === 'active' && new Date(user?.subscription_paid_until || 0) > new Date();
 
@@ -360,7 +363,7 @@ export default function Profile() {
           )}
           {user?.role && (
             <span className="mt-2 inline-block bg-white/20 text-white text-xs px-3 py-1 rounded-full font-medium">
-              {t(user.role)}
+              {t(user.role === 'user' ? 'passenger' : user.role)}
             </span>
           )}
         </div>
@@ -427,10 +430,10 @@ export default function Profile() {
                 <div className="text-center py-6 text-gray-400 text-xs">{t('profile.noTransactions')}</div>
               ) : (
                 <div className="space-y-3">
-                  {transactions.map((t) => {
-                    const isSender = t.sender_id === user.id;
-                    const isTopUp = t.recipient_id === null;
-                    const amountFormatted = `${isSender && !isTopUp ? '-' : '+'}${Number(t.amount).toFixed(2)} TJS`;
+                  {transactions.map((tx) => {
+                    const isSender = tx.sender_id === user.id;
+                    const isTopUp = tx.recipient_id === null;
+                    const amountFormatted = `${isSender && !isTopUp ? '-' : '+'}${Number(tx.amount).toFixed(2)} TJS`;
                     
                     let title = '';
                     let desc = '';
@@ -442,33 +445,33 @@ export default function Profile() {
                       colorClass = 'text-green-600 dark:text-green-400 font-bold';
                     } else if (isSender) {
                       title = t('profile.transactionPayment');
-                      desc = `${t('profile.transactionToDriver')} ${t.recipient || '...'}`;
+                      desc = `${t('profile.transactionToDriver')} ${tx.recipient || '...'}`;
                       colorClass = 'text-red-500 dark:text-red-400 font-semibold';
                     } else {
                       title = t('profile.transactionReceived');
-                      desc = `${t('profile.transactionFromPassenger')} ${t.sender || '...'}`;
+                      desc = `${t('profile.transactionFromPassenger')} ${tx.sender || '...'}`;
                       colorClass = 'text-green-600 dark:text-green-400 font-bold';
                     }
 
                     return (
-                      <div key={t.id} className="flex justify-between items-start border-b border-gray-50 dark:border-gray-700/50 pb-2.5 last:border-0 last:pb-0">
+                      <div key={tx.id} className="flex justify-between items-start border-b border-gray-50 dark:border-gray-700/50 pb-2.5 last:border-0 last:pb-0">
                         <div>
                           <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">{title}</p>
                           <p className="text-[10px] text-gray-400 mt-0.5">{desc}</p>
                           <span className={`text-[9px] px-1.5 py-0.5 rounded-full mt-1 inline-block ${
-                            t.status === 'completed' 
+                            tx.status === 'completed' 
                               ? 'bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400' 
-                              : t.status === 'pending'
+                              : tx.status === 'pending'
                                 ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400'
                                 : 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400'
                           }`}>
-                            {t.status === 'completed' ? t('profile.transactionStatusCompleted') : t.status === 'pending' ? t('profile.transactionStatusPending') : t('profile.transactionStatusRejected')}
+                            {tx.status === 'completed' ? t('profile.transactionStatusCompleted') : tx.status === 'pending' ? t('profile.transactionStatusPending') : t('profile.transactionStatusRejected')}
                           </span>
                         </div>
                         <div className="text-right">
                           <p className={`text-xs ${colorClass}`}>{amountFormatted}</p>
                           <p className="text-[9px] text-gray-400 mt-1">
-                            {new Date(t.created_at).toLocaleString(lang === 'tg' ? 'tg-TJ' : lang, { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
+                            {new Date(tx.created_at).toLocaleString(lang === 'tg' ? 'tg-TJ' : lang, { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
                           </p>
                         </div>
                       </div>

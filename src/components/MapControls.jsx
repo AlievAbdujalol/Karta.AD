@@ -1,14 +1,16 @@
-import { Layers, Crosshair, Plus, Minus } from 'lucide-react';
+import { Layers, Crosshair, Plus, Minus, Navigation } from 'lucide-react';
 import { useMap } from 'react-leaflet';
 import { useLanguage } from '@/lib/useLanguage';
 
 const TILE_LAYERS = [
-  { labelKey: 'mapControls.layerStandard', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png' },
-  { labelKey: 'mapControls.layerSatellite', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' },
-  { labelKey: 'mapControls.layerNight', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' },
+  { labelKey: 'mapControls.layerStandard', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', isHybrid: false },
+  { labelKey: 'mapControls.layerHybrid', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', isHybrid: true },
+  { labelKey: 'mapControls.layerOsm', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', isHybrid: false },
 ];
 
-export default function MapControls({ tileIndex, setTileIndex }) {
+const LABEL_OVERLAY_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/light_only_labels/{z}/{x}/{y}{r}.png';
+
+export default function MapControls({ tileIndex, setTileIndex, finderActive, onFinderToggle }) {
   const map = useMap();
   const { t } = useLanguage();
 
@@ -32,7 +34,16 @@ export default function MapControls({ tileIndex, setTileIndex }) {
       onMouseDown={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      {/* 1. Locate */}
+      {/* 1. Route Finder */}
+      <button
+        onClick={() => onFinderToggle?.()}
+        className={`${btnClass} ${finderActive ? '!bg-violet-600 !text-white border-violet-400 shadow-violet-500/30' : ''}`}
+        title={t('routeFinder.button')}
+      >
+        <Navigation size={18} className="stroke-[2.2]" />
+      </button>
+
+      {/* 2. Locate */}
       <button
         onClick={locate}
         className={`${btnClass} !bg-gradient-to-tr !from-emerald-600 !to-teal-500 hover:!from-emerald-700 hover:!to-teal-600 !text-white border-none shadow-emerald-500/20`}
@@ -41,7 +52,7 @@ export default function MapControls({ tileIndex, setTileIndex }) {
         <Crosshair size={18} className="stroke-[2.2]" />
       </button>
 
-      {/* 2. Zoom in */}
+      {/* 3. Zoom in */}
       <button
         onClick={() => map.zoomIn()}
         className={btnClass}
@@ -50,7 +61,7 @@ export default function MapControls({ tileIndex, setTileIndex }) {
         <Plus size={18} className="stroke-[2.2]" />
       </button>
 
-      {/* 3. Zoom out */}
+      {/* 4. Zoom out */}
       <button
         onClick={() => map.zoomOut()}
         className={btnClass}
@@ -59,7 +70,7 @@ export default function MapControls({ tileIndex, setTileIndex }) {
         <Minus size={18} className="stroke-[2.2]" />
       </button>
 
-      {/* 4. Layers */}
+      {/* 5. Layers */}
       <button
         onClick={cycleLayer}
         className={`${btnClass} relative`}
@@ -74,4 +85,4 @@ export default function MapControls({ tileIndex, setTileIndex }) {
   );
 }
 
-export { TILE_LAYERS };
+export { TILE_LAYERS, LABEL_OVERLAY_URL };

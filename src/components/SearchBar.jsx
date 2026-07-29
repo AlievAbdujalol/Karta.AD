@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, X, MapPin, Bus, Route, Clock } from 'lucide-react';
+import { Search, X, MapPin, Bus, Route, Clock, Building2 } from 'lucide-react';
 import { searchAll, flattenResults, getSearchHistory, addToHistory, clearHistory } from '@/lib/searchUtils';
 import { useLanguage } from '@/lib/useLanguage';
 
 export default function SearchBar({ cityId, onSelectResult, mapCenter }) {
   const { t } = useLanguage();
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState({ routes: [], stops: [], vehicles: [], addresses: [] });
+  const [results, setResults] = useState({ routes: [], stops: [], vehicles: [], addresses: [], pois: [] });
   const [flat, setFlat] = useState([]);
   const [open, setOpen] = useState(false);
   const [history, setHistory] = useState([]);
@@ -39,7 +39,7 @@ export default function SearchBar({ cityId, onSelectResult, mapCenter }) {
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!query.trim()) {
-      setResults({ routes: [], stops: [], vehicles: [], addresses: [] });
+      setResults({ routes: [], stops: [], vehicles: [], addresses: [], pois: [] });
       setFlat([]);
       setOpen(false);
       setLoading(false);
@@ -48,6 +48,20 @@ export default function SearchBar({ cityId, onSelectResult, mapCenter }) {
     setLoading(true);
     debounceRef.current = setTimeout(async () => {
       const res = await searchAll(query, { cityId });
+      try {
+        const nom = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&countrycodes=TJ&addressdetails=1`);
+        const nomData = await nom.json();
+        res.pois = nomData.map(n => ({
+          _type: 'poi',
+          id: n.osm_id,
+          name: n.display_name.split(',')[0],
+          fullAddress: n.display_name,
+          lat: parseFloat(n.lat),
+          lng: parseFloat(n.lon),
+          category: n.type,
+          icon: n.icon,
+        }));
+      } catch { res.pois = []; }
       setResults(res);
       setFlat(flattenResults(res));
       setOpen(true);
@@ -60,7 +74,7 @@ export default function SearchBar({ cityId, onSelectResult, mapCenter }) {
   const handleSelect = (item) => {
     setQuery('');
     setOpen(false);
-    addToHistory(item._type === 'address' ? item.name : item._type === 'route' ? `#${item.number}` : item.name || item.driver_name || '');
+    addToHistory(item._type === 'address' ? item.name : item._type === 'route' ? `#${item.number}` : item._type === 'poi' ? item.name : item.name || item.driver_name || '');
     refreshHistory();
     onSelectResult(item);
     inputRef.current?.blur();
@@ -109,6 +123,7 @@ export default function SearchBar({ cityId, onSelectResult, mapCenter }) {
     stop: MapPin,
     vehicle: Bus,
     address: MapPin,
+    poi: Building2,
   };
 
   const typeLabels = {
@@ -116,6 +131,7 @@ export default function SearchBar({ cityId, onSelectResult, mapCenter }) {
     stop: t('search.typeStop'),
     vehicle: t('search.typeVehicle'),
     address: t('search.typeAddress'),
+    poi: t('search.typePoi'),
   };
 
   const typeColors = {
@@ -123,6 +139,7 @@ export default function SearchBar({ cityId, onSelectResult, mapCenter }) {
     stop: 'text-emerald-600 bg-emerald-100',
     vehicle: 'text-purple-600 bg-purple-100',
     address: 'text-amber-600 bg-amber-100',
+    poi: 'text-rose-600 bg-rose-100',
   };
 
   return (
@@ -204,12 +221,14 @@ export default function SearchBar({ cityId, onSelectResult, mapCenter }) {
                         {item._type === 'stop' && item.name}
                         {item._type === 'vehicle' && (item.driver_name || `№${item.vehicle_number}`)}
                         {item._type === 'address' && item.name}
+                        {item._type === 'poi' && item.name}
                       </p>
                       <p className="text-[11px] text-slate-400 truncate">
                         {item._type === 'stop' && t('search.stopLabel')}
                         {item._type === 'vehicle' && `${item.route_number ? `#${item.route_number} · ` : ''}${item.vehicle_number || ''}`}
                         {item._type === 'address' && (item.fullAddress || '')}
                         {item._type === 'route' && `${item.type === 'bus' ? t('search.busLabel') : t('search.minibusLabel')} · ${item.city_name || ''}`}
+                        {item._type === 'poi' && (item.fullAddress || '')}
                       </p>
                     </div>
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${colorCls}`}>{label}</span>

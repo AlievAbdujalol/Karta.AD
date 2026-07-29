@@ -7,7 +7,7 @@ import { useStopNotifier } from '@/hooks/useStopNotifier';
 import SchedulePanel from '@/components/SchedulePanel';
 import HomeHeader from '@/components/HomeHeader';
 import SearchResultCard from '@/components/SearchResultCard';
-import { WifiOff, Zap } from 'lucide-react';
+import { WifiOff } from 'lucide-react';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import ErrorBoundary, { BusMapErrorFallback } from '@/components/ErrorBoundary';
 import { useNotificationCount } from '@/lib/NotificationContext';
@@ -216,7 +216,7 @@ export default function Home() {
     <div className="relative w-full h-full bg-slate-50 dark:bg-slate-950 overflow-hidden select-none">
       <div className="absolute inset-0 w-full h-full z-0">
         <ErrorBoundary fallback={(error) => <BusMapErrorFallback error={error} />}>
-          <BusMap vehicles={vehicles} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} flyTo={flyTo} onFlyDone={() => setFlyTo(null)} />
+          <BusMap vehicles={vehicles} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} flyTo={flyTo} onFlyDone={() => setFlyTo(null)} routes={routes} />
         </ErrorBoundary>
       </div>
 
@@ -250,19 +250,6 @@ export default function Home() {
         <SearchResultCard result={searchResult} onClose={() => setSearchResult(null)} />
       )}
 
-      {selectedCity && (
-        <button
-          onClick={() => {
-            setActiveTab('routes');
-            setSheetState(sheetState === 'collapsed' ? 'half' : 'collapsed');
-          }}
-          className="absolute bottom-20 md:bottom-6 right-4 z-[999] flex items-center gap-2 px-5 py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-full shadow-xl hover:shadow-emerald-500/25 active:scale-95 transition-all duration-300 pointer-events-auto border border-white/20"
-        >
-          <Zap size={15} className="fill-white" />
-          <span className="text-xs font-black uppercase tracking-wider">{t('home.routesButton')}</span>
-        </button>
-      )}
-
       <BottomSheet
         selectedCity={selectedCity}
         routes={routes}
@@ -281,12 +268,13 @@ export default function Home() {
         setActiveTab={setActiveTab}
         onSelectFavDriver={async (driverId) => {
           const { data } = await supabase.from('vehicles').select('*').eq('driver_id', driverId).eq('is_active', true).maybeSingle();
-          if (data?.route_id) {
-            const route = routes.find(r => r.id === data.route_id);
-            if (route) {
-              setSelectedRoute(route);
-              setActiveTab('routes');
+          if (data) {
+            if (data.route_id) {
+              const route = routes.find(r => r.id === data.route_id);
+              if (route) setSelectedRoute(route);
             }
+            setActiveTab('routes');
+            setFlyTo({ lat: data.lat, lng: data.lng, zoom: 16 });
           }
         }}
       />

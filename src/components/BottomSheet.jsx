@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { MapPin, Bus, Heart, History, Sparkles, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, User } from 'lucide-react';
+import { MapPin, Bus, Heart, History, Sparkles, ChevronLeft, ChevronRight, User } from 'lucide-react';
 import { TripLog } from '@/api/entities';
 import { supabase } from '@/api/supabase';
 import { useLanguage } from '@/lib/useLanguage';
@@ -36,21 +35,53 @@ export default function BottomSheet({
   }, [currentUser?.id]);
 
   useEffect(() => {
-    if (currentUser?.id) {
-      TripLog.filter({ user_id: currentUser.id }, '-created_at')
-        .then((logs) => {
-          const uniqueLogs = [];
-          const seen = new Set();
-          logs.forEach((log) => {
-            if (!seen.has(log.route_id)) {
-              seen.add(log.route_id);
-              uniqueLogs.push(log);
-            }
+    if (!currentUser?.id) { setTripHistory([]); return; }
+
+    const loadHistory = async () => {
+      try {
+        // 1. Все поездки из trip_logs (без дедупликации)
+        const logs = await TripLog.filter({ user_id: currentUser.id }, '-created_at');
+
+        // 2. Оплаченные поездки из transactions (completed, sender = текущий юзер)
+        const { data: txRows } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('sender_id', currentUser.id)
+          .eq('status', 'completed')
+          .order('created_at', { ascending: false });
+
+        // 3. Объединяем: trip_logs как основа, transactions как доп. поездки
+        // Для каждой транзакции находим маршрут по recipient_id (водитель)
+        const txTrips = (txRows || []).map((tx) => ({
+          id: tx.id,
+          route_id: null,
+          route_number: '—',
+          route_name: tx.recipient_id ? `Оплата водителю` : 'Пополнение баланса',
+          city_name: '',
+          route_color: '#10b981',
+          route_type: 'payment',
+          created_at: tx.created_at,
+          amount: tx.amount,
+          isPayment: true,
+        }));
+
+        // Объединяем, сортируем по дате, убираем дубли по id
+        const seen = new Set();
+        const all = [...logs, ...txTrips]
+          .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+          .filter((item) => {
+            if (seen.has(item.id)) return false;
+            seen.add(item.id);
+            return true;
           });
-          setTripHistory(uniqueLogs.slice(0, 10));
-        })
-        .catch(() => {});
-    }
+
+        setTripHistory(all.slice(0, 30));
+      } catch {
+        setTripHistory([]);
+      }
+    };
+
+    loadHistory();
   }, [currentUser?.id, selectedRoute]);
 
   const getUniqueStops = () => {
@@ -111,12 +142,6 @@ export default function BottomSheet({
 
   const favoriteRoutes = routesWithActiveCount.filter((r) => favorites.includes(r.id));
 
-  const cycleState = () => {
-    if (sheetState === 'collapsed') setSheetState('half');
-    else if (sheetState === 'half') setSheetState('expanded');
-    else setSheetState('collapsed');
-  };
-
   const handleSelectRoute = (route) => {
     setSelectedRoute(route);
     setSheetState('collapsed');
@@ -136,6 +161,7 @@ export default function BottomSheet({
 
   return (
     <>
+      {/* Desktop toggle button */}
       <button
         onClick={() => setPanelCollapsed(!panelCollapsed)}
         className="hidden md:flex absolute left-[calc(380px+16px)] top-1/2 -translate-y-1/2 z-[1001] w-8 h-12 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/60 dark:border-slate-700/80 rounded-r-xl shadow-lg items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer"
@@ -144,6 +170,7 @@ export default function BottomSheet({
         {panelCollapsed ? <ChevronRight size={16} className="text-slate-500" /> : <ChevronLeft size={16} className="text-slate-500" />}
       </button>
 
+      {/* Desktop panel */}
       <div
         className={`hidden md:flex flex-col absolute left-3 top-[140px] bottom-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-slate-200/60 dark:border-slate-800/80 z-[1000] overflow-hidden transition-all duration-300 ${panelCollapsed ? 'w-0 opacity-0 pointer-events-none p-0 border-0' : 'w-[380px]'}`}
         onMouseDown={(e) => e.stopPropagation()}
@@ -209,95 +236,87 @@ export default function BottomSheet({
         </div>
       </div>
 
-      <motion.div
-        className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-100 dark:border-slate-800/80 z-[1000] shadow-2xl flex flex-col rounded-t-[28px]"
-        initial="half"
-        animate={sheetState}
-        variants={{
-          collapsed: { y: 'calc(100% - 64px)' },
-          half: { y: 'calc(100% - 340px)' },
-          expanded: { y: '80px' },
-        }}
-        transition={{ type: 'spring', damping: 24, stiffness: 200 }}
+      {/* Mobile left panel */}
+      <div
+        className={`md:hidden absolute left-0 top-[140px] bottom-0 z-[1000] flex overflow-hidden transition-all duration-300 ${
+          sheetState === 'collapsed' ? 'w-9' : sheetState === 'half' ? 'w-[316px]' : 'w-[calc(100%-12px)]'
+        }`}
         onMouseDown={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
-        style={{ height: 'calc(100dvh - 80px)' }}
       >
-        <div
-          className="flex flex-col items-center pt-2 pb-3 px-4 cursor-pointer select-none border-b border-slate-50 dark:border-slate-800/50"
-          onClick={cycleState}
-        >
-          <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mb-3" />
+        <div className={`flex-1 flex flex-col overflow-hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl border-r border-slate-200/60 dark:border-slate-800/80 transition-all duration-300 ${
+          sheetState === 'collapsed' ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        }`}>
+          <div className="p-4 border-b border-slate-100 dark:border-slate-800/80 bg-gradient-to-r from-blue-600/5 to-sky-500/5">
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles size={16} className="text-blue-600 dark:text-blue-400" />
+              <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">
+                {selectedCity ? selectedCity.name : t('bottomsheet.titleDefault')}
+              </h2>
+            </div>
 
-          <div className="w-full flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-              <Sparkles size={13} className="text-blue-500" />
-              {selectedCity ? selectedCity.name : t('bottomsheet.titleDefault')}
-            </span>
-            <div className="flex gap-2">
-              {sheetState === 'collapsed' ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            {activeTab === 'routes' && (
+              <input
+                type="text"
+                placeholder={t('bottomsheet.searchRoutePlaceholder')}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full px-4 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 rounded-xl outline-none focus:border-blue-500 transition-all dark:text-white"
+              />
+            )}
+
+            <div className="flex gap-1.5 mt-2 bg-slate-100/80 dark:bg-slate-850 p-1 rounded-xl">
+              {tabs.map((tab) => {
+                const TabIcon = tab.icon;
+                const active = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex-1 flex flex-col items-center py-2 px-1 rounded-lg transition-all ${
+                      active
+                        ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400'
+                    }`}
+                  >
+                    <TabIcon size={14} />
+                    <span className="text-[9px] font-bold mt-1 tracking-tight">{tab.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {activeTab === 'routes' && sheetState !== 'collapsed' && (
-            <input
-              type="text"
-              placeholder={t('bottomsheet.searchRoutePlaceholder')}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (sheetState !== 'expanded') setSheetState('expanded');
-              }}
-              className="w-full px-4 py-2 mt-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 rounded-xl outline-none dark:text-white"
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            <TabContent
+              activeTab={activeTab}
+              uniqueStops={uniqueStops}
+              filteredRoutesList={filteredRoutesList}
+              favoriteRoutes={favoriteRoutes}
+              tripHistory={tripHistory}
+              selectedRoute={selectedRoute}
+              handleSelectRoute={handleSelectRoute}
+              handleSelectStop={handleSelectStop}
+              toggleFavorite={toggleFavorite}
+              favorites={favorites}
+              watchedStop={watchedStop}
+              favDrivers={favDrivers}
+              onRemoveFavDriver={(id) => setFavDrivers(prev => prev.filter(x => x.id !== id))}
+              onSelectFavDriver={onSelectFavDriver}
             />
-          )}
-
-          <div className="flex gap-1.5 mt-3 w-full bg-slate-100/80 dark:bg-slate-850 p-0.5 rounded-xl">
-            {tabs.map((tab) => {
-              const TabIcon = tab.icon;
-              const active = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActiveTab(tab.id);
-                    if (sheetState === 'collapsed') setSheetState('half');
-                  }}
-                  className={`flex-1 flex flex-col items-center py-1.5 rounded-lg transition-all ${
-                    active
-                      ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm'
-                      : 'text-slate-500 dark:text-slate-400'
-                  }`}
-                >
-                  <TabIcon size={14} />
-                  <span className="text-[9px] font-bold mt-1 tracking-tight">{tab.label}</span>
-                </button>
-              );
-            })}
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 pb-12 space-y-3">
-          <TabContent
-            activeTab={activeTab}
-            uniqueStops={uniqueStops}
-            filteredRoutesList={filteredRoutesList}
-            favoriteRoutes={favoriteRoutes}
-            tripHistory={tripHistory}
-            selectedRoute={selectedRoute}
-            handleSelectRoute={handleSelectRoute}
-            handleSelectStop={handleSelectStop}
-            toggleFavorite={toggleFavorite}
-            favorites={favorites}
-            watchedStop={watchedStop}
-            favDrivers={favDrivers}
-            onRemoveFavDriver={(id) => setFavDrivers(prev => prev.filter(x => x.id !== id))}
-            onSelectFavDriver={onSelectFavDriver}
-          />
-        </div>
-    </motion.div>
+        <button
+          onClick={() => {
+            if (sheetState === 'collapsed') setSheetState('half');
+            else setSheetState('collapsed');
+          }}
+          className="w-9 flex-shrink-0 h-12 self-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/60 dark:border-slate-700/80 rounded-r-xl shadow-lg flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer"
+        >
+          {sheetState === 'collapsed' ? <ChevronRight size={16} className="text-slate-500" /> : <ChevronLeft size={16} className="text-slate-500" />}
+        </button>
+      </div>
     </>
   );
 }
@@ -490,11 +509,13 @@ function TabContent({
       );
     }
     return tripHistory.map((trip) => {
-      const isSelected = selectedRoute && selectedRoute.id === trip.route_id;
+      const isPayment = trip.isPayment;
+      const isSelected = !isPayment && selectedRoute && selectedRoute.id === trip.route_id;
       return (
         <div
           key={trip.id}
           onClick={() => {
+            if (isPayment) return;
             handleSelectRoute({
               id: trip.route_id,
               number: trip.route_number,
@@ -503,22 +524,36 @@ function TabContent({
               type: trip.route_type,
             });
           }}
-          className={`flex items-center gap-3 p-3.5 bg-slate-50/60 dark:bg-slate-800/40 rounded-2xl border border-slate-100 dark:border-slate-800/50 hover:bg-slate-100/50 dark:hover:bg-slate-800/70 transition-all cursor-pointer active:scale-[0.98] overflow-hidden ${
+          className={`flex items-center gap-3 p-3.5 bg-slate-50/60 dark:bg-slate-800/40 rounded-2xl border border-slate-100 dark:border-slate-800/50 hover:bg-slate-100/50 dark:hover:bg-slate-800/70 transition-all active:scale-[0.98] overflow-hidden ${
+            isPayment ? 'opacity-80 cursor-default' : 'cursor-pointer'
+          } ${
             isSelected ? 'border-blue-500/50 bg-blue-50/20 dark:bg-blue-500/5' : ''
           }`}
         >
-          <span
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-            style={{ backgroundColor: trip.route_color || '#1565C0' }}
-          >
-            #{trip.route_number}
-          </span>
+          {isPayment ? (
+            <span className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-bold flex-shrink-0 bg-emerald-500">
+              $
+            </span>
+          ) : (
+            <span
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+              style={{ backgroundColor: trip.route_color || '#1565C0' }}
+            >
+              #{trip.route_number}
+            </span>
+          )}
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-xs text-slate-850 dark:text-slate-100 truncate">
-              {trip.route_name || `${t('bottomsheet.routeDefaultName')} #${trip.route_number}`}
+              {isPayment
+                ? (trip.route_name || 'Платеж')
+                : (trip.route_name || `${t('bottomsheet.routeDefaultName')} #${trip.route_number}`)
+              }
             </h3>
             <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
-              {trip.city_name || t('bottomsheet.cityUnknown')} • {trip.route_type === 'minibus' ? t('bottomsheet.minibusLabel') : t('bottomsheet.busLabel')}
+              {isPayment
+                ? `${trip.amount} TJS`
+                : `${trip.city_name || t('bottomsheet.cityUnknown')} • ${trip.route_type === 'minibus' ? t('bottomsheet.minibusLabel') : t('bottomsheet.busLabel')}`
+              }
             </p>
           </div>
           <span className="text-[9px] text-slate-400 font-medium">

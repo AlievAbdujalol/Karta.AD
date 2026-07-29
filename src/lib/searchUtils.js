@@ -45,9 +45,9 @@ function fuzzyMatch(text, query) {
 export async function searchAll(query, options = {}) {
   const { cityId, limit = 8 } = options;
   const q = query.trim();
-  if (!q || q.length < 1) return { routes: [], stops: [], vehicles: [], addresses: [] };
+  if (!q || q.length < 1) return { routes: [], stops: [], vehicles: [], addresses: [], pois: [] };
 
-  const results = { routes: [], stops: [], vehicles: [], addresses: [] };
+  const results = { routes: [], stops: [], vehicles: [], addresses: [], pois: [] };
 
   const promises = [];
 
@@ -150,5 +150,6 @@ export function flattenResults(results) {
   results.stops.forEach(s => all.push(s));
   results.vehicles.forEach(v => all.push(v));
   results.addresses.forEach(a => all.push(a));
+  results.pois?.forEach(p => all.push(p));
   return all;
 }
