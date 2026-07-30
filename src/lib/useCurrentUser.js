@@ -41,6 +41,7 @@ export function useCurrentUser() {
           refreshUser().catch(console.error);
           throw new Error(retry.error.message);
         }
+        await refreshUser();
         return;
       }
 
@@ -48,6 +49,8 @@ export function useCurrentUser() {
       refreshUser().catch(console.error);
       throw new Error(error.message);
     }
+
+    await refreshUser();
   };
 
   return {

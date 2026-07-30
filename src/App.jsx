@@ -15,6 +15,11 @@ const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Reviews = lazy(() => import('./pages/Reviews'));
 const DriverSchedule = lazy(() => import('./pages/DriverSchedule'));
+const TaxiPassenger = lazy(() => import('./pages/TaxiPassenger'));
+const TaxiDriverRegistration = lazy(() => import('./pages/TaxiDriverRegistration'));
+const TaxiDriverDashboard = lazy(() => import('./pages/TaxiDriverDashboard'));
+const TaxiHistory = lazy(() => import('./pages/TaxiHistory'));
+const TaxiFinance = lazy(() => import('./pages/TaxiFinance'));
 
 import ErrorBoundary, { BusMapErrorFallback } from '@/components/ErrorBoundary';
 import { TripProvider } from '@/lib/TripContext';
@@ -53,6 +58,11 @@ const AuthenticatedApp = () => {
           <Route path="/profile" element={<ErrorBoundary><Profile /></ErrorBoundary>} />
           <Route path="/reviews" element={<ErrorBoundary><Reviews /></ErrorBoundary>} />
           <Route path="/driver-schedule" element={<ErrorBoundary><DriverSchedule /></ErrorBoundary>} />
+          <Route path="/taxi" element={<ErrorBoundary><TaxiPassenger /></ErrorBoundary>} />
+          <Route path="/taxi/register" element={<ErrorBoundary><TaxiDriverRegistration /></ErrorBoundary>} />
+          <Route path="/taxi/driver" element={<ErrorBoundary><TaxiDriverDashboard /></ErrorBoundary>} />
+          <Route path="/taxi/history" element={<ErrorBoundary><TaxiHistory /></ErrorBoundary>} />
+          <Route path="/taxi/finance" element={<ErrorBoundary><TaxiFinance /></ErrorBoundary>} />
         </Route>
         <Route path="*" element={<PageNotFound />} />
       </Routes>

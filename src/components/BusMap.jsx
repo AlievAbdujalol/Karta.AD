@@ -4,10 +4,11 @@ import L from 'leaflet';
 import { useEffect, useMemo, useRef, useState, useCallback, Fragment } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, Circle, ScaleControl, useMap, useMapEvents } from 'react-leaflet';
 import MapControls, { TILE_LAYERS, LABEL_OVERLAY_URL } from './MapControls';
+import RoutingPanel from './RoutingPanel';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { supabase } from '@/api/supabase';
 import { toast } from 'sonner';
-import { Heart, Navigation } from 'lucide-react';
+import { Heart, X, Crosshair, MapPin, Loader2, Check } from 'lucide-react';
 import { useLanguage } from '@/lib/useLanguage';
 import { TripLog } from '@/api/entities';
 
@@ -56,13 +57,14 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-function MapController({ center }) {
+function MapController({ center, mapRef }) {
   const map = useMap();
   const lat = center?.[0];
   const lng = center?.[1];
   useEffect(() => {
+    mapRef.current = map;
     if (lat && lng) map.setView([lat, lng], 13);
-  }, [lat, lng]);
+  }, [lat, lng, map, mapRef]);
   return null;
 }
 
@@ -393,87 +395,258 @@ async function snapToRoad(lat, lng) {
   return { lat, lng };
 }
 
-// Map click handler for route finder mode
-function ClickHandler({ finderActive, onFinderClick }) {
-  useMapEvents({
-    click(e) {
-      if (finderActive) onFinderClick(e.latlng);
-    },
-  });
-  return null;
-}
-
-export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [] }) {
+export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen }) {
   const [tileIndex, setTileIndex] = useState(0);
   const [showLabels, setShowLabels] = useState(true);
-  const [finderActive, setFinderActive] = useState(false);
-  const [finderResult, setFinderResult] = useState(null);
+  const [routingOpen, setRoutingOpen] = useState(false);
+  const [routingRoute, setRoutingRoute] = useState(null);
+  const [mapPickTarget, setMapPickTarget] = useState(null);
+  const [mapPickResult, setMapPickResult] = useState(null);
   const [routeGeometries, setRouteGeometries] = useState({});
   const getEtaLabel = (vehicle) => getNextStopEta(vehicle, route) || null;
   const { t } = useLanguage();
+  const { user } = useCurrentUser();
+  const mapRef = useRef(null);
 
-  // Route finder mode: find nearest route with wait time
-  const handleFinderToggle = useCallback(() => {
-    setFinderActive(prev => !prev);
-    if (finderActive) {
-      setFinderResult(null);
-    }
-  }, [finderActive]);
-
-  const handleFinderClick = useCallback((latlng) => {
-    setFinderActive(false);
-
-    const results = [];
-    (routes || []).forEach(r => {
-      if (!r.stops || !Array.isArray(r.stops) || r.stops.length === 0) return;
-      let nearestStop = null;
-      let minDist = Infinity;
-      r.stops.forEach(s => {
-        if (!s.lat || !s.lng) return;
-        const d = distM(latlng.lat, latlng.lng, s.lat, s.lng);
-        if (d < minDist) { minDist = d; nearestStop = s; }
-      });
-      if (!nearestStop) return;
-      const routeVehicles = (vehicles || []).filter(v =>
-        (v.route_id === r.id || v.route_number === r.number) && v.lat && v.lng
+  const handleMapPick = useCallback(async (data) => {
+    let name = `${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}`;
+    let display_name = name;
+    let city = '';
+    let country = '';
+    try {
+      const resp = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${data.lat}&lon=${data.lng}&accept-language=ru`,
+        { headers: { 'User-Agent': 'KartaAD/1.0' }, signal: AbortSignal.timeout(3000) }
       );
-      let nearestVehicle = null;
-      let vehicleDist = Infinity;
-      routeVehicles.forEach(v => {
-        const d = distM(nearestStop.lat, nearestStop.lng, v.lat, v.lng);
-        if (d < vehicleDist) { vehicleDist = d; nearestVehicle = v; }
-      });
-      let etaMinutes = null;
-      if (nearestVehicle) {
-        const distKm = vehicleDist / 1000;
-        const speedKmh = nearestVehicle.speed > 2 ? nearestVehicle.speed : 20;
-        etaMinutes = Math.max(1, Math.round((distKm / speedKmh) * 60));
+      if (resp.ok) {
+        const respData = await resp.json();
+        display_name = respData.display_name || name;
+        if (respData.display_name) {
+          const parts = respData.display_name.split(',');
+          name = parts.slice(0, 2).join(',');
+        }
+        if (respData.address) {
+          city = respData.address.city || respData.address.town || respData.address.village || respData.address.municipality || '';
+          country = respData.address.country || '';
+        }
       }
-      results.push({
-        route: r,
-        stop: nearestStop,
-        stopDist: Math.round(minDist),
-        vehicle: nearestVehicle,
-        vehicleDist: Math.round(vehicleDist),
-        etaMinutes,
-      });
+    } catch {}
+    const result = { lat: data.lat, lng: data.lng, name, shortName: name, display_name, city, country, target: data.target };
+    setMapPickResult(result);
+    setMapPickTarget(null);
+  }, []);
+
+  const handleLocateMe = useCallback(() => {
+    if (!navigator.geolocation) { toast.error('Не удалось определить местоположение.'); return; }
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        if (mapRef.current) mapRef.current.flyTo([lat, lng], 16, { animate: true, duration: 0.8 });
+        let name = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        let display_name = name;
+        let city = '', country = '';
+        try {
+          const resp = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=ru`,
+            { headers: { 'User-Agent': 'KartaAD/1.0' }, signal: AbortSignal.timeout(3000) }
+          );
+          if (resp.ok) {
+            const data = await resp.json();
+            display_name = data.display_name || name;
+            if (data.display_name) {
+              const parts = data.display_name.split(',');
+              name = parts.slice(0, 2).join(',');
+            }
+            city = data.address?.city || data.address?.town || data.address?.village || data.address?.municipality || '';
+            country = data.address?.country || '';
+          }
+        } catch {}
+        setMapPickResult({ lat, lng, name, shortName: name, display_name, city, country, target: 'from' });
+        setMapPickTarget(null);
+      },
+      () => toast.error('Не удалось определить местоположение.'),
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  }, []);
+
+  const handleLocateAndPick = useCallback((target) => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (mapRef.current) mapRef.current.flyTo([pos.coords.latitude, pos.coords.longitude], 16, { animate: true, duration: 0.5 });
+        setMapPickTarget(target);
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 5000 }
+    );
+  }, []);
+
+  const handleFinderToggle = useCallback(() => {
+    setRoutingOpen(prev => {
+      const opening = !prev;
+      if (opening && onRoutingOpen) onRoutingOpen();
+      return opening;
+    });
+    if (routingOpen) { setRoutingRoute(null); setMapPickTarget(null); }
+  }, [routingOpen, onRoutingOpen]);
+
+  function MapPickerOverlay({ target, onPick, onCancel }) {
+    const map = useMap();
+    const [centerLatLng, setCenterLatLng] = useState(map.getCenter());
+    const [address, setAddress] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const geocodeTimerRef = useRef(null);
+
+    useMapEvents({
+      moveend() {
+        setCenterLatLng(map.getCenter());
+      },
     });
 
-    results.sort((a, b) => a.stopDist - b.stopDist);
-    const top = results.slice(0, 3);
-    setFinderResult({ point: latlng, results: top, best: top[0] || null });
-  }, [routes, vehicles]);
+    useEffect(() => {
+      if (geocodeTimerRef.current) clearTimeout(geocodeTimerRef.current);
+      setLoading(true);
+      geocodeTimerRef.current = setTimeout(async () => {
+        try {
+          const resp = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${centerLatLng.lat}&lon=${centerLatLng.lng}&accept-language=ru`,
+            { headers: { 'User-Agent': 'KartaAD/1.0' }, signal: AbortSignal.timeout(3000) }
+          );
+          if (resp.ok) {
+            const data = await resp.json();
+            let name = data.display_name ? data.display_name.split(',').slice(0, 2).join(',') : `${centerLatLng.lat.toFixed(5)}, ${centerLatLng.lng.toFixed(5)}`;
+            let city = data.address?.city || data.address?.town || data.address?.village || data.address?.municipality || '';
+            let country = data.address?.country || '';
+            setAddress({
+              name,
+              display_name: data.display_name || name,
+              city,
+              country,
+              lat: centerLatLng.lat,
+              lng: centerLatLng.lng,
+            });
+          }
+        } catch {}
+        setLoading(false);
+      }, 400);
+      return () => { if (geocodeTimerRef.current) clearTimeout(geocodeTimerRef.current); };
+    }, [centerLatLng.lat, centerLatLng.lng]);
 
-  const finderIcon = L.divIcon({
-    html: `<div style="position:relative;width:36px;height:36px;">
-      <div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-top:14px solid #7c3aed;"></div>
-      <div style="position:absolute;top:0;left:50%;transform:translateX(-50%);width:18px;height:18px;border-radius:50%;background:#7c3aed;border:3px solid #fff;box-shadow:0 2px 8px rgba(124,58,237,0.5);display:flex;align-items:center;justify-content:center;">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+    const handleMyLocation = () => {
+      if (!navigator.geolocation) return;
+      navigator.geolocation.getCurrentPosition(
+        (pos) => onPick({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => { setAddress(prev => prev ? { ...prev } : null); setLoading(false); },
+        { enableHighAccuracy: true, timeout: 5000 }
+      );
+    };
+
+    const handleConfirm = () => {
+      onPick(centerLatLng);
+    };
+
+    return (
+      <div className="absolute inset-0 z-[999]">
+        <div className="absolute inset-0 bg-black/5 pointer-events-none" />
+
+        <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+          <div className="relative w-14 h-14">
+            <svg viewBox="0 0 48 48" className="w-full h-full drop-shadow-xl" style={{ filter: 'drop-shadow(0 2px 8px rgba(37,99,235,0.4))' }}>
+              <circle cx="24" cy="24" r="16" fill="none" stroke="#2563EB" strokeWidth="2.5" opacity="0.3" />
+              <circle cx="24" cy="24" r="10" fill="none" stroke="#2563EB" strokeWidth="2.5" />
+              <circle cx="24" cy="24" r="3" fill="#2563EB" />
+              <line x1="24" y1="0" x2="24" y2="10" stroke="#2563EB" strokeWidth="3" strokeLinecap="round" />
+              <line x1="24" y1="38" x2="24" y2="48" stroke="#2563EB" strokeWidth="3" strokeLinecap="round" />
+              <line x1="0" y1="24" x2="10" y2="24" stroke="#2563EB" strokeWidth="3" strokeLinecap="round" />
+              <line x1="38" y1="24" x2="48" y2="24" stroke="#2563EB" strokeWidth="3" strokeLinecap="round" />
+            </svg>
+          </div>
+        </div>
+
+        {/* Address info */}
+        <div className="absolute bottom-32 left-4 right-4 pointer-events-auto">
+          <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-xl border border-slate-200/60 p-4">
+            {loading ? (
+              <div className="flex items-center gap-2.5">
+                <Loader2 size={15} className="animate-spin text-blue-500" />
+                <span className="text-xs font-medium text-slate-400">Определение адреса...</span>
+              </div>
+            ) : address ? (
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <MapPin size={14} className="text-blue-600 flex-shrink-0" />
+                  <p className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{address.name || 'Без названия'}</p>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 ml-6 truncate">{address.display_name}</p>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 ml-6 mt-1 font-mono">
+                  {centerLatLng.lat.toFixed(6)}, {centerLatLng.lng.toFixed(6)}
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2.5">
+                <MapPin size={15} className="text-slate-400" />
+                <span className="text-xs font-medium text-slate-400">Переместите карту для выбора</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Моё местоположение */}
+        <div className="absolute bottom-8 left-4 pointer-events-auto">
+          <button
+            onClick={handleMyLocation}
+            className="w-12 h-12 rounded-full bg-white/95 dark:bg-slate-900/95 shadow-xl border border-slate-200/60 flex items-center justify-center hover:bg-white transition-all active:scale-95"
+          >
+            <Crosshair size={18} className="text-blue-600" />
+          </button>
+        </div>
+
+        {/* Green confirm button */}
+        <div className="absolute bottom-8 right-4 pointer-events-auto">
+          <button
+            onClick={handleConfirm}
+            disabled={loading}
+            className="w-14 h-14 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white shadow-xl shadow-emerald-500/30 flex items-center justify-center transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Check size={26} strokeWidth={3} />
+          </button>
+        </div>
+
+        {/* Cancel */}
+        <div className="absolute top-4 right-20 pointer-events-auto">
+          <button
+            onClick={onCancel}
+            className="w-10 h-10 rounded-full bg-white/95 dark:bg-slate-900/95 shadow-lg border border-slate-200/60 flex items-center justify-center hover:bg-white transition-all"
+          >
+            <X size={16} className="text-slate-600" />
+          </button>
+        </div>
       </div>
+    );
+  }
+
+  const routingIcon = L.divIcon({
+    html: `<div style="position:relative;width:24px;height:24px;">
+      <div style="width:24px;height:24px;border-radius:50%;background:#2563EB;border:3px solid #fff;box-shadow:0 2px 8px rgba(37,99,235,0.5);"></div>
     </div>`,
     className: '',
-    iconSize: [36, 36],
-    iconAnchor: [18, 36],
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
+
+  const routingFromIcon = L.divIcon({
+    html: `<div style="width:20px;height:20px;border-radius:50%;background:#22c55e;border:3px solid #fff;box-shadow:0 2px 8px rgba(34,197,94,0.5);"></div>`,
+    className: '',
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+  });
+
+  const routingToIcon = L.divIcon({
+    html: `<div style="width:20px;height:20px;border-radius:50%;background:#ef4444;border:3px solid #fff;box-shadow:0 2px 8px rgba(239,68,68,0.5);"></div>`,
+    className: '',
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
   });
 
   const isHybrid = tileIndex === 1;
@@ -527,10 +700,9 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         attribution=""
         url={TILE_LAYERS[tileIndex].url}
       />
-      <MapController center={center} />
+      <MapController center={center} mapRef={mapRef} />
       <FlyToHandler flyTo={flyTo} onDone={onFlyDone} />
-      <ClickHandler finderActive={finderActive} onFinderClick={handleFinderClick} />
-      <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={finderActive} onFinderToggle={handleFinderToggle} />
+      {!mapPickTarget && <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={routingOpen} onFinderToggle={handleFinderToggle} />}
       <ScaleControl position="bottomleft" imperial={false} metric={true} />
 
       {showLabels && (
@@ -645,73 +817,54 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
 
 
 
-      {/* Route finder result */}
-      {finderResult && (
-        <Marker position={[finderResult.point.lat, finderResult.point.lng]} icon={finderIcon}>
-          <Popup maxWidth={320} className="finder-popup">
-            <div style={{ fontFamily: 'Inter, sans-serif', minWidth: 200 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: '#4c1d95', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Navigation size={14} />
-                {t('routeFinder.nearestRoute')}
-              </div>
-              {finderResult.best ? (
-                <>
-                  {finderResult.results.map((res, i) => (
-                    <div key={res.route.id} style={{
-                      background: i === 0 ? '#f5f3ff' : 'transparent',
-                      borderRadius: 8, padding: i === 0 ? '8px 10px' : '6px 10px',
-                      marginBottom: i === 0 ? 6 : 0,
-                      border: i === 0 ? '1.5px solid #ddd6fe' : 'none',
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                        <span style={{
-                          display: 'inline-block', padding: '1px 8px', borderRadius: 5,
-                          background: res.route.color || '#7c3aed', color: '#fff',
-                          fontSize: 11, fontWeight: 800,
-                        }}>
-                          #{res.route.number}
-                        </span>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: '#374151', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {res.route.name || t('routeFinder.routeNumber')}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', fontSize: 11, color: '#6b7280' }}>
-                        <span>🚏 {res.stop.name || t('busmap.stopDefaultName')} <strong>{res.stopDist} {t('routeFinder.meters')}</strong></span>
-                        {res.etaMinutes ? (
-                          <span>⏱ {t('routeFinder.waitTime')} ~<strong>{res.etaMinutes} {t('routeFinder.minutes')}</strong></span>
-                        ) : (
-                          <span style={{ color: '#9ca3af' }}>{t('routeFinder.noVehicles')}</span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  {finderResult.results.length === 0 && (
-                    <div style={{ fontSize: 12, color: '#9ca3af', padding: '4px 0' }}>{t('routeFinder.noRoutesFound')}</div>
-                  )}
-                </>
-              ) : (
-                <div style={{ fontSize: 12, color: '#9ca3af', padding: '4px 0' }}>{t('routeFinder.noRoutesFound')}</div>
-              )}
-              <div style={{ marginTop: 6, fontSize: 10, color: '#d1d5db', textAlign: 'right' }}>
-                {finderResult.point.lat.toFixed(4)}, {finderResult.point.lng.toFixed(4)}
-              </div>
-            </div>
-          </Popup>
-        </Marker>
+      {/* Built route polyline + markers */}
+      {routingRoute && routingRoute.geometry && (
+        <>
+          <Polyline
+            positions={routingRoute.geometry}
+            color={routingRoute.mode === 'walking' ? '#7C3AED' : routingRoute.mode === 'cycling' ? '#059669' : '#2563EB'}
+            weight={6}
+            opacity={0.8}
+          />
+          {routingRoute.from && (
+            <Marker position={[routingRoute.from.lat, routingRoute.from.lng]} icon={routingFromIcon}>
+              <Popup><div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>📍 {routingRoute.from.shortName || 'Откуда'}</div></Popup>
+            </Marker>
+          )}
+          {routingRoute.to && (
+            <Marker position={[routingRoute.to.lat, routingRoute.to.lng]} icon={routingToIcon}>
+              <Popup><div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>🏁 {routingRoute.to.shortName || 'Куда'}</div></Popup>
+            </Marker>
+          )}
+          {routingRoute.waypoints && routingRoute.waypoints.filter(Boolean).map((wp, i) => (
+            <Marker key={`wp-${i}`} position={[wp.lat, wp.lng]} icon={routingIcon}>
+              <Popup><div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>➕ {wp.shortName || `Точка ${i + 1}`}</div></Popup>
+            </Marker>
+          ))}
+        </>
       )}
 
-      {/* Route finder hint overlay */}
-      {finderActive && (
-        <div style={{
-          position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
-          zIndex: 1000, background: 'rgba(124,58,237,0.9)', color: '#fff',
-          padding: '8px 16px', borderRadius: 12, fontSize: 12, fontWeight: 600,
-          display: 'flex', alignItems: 'center', gap: 8, pointerEvents: 'none',
-          backdropFilter: 'blur(8px)', whiteSpace: 'nowrap',
-        }}>
-          <Navigation size={14} />
-          {t('routeFinder.hint')}
-        </div>
+      {/* Routing panel */}
+      {routingOpen && (
+        <RoutingPanel
+          onClose={() => { setRoutingOpen(false); setRoutingRoute(null); setMapPickTarget(null); setMapPickResult(null); }}
+          onRouteBuilt={(route) => setRoutingRoute(route)}
+          mapCenter={center}
+          user={user}
+          onRequestMapPick={setMapPickTarget}
+          onLocateAndPick={handleLocateAndPick}
+          onLocateMe={handleLocateMe}
+          mapPickTarget={mapPickTarget}
+          mapPickResult={mapPickResult}
+        />
+      )}
+
+      {mapPickTarget && (
+        <MapPickerOverlay
+          target={mapPickTarget}
+          onPick={(latlng) => handleMapPick({ lat: latlng.lat, lng: latlng.lng, target: mapPickTarget })}
+          onCancel={() => { setMapPickTarget(null); setMapPickResult(null); }}
+        />
       )}
 
       <UserLocationMarker />

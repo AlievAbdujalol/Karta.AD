@@ -3,7 +3,8 @@ import { City, Vehicle } from '@/api/entities';
 import { useLanguage, LANG_KEY } from '@/lib/useLanguage';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useAuth } from '@/lib/AuthContext';
-import { User, Save, Heart, History, Camera, Loader2, LogOut, ChevronDown, Search, Wallet } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { User, Save, Heart, History, Camera, Loader2, LogOut, ChevronDown, Search, Wallet, Car } from 'lucide-react';
 import FavoriteRoutes from '@/components/profile/FavoriteRoutes';
 import TripHistory from '@/components/profile/TripHistory';
 import { toast } from 'sonner';
@@ -100,6 +101,7 @@ function CountryCodePicker({ value, onChange, t }) {
 
 export default function Profile() {
   const { t, lang, setLang } = useLanguage();
+  const navigate = useNavigate();
   const { user, refetch, update } = useCurrentUser();
   const { logout } = useAuth();
   const [cities, setCities] = useState([]);
@@ -119,6 +121,33 @@ export default function Profile() {
   const [bioForm, setBioForm] = useState('');
   const [profileTab, setProfileTab] = useState('settings');
   const [countryCode, setCountryCode] = useState('+992');
+  const [taxiDriver, setTaxiDriver] = useState(null);
+  const [taxiVehicle, setTaxiVehicle] = useState(null);
+  const [taxiEdit, setTaxiEdit] = useState({});
+  const [taxiSaving, setTaxiSaving] = useState(false);
+  const [taxiTab, setTaxiTab] = useState('info');
+
+  const TAXI_CATEGORIES = { economy: 'Эконом', comfort: 'Комфорт', comfort_plus: 'Комфорт+', minivan: 'Минивэн', business: 'Бизнес', electric: 'Электро', women: 'Для женщин', cargo: 'Грузовое' };
+  const CAR_TYPES = ['Седан', 'Хэтчбек', 'Универсал', 'Минивэн', 'Внедорожник', 'Купе', 'Пикап', 'Электромобиль'];
+
+  useEffect(() => {
+    if (user?.id && user?.role === 'taxi_driver') {
+      supabase.from('taxi_drivers').select('*').eq('user_id', user.id).single().then(({ data }) => {
+        if (data) {
+          setTaxiDriver(data);
+          setTaxiEdit({
+            full_name: data.full_name || '',
+            phone: data.phone || '',
+            city: data.city || '',
+            email: data.email || '',
+          });
+        }
+      });
+      supabase.from('taxi_vehicles').select('*').eq('driver_id', user.id).order('created_at', { ascending: false }).limit(1).single().then(({ data }) => {
+        if (data) setTaxiVehicle(data);
+      });
+    }
+  }, [user?.id, user?.role]);
 
   useEffect(() => {
     if (user?.id) {
@@ -250,9 +279,10 @@ export default function Profile() {
     if (!hasActiveSub) {
       if (newRole === 'driver') fee = 20;
       if (newRole === 'admin') fee = user?.admin_activated ? 25 : 100;
+      if (newRole === 'taxi_driver') fee = 25;
     }
 
-    const roleName = newRole === 'passenger' ? t('profile.rolePassenger') : newRole === 'driver' ? t('profile.roleDriver') : t('profile.roleAdmin');
+    const roleName = newRole === 'passenger' ? t('profile.rolePassenger') : newRole === 'driver' ? t('profile.roleDriver') : newRole === 'taxi_driver' ? 'Такси водитель' : t('profile.roleAdmin');
     const confirmed = window.confirm(
       `${t('profile.changeRoleConfirmTitle')} "${roleName}"?\n` +
       (fee > 0 ? `\n${t('profile.costLabel')} ${fee} TJS\n${t('profile.balanceLabel')} ${Number(user?.balance || 0).toFixed(2)} TJS` : `\n${t('profile.subscriptionActiveFree')}`)
@@ -283,10 +313,13 @@ export default function Profile() {
       if (newRole === 'driver') {
         dbUpdates.driver_status = 'pending';
       }
+      if (newRole === 'taxi_driver') {
+        dbUpdates.driver_status = 'approved';
+      }
 
       await update(dbUpdates);
 
-      setForm(prev => ({ ...prev, role: newRole, driver_status: newRole === 'driver' ? 'pending' : prev.driver_status }));
+      setForm(prev => ({ ...prev, role: newRole, driver_status: newRole === 'driver' ? 'pending' : newRole === 'taxi_driver' ? 'approved' : prev.driver_status }));
       
       toast.success(
         newRole === 'passenger'
@@ -295,6 +328,10 @@ export default function Profile() {
           ? `${t('profile.subscriptionActivated')} ${fee} TJS.`
           : t('profile.roleChangedSubscriptionActive')
       );
+
+      if (newRole === 'taxi_driver') {
+        navigate('/taxi/register');
+      }
     } catch (err) {
       console.error('[Profile] role change error:', err);
       toast.error(err.message || t('profile.roleChangeError'));
@@ -323,6 +360,45 @@ export default function Profile() {
       console.error('[Profile] renew error:', err);
       toast.error(err.message || t('profile.subscriptionRenewError'));
     }
+  };
+
+  const handleTaxiSave = async () => {
+    setTaxiSaving(true);
+    try {
+      const updates = {
+        full_name: taxiEdit.full_name,
+        phone: taxiEdit.phone,
+        city: taxiEdit.city,
+        email: taxiEdit.email,
+      };
+      await supabase.from('taxi_drivers').update(updates).eq('user_id', user.id);
+      setTaxiDriver(prev => ({ ...prev, ...updates }));
+      toast.success('Данные водителя обновлены');
+    } catch (err) {
+      toast.error('Ошибка сохранения');
+    }
+    setTaxiSaving(false);
+  };
+
+  const handleTaxiVehicleSave = async () => {
+    if (!taxiVehicle?.id) return;
+    setTaxiSaving(true);
+    try {
+      await supabase.from('taxi_vehicles').update({
+        make: taxiVehicle.make,
+        model: taxiVehicle.model,
+        year: parseInt(taxiVehicle.year) || null,
+        color: taxiVehicle.color,
+        plate_number: taxiVehicle.plate_number,
+        body_type: taxiVehicle.body_type,
+        seats: parseInt(taxiVehicle.seats) || 4,
+        category: taxiVehicle.category,
+      }).eq('id', taxiVehicle.id);
+      toast.success('Данные автомобиля обновлены');
+    } catch (err) {
+      toast.error('Ошибка сохранения');
+    }
+    setTaxiSaving(false);
   };
 
   const statusInfo = {
@@ -590,6 +666,241 @@ export default function Profile() {
                 )}
               </div>
 
+              {/* Taxi Driver Card */}
+              {user?.role === 'taxi_driver' ? (
+                <div
+                  onClick={() => navigate('/taxi/driver')}
+                  className="relative rounded-xl border-2 p-3.5 cursor-pointer transition-all border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-2xl">🚕</span>
+                      <div>
+                        <p className="text-sm font-bold text-gray-800 dark:text-gray-100">Такси водитель</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Вы на линии</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-xs font-bold px-2.5 py-1 rounded-full">
+                        Активно
+                      </span>
+                      <span className="w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-white text-[10px]">✓</span>
+                    </div>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-emerald-200 dark:border-emerald-700/40">
+                    <p className="text-[11px] text-emerald-600 dark:text-emerald-400">Перейти к панели водителя</p>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onClick={() => {
+                    if (form.role !== 'taxi_driver') {
+                      handleRoleChange('taxi_driver');
+                    }
+                  }}
+                  className={`relative rounded-xl border-2 p-3.5 cursor-pointer transition-all ${
+                    form.role === 'taxi_driver'
+                      ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
+                      : 'border-gray-100 dark:border-gray-700 hover:border-emerald-200 dark:hover:border-emerald-700 bg-gray-50 dark:bg-gray-700/40'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-2xl">🚕</span>
+                      <div>
+                        <p className="text-sm font-bold text-gray-800 dark:text-gray-100">Такси водитель</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">25 TJS/мес · Автоодобрение</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-xs font-bold px-2.5 py-1 rounded-full">
+                        25 TJS
+                      </span>
+                      {form.role === 'taxi_driver' && (
+                        <span className="w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-white text-[10px]">✓</span>
+                      )}
+                    </div>
+                  </div>
+                  {form.role === 'taxi_driver' && (
+                    <div className="mt-2 pt-2 border-t border-emerald-200 dark:border-emerald-700/40 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <p className={`text-[11px] font-semibold ${
+                          user?.subscription_status === 'active' ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'
+                        }`}>
+                          {user?.subscription_status === 'active' ? 'Подписка активна' : 'Подписка неактивна'}
+                        </p>
+                        {user?.subscription_paid_until && (
+                          <p className="text-[10px] text-gray-400">
+                            до {new Date(user.subscription_paid_until).toLocaleDateString(lang === 'tg' ? 'tg-TJ' : lang)}
+                          </p>
+                        )}
+                      </div>
+                      {user?.subscription_status !== 'active' && (
+                        <button
+                          type="button"
+                          onClick={async (e) => { e.stopPropagation(); await handleRenewSubscription(); }}
+                          className="w-full text-center text-[11px] bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg py-1.5 font-semibold transition-all"
+                        >
+                          Продлить подписку
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); navigate('/taxi/driver'); }}
+                        className="w-full text-center text-[11px] bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-lg py-1.5 font-semibold transition-all"
+                      >
+                        Панель водителя
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Taxi Driver Editable Data — only when role is taxi_driver */}
+              {form.role === 'taxi_driver' && taxiDriver && (
+                <div className="rounded-xl border-2 border-emerald-200 dark:border-emerald-800 bg-white dark:bg-gray-800 p-4 space-y-4" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Car size={16} className="text-emerald-600" />
+                    <p className="text-sm font-bold text-gray-800 dark:text-gray-100">Данные водителя</p>
+                  </div>
+
+                  <div className="flex bg-gray-100 dark:bg-gray-700 rounded-xl p-1 gap-1">
+                    {[
+                      { id: 'info', label: 'Водитель' },
+                      { id: 'car', label: 'Авто' },
+                      { id: 'docs', label: 'Документы' },
+                    ].map(({ id, label }) => (
+                      <button key={id} onClick={() => setTaxiTab(id)}
+                        className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${taxiTab === id ? 'bg-emerald-500 text-white shadow' : 'text-gray-500 hover:text-gray-800'}`}
+                      >{label}</button>
+                    ))}
+                  </div>
+
+                  {taxiTab === 'info' && (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">ФИО</label>
+                        <input value={taxiEdit.full_name} onChange={e => setTaxiEdit({ ...taxiEdit, full_name: e.target.value })}
+                          className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-xs bg-white dark:bg-gray-700 dark:text-gray-100" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">Телефон</label>
+                        <input value={taxiEdit.phone} onChange={e => setTaxiEdit({ ...taxiEdit, phone: e.target.value })}
+                          className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-xs bg-white dark:bg-gray-700 dark:text-gray-100" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">Город</label>
+                        <input value={taxiEdit.city} onChange={e => setTaxiEdit({ ...taxiEdit, city: e.target.value })}
+                          className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-xs bg-white dark:bg-gray-700 dark:text-gray-100" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">Email</label>
+                        <input value={taxiEdit.email} onChange={e => setTaxiEdit({ ...taxiEdit, email: e.target.value })}
+                          className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-xs bg-white dark:bg-gray-700 dark:text-gray-100" />
+                      </div>
+                      <button onClick={handleTaxiSave} disabled={taxiSaving}
+                        className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all disabled:opacity-60">
+                        {taxiSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                        {taxiSaving ? 'Сохранение...' : 'Сохранить'}
+                      </button>
+                    </div>
+                  )}
+
+                  {taxiTab === 'car' && taxiVehicle && (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase">Марка</label>
+                          <input value={taxiVehicle.make || ''} onChange={e => setTaxiVehicle({ ...taxiVehicle, make: e.target.value })}
+                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-xs bg-white dark:bg-gray-700 dark:text-gray-100" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase">Модель</label>
+                          <input value={taxiVehicle.model || ''} onChange={e => setTaxiVehicle({ ...taxiVehicle, model: e.target.value })}
+                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-xs bg-white dark:bg-gray-700 dark:text-gray-100" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase">Год</label>
+                          <input value={taxiVehicle.year || ''} onChange={e => setTaxiVehicle({ ...taxiVehicle, year: e.target.value })}
+                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-xs bg-white dark:bg-gray-700 dark:text-gray-100" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase">Цвет</label>
+                          <input value={taxiVehicle.color || ''} onChange={e => setTaxiVehicle({ ...taxiVehicle, color: e.target.value })}
+                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-xs bg-white dark:bg-gray-700 dark:text-gray-100" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase">Госномер</label>
+                          <input value={taxiVehicle.plate_number || ''} onChange={e => setTaxiVehicle({ ...taxiVehicle, plate_number: e.target.value })}
+                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-xs bg-white dark:bg-gray-700 dark:text-gray-100" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase">Мест</label>
+                          <select value={taxiVehicle.seats || 4} onChange={e => setTaxiVehicle({ ...taxiVehicle, seats: e.target.value })}
+                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-xs bg-white dark:bg-gray-700 dark:text-gray-100">
+                            {[2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">Тип кузова</label>
+                        <select value={taxiVehicle.body_type || ''} onChange={e => setTaxiVehicle({ ...taxiVehicle, body_type: e.target.value })}
+                          className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-xs bg-white dark:bg-gray-700 dark:text-gray-100">
+                          <option value="">Не указан</option>
+                          {CAR_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">Категория</label>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {Object.entries(TAXI_CATEGORIES).map(([key, label]) => (
+                            <button key={key} onClick={() => setTaxiVehicle({ ...taxiVehicle, category: key })}
+                              className={`px-2 py-1.5 rounded-lg border text-[10px] font-medium transition-all ${
+                                taxiVehicle.category === key ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700' : 'border-gray-200 dark:border-gray-700 text-gray-500'
+                              }`}
+                            >{label}</button>
+                          ))}
+                        </div>
+                      </div>
+                      <button onClick={handleTaxiVehicleSave} disabled={taxiSaving}
+                        className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all disabled:opacity-60">
+                        {taxiSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                        {taxiSaving ? 'Сохранение...' : 'Сохранить авто'}
+                      </button>
+                    </div>
+                  )}
+
+                  {taxiTab === 'docs' && (
+                    <div className="space-y-2">
+                      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 space-y-1">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Водительское удостоверение</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-300">{taxiDriver.license_number || 'Не указан'}</p>
+                      </div>
+                      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 space-y-1">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Статус верификации</p>
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${taxiDriver.is_verified ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {taxiDriver.is_verified ? 'Верифицирован' : 'Ожидает проверки'}
+                        </span>
+                      </div>
+                      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 space-y-1">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Рейтинг</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-300">★ {taxiDriver.rating?.toFixed(1) || '5.0'} · {taxiDriver.rating_count || 0} оценок · {taxiDriver.rides_count || 0} поездок</p>
+                      </div>
+                      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 space-y-1">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Статус на линии</p>
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${taxiDriver.status === 'online' || taxiDriver.status === 'free' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {taxiDriver.status === 'online' || taxiDriver.status === 'free' ? 'На линии' : 'Оффлайн'}
+                        </span>
+                      </div>
+                      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 space-y-1">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Выплаты</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-300">{taxiDriver.bank_details?.details || 'Не указан'}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div
                 onClick={() => {
                   if (form.role !== 'admin') {
@@ -669,19 +980,21 @@ export default function Profile() {
             </div>
           </div>
 
-          <div>
-            <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5 block">{t('city')}</label>
-            <select
-              value={form.city_id}
-              onChange={e => setForm({ ...form, city_id: e.target.value })}
-              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-sm bg-white dark:bg-gray-700 dark:text-gray-100"
-            >
-              <option value="">{t('selectCity')}</option>
-              {cities.map(c => (
-                <option key={c.id} value={c.id}>{c.name}, {c.country}</option>
-              ))}
-            </select>
-          </div>
+          {form.role !== 'taxi_driver' && (
+            <div>
+              <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5 block">{t('city')}</label>
+              <select
+                value={form.city_id}
+                onChange={e => setForm({ ...form, city_id: e.target.value })}
+                className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-sm bg-white dark:bg-gray-700 dark:text-gray-100"
+              >
+                <option value="">{t('selectCity')}</option>
+                {cities.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}, {c.country}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {form.role === 'driver' && (
             <div>
@@ -729,19 +1042,21 @@ export default function Profile() {
             </div>
           )}
 
-          <div>
-            <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5 block">{t('phone')}</label>
-            <div className="flex gap-2">
-              <CountryCodePicker value={countryCode} onChange={setCountryCode} t={t} />
-              <input
-                type="tel"
-                value={form.phone}
-                onChange={e => setForm({ ...form, phone: e.target.value.replace(/[^\d\s\-]/g, '') })}
-                className="flex-1 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-400"
-                placeholder="00 000 0000"
-              />
+          {form.role !== 'taxi_driver' && (
+            <div>
+              <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5 block">{t('phone')}</label>
+              <div className="flex gap-2">
+                <CountryCodePicker value={countryCode} onChange={setCountryCode} t={t} />
+                <input
+                  type="tel"
+                  value={form.phone}
+                  onChange={e => setForm({ ...form, phone: e.target.value.replace(/[^\d\s\-]/g, '') })}
+                  className="flex-1 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-400"
+                  placeholder="00 000 0000"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           <button
             onClick={handleSave}
