@@ -3,14 +3,14 @@ import { City, Route, Vehicle } from '@/api/entities';
 import { supabase } from '@/api/supabase';
 import { useLanguage } from '@/lib/useLanguage';
 import { useCurrentUser } from '@/lib/useCurrentUser';
-import { Building2, Map, Users, TrendingUp, Car, CheckCircle, XCircle } from 'lucide-react';
-import { toast } from 'sonner';
+import { Building2, Map, Users, TrendingUp, Car } from 'lucide-react';
 import CitiesManager from '@/components/admin/CitiesManager';
 import RouteStats from '@/components/admin/RouteStats';
 import TripCharts from '@/components/admin/TripCharts';
 import RoutesManager from '@/components/admin/RoutesManager';
 import DriversManager from '@/components/admin/DriversManager';
 import VehiclesManager from '@/components/admin/VehiclesManager';
+import TaxiAdmin from '@/components/admin/TaxiAdmin';
 
 import RouteMapEditor from '@/components/admin/RouteMapEditor';
 import { Link } from 'react-router-dom';
@@ -106,50 +106,7 @@ export default function AdminPanel() {
         {tab === 'drivers' && <DriversManager />}
         {tab === 'vehicles' && <VehiclesManager />}
         {tab === 'map' && <RouteMapEditor />}
-        {tab === 'taxi' && (
-          <div className="space-y-3">
-            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Водители такси ({taxiDrivers.length})</h3>
-            {taxiDrivers.length === 0 && <p className="text-xs text-gray-400 text-center py-6">Нет зарегистрированных водителей</p>}
-            {taxiDrivers.map(d => (
-              <div key={d.id || d.user_id} className="bg-white rounded-2xl p-4 border border-gray-100 space-y-2">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-sm overflow-hidden">
-                    {d.photo_url ? <img src={d.photo_url} alt="" className="w-full h-full object-cover" /> : (d.full_name?.[0] || '?')}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold truncate">{d.full_name}</p>
-                    <p className="text-[10px] text-gray-400">{d.phone} · {d.city || '—'}</p>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${d.status === 'online' || d.status === 'free' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                    {d.status === 'online' || d.status === 'free' ? 'На линии' : 'Оффлайн'}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 text-[10px] text-gray-400">
-                  <span>★ {d.rating?.toFixed(1) || '5.0'}</span>
-                  <span>·</span>
-                  <span>{d.rides_count || 0} поездок</span>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={async () => {
-                    await supabase.from('taxi_drivers').update({ is_verified: !d.is_verified }).eq('user_id', d.user_id);
-                    setTaxiDrivers(prev => prev.map(x => x.user_id === d.user_id ? { ...x, is_verified: !x.is_verified } : x));
-                    toast.success(d.is_verified ? 'Водитель снят с верификации' : 'Водитель верифицирован');
-                  }} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-colors ${d.is_verified ? 'bg-green-50 text-green-600 hover:bg-green-100' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
-                    <CheckCircle size={12} className="inline mr-1" />{d.is_verified ? 'Верифицирован' : 'Верифицировать'}
-                  </button>
-                  <button onClick={async () => {
-                    const newStatus = d.status === 'blocked' ? 'offline' : 'blocked';
-                    await supabase.from('taxi_drivers').update({ status: newStatus }).eq('user_id', d.user_id);
-                    setTaxiDrivers(prev => prev.map(x => x.user_id === d.user_id ? { ...x, status: newStatus } : x));
-                    toast.success(newStatus === 'blocked' ? 'Водитель заблокирован' : 'Водитель разблокирован');
-                  }} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-colors ${d.status === 'blocked' ? 'bg-amber-50 text-amber-600 hover:bg-amber-100' : 'bg-red-50 text-red-500 hover:bg-red-100'}`}>
-                    <XCircle size={12} className="inline mr-1" />{d.status === 'blocked' ? 'Разблокировать' : 'Заблокировать'}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {tab === 'taxi' && <TaxiAdmin />}
       </div>
     </div>
   );

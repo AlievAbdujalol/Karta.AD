@@ -9,6 +9,7 @@ import FavoriteRoutes from '@/components/profile/FavoriteRoutes';
 import TripHistory from '@/components/profile/TripHistory';
 import { toast } from 'sonner';
 import { supabase } from '@/api/supabase';
+import { CATEGORY_LABELS as TAXI_CATEGORIES } from '@/lib/taxi';
 
 const LANGS = [
   { code: 'ru', label: 'profile.langRu' },
@@ -127,7 +128,6 @@ export default function Profile() {
   const [taxiSaving, setTaxiSaving] = useState(false);
   const [taxiTab, setTaxiTab] = useState('info');
 
-  const TAXI_CATEGORIES = { economy: 'Эконом', comfort: 'Комфорт', comfort_plus: 'Комфорт+', minivan: 'Минивэн', business: 'Бизнес', electric: 'Электро', women: 'Для женщин', cargo: 'Грузовое' };
   const CAR_TYPES = ['Седан', 'Хэтчбек', 'Универсал', 'Минивэн', 'Внедорожник', 'Купе', 'Пикап', 'Электромобиль'];
 
   useEffect(() => {

@@ -4,10 +4,10 @@ import { supabase } from '@/api/supabase';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { TARIFFS, CATEGORY_LABELS } from '@/lib/taxi';
 
 const CAR_TYPES = ['Седан', 'Хэтчбек', 'Универсал', 'Минивэн', 'Внедорожник', 'Купе', 'Пикап', 'Электромобиль'];
-const CAR_CATEGORIES = ['economy', 'comfort', 'comfort_plus', 'minivan', 'business', 'electric', 'women', 'cargo'];
-const CATEGORY_LABELS = { economy: 'Эконом', comfort: 'Комфорт', comfort_plus: 'Комфорт+', minivan: 'Минивэн', business: 'Бизнес', electric: 'Электро', women: 'Для женщин', cargo: 'Грузовое' };
+const CAR_CATEGORIES = TARIFFS.map(t => t.id);
 
 export default function TaxiDriverRegistration() {
   const { user, update } = useCurrentUser();
@@ -56,24 +56,25 @@ export default function TaxiDriverRegistration() {
       if (files.tech_passport) tech_url = await uploadFile(files.tech_passport, 'documents');
       if (files.insurance) insurance_url = await uploadFile(files.insurance, 'documents');
 
-      await supabase.from('taxi_drivers').insert({
+      await supabase.from('taxi_drivers').upsert({
         user_id: user.id, full_name: form.full_name, phone: form.phone, email: form.email,
-        city: form.city, photo_url, status: 'offline', is_verified: true, bank_details: form.bank_details ? { details: form.bank_details } : null,
-      });
+        city: form.city, photo_url, status: 'offline', is_verified: false, bank_details: form.bank_details ? { details: form.bank_details } : null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
 
       const vehicleData = {
         driver_id: user.id, make: form.make, model: form.model, year: parseInt(form.year) || null,
         color: form.color, plate_number: form.plate_number, vin: form.vin || null,
         seats: parseInt(form.seats) || 4, body_type: form.body_type, category: form.category, photo_url: car_photo_url,
       };
-      await supabase.from('taxi_vehicles').insert(vehicleData);
+      await supabase.from('taxi_vehicles').upsert(vehicleData, { onConflict: 'driver_id' });
 
-      await supabase.from('taxi_driver_documents').insert({
+      await supabase.from('taxi_driver_documents').upsert({
         driver_id: user.id, license_photo_url: license_url, tech_passport_url: tech_url, insurance_url: insurance_url,
-        license_number: form.license_number, is_verified: true,
-      });
+        license_number: form.license_number, is_verified: false, status: 'pending', reject_reason: null,
+      }, { onConflict: 'driver_id' });
 
-      toast.success('Данные водителя сохранены! Включите статус "На линии" в панели.');
+      toast.success('Данные сохранены! Документы отправлены на проверку администратором.');
       navigate('/taxi/driver');
     } catch (err) {
       toast.error('Ошибка при отправке: ' + (err.message || 'повторите позже'));
@@ -84,8 +85,8 @@ export default function TaxiDriverRegistration() {
   const inputClass = "w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:border-blue-500 transition-colors";
 
   return (
-    <div className="min-h-screen bg-white dark:bg-slate-950 pb-8">
-      <div className="sticky top-0 z-10 bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-3">
+    <div className="h-screen flex flex-col bg-white dark:bg-slate-950 overflow-hidden">
+      <div className="sticky top-0 z-10 bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border-b border-slate-100 dark:border-slate-800 px-4 py-3 flex items-center gap-3 flex-shrink-0">
         <button onClick={() => step > 1 ? setStep(step - 1) : navigate(-1)} className="text-slate-500">
           <ArrowLeft size={20} />
         </button>
@@ -101,7 +102,7 @@ export default function TaxiDriverRegistration() {
         </div>
       </div>
 
-      <div className="p-4 max-w-lg mx-auto space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 max-w-lg mx-auto space-y-4 pb-24">
         {step === 1 && (
           <>
             <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Личные данные</h2>

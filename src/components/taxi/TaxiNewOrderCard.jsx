@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, Check } from 'lucide-react';
+import { X, Check, TrendingUp } from 'lucide-react';
+import { formatTJS, tariffById, demandLabel } from '@/lib/taxi';
 
-const CATEGORY_LABELS = { economy: 'Эконом', comfort: 'Комфорт', comfort_plus: 'Комфорт+', minivan: 'Минивэн', business: 'Бизнес' };
-const TIMER_SECONDS = 15;
+const TIMER_SECONDS = 20;
 
 export default function TaxiNewOrderCard({ order, onAccept, onReject }) {
   const [timer, setTimer] = useState(TIMER_SECONDS);
@@ -16,10 +16,11 @@ export default function TaxiNewOrderCard({ order, onAccept, onReject }) {
   const handleAccept = useCallback(() => { onAccept(order); }, [order, onAccept]);
   const handleReject = useCallback(() => { onReject(); }, [onReject]);
 
-  const distance = order.distance || '—';
-  const eta = order.eta || '—';
-  const price = order.price || '—';
-  const pickupTime = order.pickup_time || '—';
+  const tariff = tariffById(order.category);
+  const price = Number(order.price) || null;
+  const distance = order.distance_km != null ? `${Number(order.distance_km).toFixed(1)} км` : '—';
+  const duration = order.duration_min != null ? `~${order.duration_min} мин` : '—';
+  const demand = demandLabel(order.demand_coef || 1);
 
   return (
     <div className="absolute bottom-0 left-0 right-0 z-50 animate-slide-up">
@@ -28,13 +29,17 @@ export default function TaxiNewOrderCard({ order, onAccept, onReject }) {
         <div className="px-5 pt-3">
           <div className="w-full h-1 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-1000 ease-linear"
+              className="h-full bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full transition-all duration-1000 ease-linear"
               style={{ width: `${(timer / TIMER_SECONDS) * 100}%` }}
             />
           </div>
           <div className="flex justify-between items-center mt-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Новый заказ</span>
-            <span className={`text-xs font-black ${timer <= 5 ? 'text-red-500 animate-pulse' : 'text-blue-500'}`}>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Новый заказ</span>
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600">{tariff.short}</span>
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${demand.tone}`}>{demand.badge} спрос</span>
+            </div>
+            <span className={`text-xs font-black ${timer <= 5 ? 'text-red-500 animate-pulse' : 'text-emerald-500'}`}>
               {timer}с
             </span>
           </div>
@@ -63,12 +68,11 @@ export default function TaxiNewOrderCard({ order, onAccept, onReject }) {
           </div>
 
           {/* Stats row */}
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {[
-              { label: 'Расст.', value: distance, icon: '📏' },
-              { label: 'Подача', value: pickupTime, icon: '🕒' },
-              { label: 'Стоим.', value: price ? `${price} TJS` : '—', icon: '💰' },
-              { label: 'Категория', value: CATEGORY_LABELS[order.category] || 'Эконом', icon: '🚗' },
+              { label: 'Поездка', value: distance, icon: '📏' },
+              { label: 'Время', value: duration, icon: '⏱️' },
+              { label: 'Оплата', value: order.payment_method === 'cash' ? 'Наличные' : order.payment_method === 'card' ? 'Карта' : 'QR', icon: '💳' },
             ].map(({ label, value, icon }) => (
               <div key={label} className="text-center bg-slate-50 dark:bg-slate-800/50 rounded-xl py-2 px-1">
                 <p className="text-sm mb-0.5">{icon}</p>
@@ -78,10 +82,19 @@ export default function TaxiNewOrderCard({ order, onAccept, onReject }) {
             ))}
           </div>
 
+          {/* Price highlight */}
+          <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 rounded-2xl px-4 py-3">
+            <div className="flex items-center gap-2">
+              <TrendingUp size={16} className="text-blue-500" />
+              <span className="text-xs font-bold text-blue-700 dark:text-blue-300">Стоимость заказа</span>
+            </div>
+            <p className="text-xl font-black text-blue-600">{price != null ? `${formatTJS(price)} TJS` : '—'}</p>
+          </div>
+
           {/* Comment */}
           {order.comment && (
             <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl px-3 py-2">
-              <p className="text-[10px] text-amber-600 dark:text-amber-400">{order.comment}</p>
+              <p className="text-[10px] text-amber-600 dark:text-amber-400">💬 {order.comment}</p>
             </div>
           )}
 
@@ -99,7 +112,7 @@ export default function TaxiNewOrderCard({ order, onAccept, onReject }) {
               className="flex-[2] py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/40 transition-all active:scale-[0.97]"
             >
               <Check size={18} strokeWidth={3} />
-              Принять · {price ? `${price} TJS` : ''}
+              Принять {price != null ? `· ${formatTJS(price)} TJS` : ''}
             </button>
           </div>
         </div>

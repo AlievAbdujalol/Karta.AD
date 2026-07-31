@@ -55,6 +55,54 @@ SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 See `src/types/database.ts` for TypeScript interfaces matching the live schema.
 
+## Taxi Module (Такси)
+
+### Tables
+
+| Table | Purpose | Key Columns |
+|-------|---------|-------------|
+| `taxi_drivers` | Taxi driver profiles | `user_id` (unique), `status`, `is_verified`, `rating`, `total_earnings` |
+| `taxi_vehicles` | Driver vehicles | `driver_id` (unique), `make`, `model`, `plate_number`, `category` (11 тарифов) |
+| `taxi_driver_documents` | Driver docs (license/techpassport/insurance) | `driver_id` (unique), `status` (`pending`/`approved`/`rejected`), `reject_reason`, `is_verified` |
+| `taxi_driver_locations` | Live GPS positions | `driver_id` (unique), `lat`, `lng`, `heading`, `speed`, `status` |
+| `taxi_orders` | Ride orders | `passenger_id`, `driver_id`, `status`, `price`, `demand_coef`, `payment_method` |
+| `taxi_ride_events` | Order lifecycle audit | `order_id`, `status` |
+| `taxi_ride_payments` | Payments | `order_id`, `amount`, `commission` (20%), `driver_earnings`, `method` |
+| `taxi_wallet_transactions` | Driver wallet ledger | `driver_id`, `amount`, `type` (`earnings`/`withdrawal`/…) |
+| `taxi_ratings` | Driver/passenger ratings + tips | `order_id`, `from_id`, `to_id`, `rating`, `comment`, `tip` |
+| `taxi_favorite_drivers` | Passenger favorite drivers | `passenger_id`, `driver_id` |
+| `taxi_messages` | In-ride chat | `order_id`, `sender_id`, `message` |
+| `taxi_emergencies` | SOS signals | `order_id`, `user_id`, `role`, `lat`, `lng`, `status` (`active`/`resolved`) |
+
+### Order lifecycle
+
+`searching` → `found` (атомарный claim по RLS-политике `taxi_orders_claim`: только `status=searching AND driver_id IS NULL` → `found`, `WITH CHECK auth.uid()=driver_id`) → `arrived` → `riding` → `completed` → оплата (`taxi_ride_payments` + кошелёк) → оценка. Или `cancelled` (`cancelled_by` = passenger/driver).
+
+### RLS
+
+- `taxi_orders`: passenger видит/создаёт свои; **realtime-подписка водителя на входящие заказы возможна только через политику `taxi_orders_select_searching`** (`status='searching' AND driver_id IS NULL`) — Realtime применяет RLS при чтении
+- `taxi_messages`/`taxi_emergencies`: участники поездки (passenger/driver из `taxi_orders`) + admin (`is_admin()`)
+- `taxi_drivers`, `taxi_driver_documents`, `taxi_ride_payments`, `taxi_ride_events`, `taxi_wallet_transactions`: владелец + admin UPDATE/политики модерации
+- Admin-доступ: `public.is_admin()` (SECURITY DEFINER, `search_path` зафиксирован)
+
+### RPC functions
+
+| Function | Purpose |
+|----------|---------|
+| `calculate_taxi_price(dist, dur, category, night)` | Цена по тарифу (зеркало `src/lib/taxi.js`) |
+| `taxi_demand_coefficient(lat, lng, radius)` | Коэффициент спроса 1.0–2.5 |
+| `taxi_nearby_summary(lat, lng, radius)` | Машины по тарифам рядом (кол-во + ближайшая) |
+| `find_nearby_taxi_drivers(...)` | **service_role only** (закрыт от anon/authenticated) |
+| `get_admin_driver_requests()` | Заявки на верификацию (только admin, проверка внутри) |
+
+### Realtime
+
+`taxi_orders`, `taxi_driver_locations`, `taxi_messages`, `taxi_emergencies` — в `supabase_realtime`. RLS применяется к realtime-подпискам (Postgres Changes).
+
+### UI-источник тарифов
+
+`src/lib/taxi.js` — единый источник: `TARIFFS` (11), `PASSENGER_TARIFFS` (8), `TAXI_COMMISSION` (0.2), `calcPrice`, `haversineKm`, `estimateRide`. Цены дублируются в RPC `calculate_taxi_price` — при изменении менять оба.
+
 ## Row Level Security (RLS)
 
 All tables have RLS enabled. Policies:
@@ -111,6 +159,7 @@ const channel = supabase
 | `renew_subscription()` | Renew existing subscription |
 | `handle_new_user()` | Auto-create profile on signup |
 | `protect_balance_update()` | Prevent negative balance |
+| `is_admin()` | Admin check (used by taxi RLS/RPC) |
 
 ## Client Configuration
 
