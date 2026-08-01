@@ -988,26 +988,35 @@ export default function TaxiPassenger() {
                   const saved = favorites[f.key];
                   const Icon = f.icon;
                   return (
-                    <button
-                      key={f.key}
-                      onClick={() => {
-                        if (saved) { applyAddress({ name: saved.name, lat: saved.lat, lng: saved.lng }); setShowSearch(false); }
-                        else { setSaveTarget(f.key); setPickTarget('from'); }
-                      }}
-                      className={`flex-1 flex items-center gap-1.5 px-3 py-2.5 rounded-xl border-2 text-[11px] font-bold transition-all ${
-                        saveTarget === f.key
-                          ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400'
-                          : 'border-slate-200 dark:border-slate-700 text-slate-600 hover:border-blue-300'
-                      }`}
-                    >
-                      <Icon size={13} />
-                      <span className="flex flex-col items-start leading-tight">
-                        <span>{f.label}</span>
-                        <span className={`text-[9px] font-medium max-w-[60px] truncate ${saved ? 'text-slate-400' : 'text-blue-500'}`}>
-                          {saved ? saved.name : '+ адрес'}
+                    <div key={f.key} className={`flex-1 relative rounded-xl border-2 text-[11px] font-bold transition-all ${
+                      saveTarget === f.key
+                        ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-600'
+                    }`}>
+                      {saved && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setFavorites(prev => { const next = { ...prev }; delete next[f.key]; saveJSON('kartaad_favs', next); return next; }); toast.info(`${f.label} удалён`); }}
+                          className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center z-10 hover:bg-red-600 transition-colors"
+                        >
+                          <X size={8} />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          if (saved) { applyAddress({ name: saved.name, lat: saved.lat, lng: saved.lng }); setShowSearch(false); }
+                          else { setSaveTarget(f.key); setPickTarget('from'); }
+                        }}
+                        className="w-full flex items-center gap-1.5 px-3 py-2.5"
+                      >
+                        <Icon size={13} />
+                        <span className="flex flex-col items-start leading-tight">
+                          <span>{f.label}</span>
+                          <span className={`text-[9px] font-medium max-w-[60px] truncate ${saved ? 'text-slate-400' : 'text-blue-500'}`}>
+                            {saved ? saved.name : '+ адрес'}
+                          </span>
                         </span>
-                      </span>
-                    </button>
+                      </button>
+                    </div>
                   );
                 })}
               </div>
