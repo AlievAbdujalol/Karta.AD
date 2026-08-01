@@ -185,6 +185,10 @@ export default function TaxiPassenger() {
   const [unreadChat, setUnreadChat] = useState(0);
   const [favorites, setFavorites] = useState(() => loadJSON('kartaad_favs', {}));
   const [recents, setRecents] = useState(() => loadJSON('kartaad_recents', []));
+  const [popularPlaces, setPopularPlaces] = useState(() => {
+    const raw = loadJSON('kartaad_popular', {});
+    return Object.values(raw).sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, 5);
+  });
   const [saveTarget, setSaveTarget] = useState(null);
   const [routeGeometry, setRouteGeometry] = useState([]);
   const searchTimer = useRef(null);
@@ -501,6 +505,11 @@ export default function TaxiPassenger() {
 
   const applyAddress = useCallback((item) => {
     pushRecent(item);
+    const key = `${item.lat.toFixed(5)},${item.lng.toFixed(5)}`;
+    const all = loadJSON('kartaad_popular', {});
+    all[key] = { name: item.name, lat: item.lat, lng: item.lng, count: ((all[key]?.count) || 0) + 1 };
+    saveJSON('kartaad_popular', all);
+    setPopularPlaces(Object.values(all).sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, 5));
     if (pickTarget === 'from') { setFromText(item.name); setFromCoord([item.lat, item.lng]); }
     else { setToText(item.name); setToCoord([item.lat, item.lng]); }
     if (saveTarget) {
@@ -1000,6 +1009,26 @@ export default function TaxiPassenger() {
                       >
                         <MapPin size={15} className="text-slate-400 flex-shrink-0" />
                         <span className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate text-left flex-1">{r.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {popularPlaces.length > 0 && (
+                <>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-3 mb-1.5">Часто посещаемые</p>
+                  <div className="space-y-1">
+                    {popularPlaces.map((p, i) => (
+                      <button
+                        key={`${p.lat}-${p.lng}-${i}`}
+                        onClick={() => { applyAddress(p); setShowSearch(false); }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors"
+                      >
+                        <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+                          <span className="text-[9px] font-black text-blue-600">{p.count}</span>
+                        </div>
+                        <span className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate text-left flex-1">{p.name}</span>
                       </button>
                     ))}
                   </div>
