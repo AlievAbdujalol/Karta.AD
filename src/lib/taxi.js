@@ -1,5 +1,5 @@
 import {
-  Car, Sparkles, Wind, Truck, Ban, Bike, Package, Route, Zap, Boxes, Crown,
+  Car, Sparkles, Wind, Truck, Ban, Bike, Package, Route, Zap, Boxes, Crown, Wallet,
 } from 'lucide-react';
 
 // ─── ТАРИФЫ ──────────────────────────────────────────────────────────────────
@@ -26,6 +26,14 @@ export const PASSENGER_TARIFFS = TARIFFS.filter(t =>
 export const CATEGORY_LABELS = Object.fromEntries(TARIFFS.map(t => [t.id, t.label]));
 
 export const TAXI_COMMISSION = 0.2;
+
+// Методы оплаты пассажира
+export const PAYMENT_METHODS = [
+  { id: 'cash',   label: 'Наличные', icon: 'Banknote',  gradient: 'from-green-500 to-emerald-600' },
+  { id: 'card',   label: 'Карта',    icon: 'CreditCard',gradient: 'from-blue-500 to-indigo-600' },
+  { id: 'qr',     label: 'QR',       icon: 'QrCode',    gradient: 'from-purple-500 to-violet-600' },
+  { id: 'wallet', label: 'Кошелёк',  icon: 'Wallet',    gradient: 'from-amber-500 to-orange-600' },
+];
 
 // Тарифные коэффициенты (зеркало RPC calculate_taxi_price)
 const RATES = {

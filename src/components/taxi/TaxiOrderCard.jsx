@@ -12,6 +12,7 @@ const PAYMENT_METHODS = [
   { id: 'cash', label: 'Наличные', icon: Banknote },
   { id: 'card', label: 'Карта', icon: CreditCard },
   { id: 'qr', label: 'QR', icon: QrCode },
+  { id: 'wallet', label: 'Кошелёк', icon: Wallet },
 ];
 
 export default function TaxiOrderCard({ order, passengerInfo, phase = 'active', onAction, onPaid, onRated, onSos, onChat, onShare, unread = 0 }) {

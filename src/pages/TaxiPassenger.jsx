@@ -6,7 +6,7 @@ import { useLocation } from 'react-router-dom';
 import {
   MapPin, Search, X, Loader2, Car, ChevronRight, Phone, Share2,
   AlertTriangle, Star, Navigation, Banknote, CreditCard, QrCode, Heart, Route,
-  Home, Briefcase, GraduationCap, Mic, MessageCircle,
+  Home, Briefcase, GraduationCap, Mic, MessageCircle, Wallet,
 } from 'lucide-react';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { supabase } from '@/api/supabase';
@@ -59,6 +59,7 @@ const PAYMENT_METHODS = [
   { id: 'cash', label: 'Наличные', icon: Banknote, gradient: 'from-green-500 to-emerald-600' },
   { id: 'card', label: 'Карта', icon: CreditCard, gradient: 'from-blue-500 to-indigo-600' },
   { id: 'qr', label: 'QR · Alif', icon: QrCode, gradient: 'from-violet-500 to-purple-600' },
+  { id: 'wallet', label: 'Кошелёк', icon: Wallet, gradient: 'from-amber-500 to-orange-600' },
 ];
 
 const FAVORITE_PLACES = [
@@ -195,7 +196,7 @@ export default function TaxiPassenger() {
     (async () => {
       const { data } = await supabase
         .from('taxi_orders')
-        .select('id, status, category, pickup_address, dropoff_address, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, driver_id, price')
+        .select('id, status, category, pickup_address, dropoff_address, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, driver_id, price, payment_method')
         .eq('passenger_id', user.id)
         .in('status', ['searching', 'found', 'en_route', 'riding'])
         .order('created_at', { ascending: false })
@@ -210,6 +211,7 @@ export default function TaxiPassenger() {
       if (data.pickup_lat != null && data.pickup_lng != null) setFromCoord([data.pickup_lat, data.pickup_lng]);
       if (data.dropoff_lat != null && data.dropoff_lng != null) setToCoord([data.dropoff_lat, data.dropoff_lng]);
       if (data.driver_id) setDriverInfo({ driverId: data.driver_id });
+      if (data.payment_method) setPaymentMethod(data.payment_method);
     })();
     return () => { alive = false; };
   }, [user?.id]);
@@ -261,11 +263,28 @@ export default function TaxiPassenger() {
         if (payload.new) {
           const s = payload.new.status;
           setOrderState(s);
-          if (['cancelled', 'completed'].includes(s)) {
+          if (s === 'found') {
+            toast.success('Водитель принял заказ!', { duration: 5000 });
+            try { navigator.vibrate?.([100, 50, 100, 50, 100]); } catch {}
+            try {
+              const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVggoKIeGBGPoChoZ+LdmhRR4KXoZ6KdWxYTYiOn52Jc25cU42QnJuIc3BjWZCVmJeGc3FqYJeWlJJ/dnNvZ5qXlJF8dHNzap2XlI95c3V3b56Xk455cnV3cJ+Xkok=');
+              audio.volume = 0.8;
+              audio.play().catch(() => {});
+            } catch {}
+          }
+          if (s === 'cancelled') {
             setOrderId(null);
             setDriverInfo(null);
             setDriverPosition(null);
             setChatOpen(false);
+            toast.info('Заказ отменён', { duration: 3000 });
+          }
+          if (s === 'arrived') {
+            toast.success('Водитель прибыл!', { duration: 5000 });
+            try { navigator.vibrate?.([200, 100, 200]); } catch {}
+          }
+          if (s === 'completed') {
+            toast.success('Поездка завершена! Оцените водителя.', { duration: 5000 });
           }
           if (payload.new.driver_id && !['cancelled', 'completed'].includes(s)) {
             setDriverInfo(prev => prev ? { ...prev, driverId: payload.new.driver_id } : { driverId: payload.new.driver_id });
@@ -526,6 +545,10 @@ export default function TaxiPassenger() {
   const handleOrder = useCallback(async () => {
     if (!fromText) { toast.error('Укажите откуда'); return; }
     if (!routeInfo || selectedPrice == null) { toast.error('Рассчитываем цену...'); return; }
+    if (paymentMethod === 'wallet' && (user?.balance || 0) < selectedPrice) {
+      toast.error('Недостаточно средств в кошельке. Пополните баланс в профиле.');
+      return;
+    }
     setOrderState('searching');
     try {
       const { data, error } = await supabase.from('taxi_orders').insert({
@@ -601,6 +624,31 @@ export default function TaxiPassenger() {
 
   const handleRateDriver = useCallback(async () => {
     if (!orderId || !rideRating) { toast.error('Поставьте оценку поездке'); return; }
+
+    // Оплата через кошелёк
+    if (paymentMethod === 'wallet') {
+      const { data: payResult } = await supabase.rpc('taxi_pay_wallet', {
+        p_passenger_id: user.id,
+        p_driver_id: driverInfo?.driverId,
+        p_amount: selectedPrice || 0,
+        p_order_id: orderId,
+      });
+      if (payResult === false) {
+        toast.error('Ошибка: недостаточно средств в кошельке');
+        return;
+      }
+      // Уведомление водителю: последние 4 цифры + сумма
+      const { data: passengerProfile } = await supabase.from('profiles').select('phone').eq('id', user.id).single();
+      const last4 = (passengerProfile?.phone || '').slice(-4);
+      const amount = formatTJS(selectedPrice || 0);
+      supabase.from('notifications').insert({
+        user_id: driverInfo?.driverId,
+        title: `Оплата ${amount} TJS`,
+        body: `Кошелёк · ****${last4}`,
+        type: 'taxi_wallet_payment',
+      }).then().catch(() => {});
+    }
+
     const tip = parseFloat(rideTip) || 0;
     const { error } = await supabase.from('taxi_ratings').insert({
       order_id: orderId,
@@ -620,7 +668,7 @@ export default function TaxiPassenger() {
     setOrderId(null);
     setDriverInfo(null);
     setDriverPosition(null);
-  }, [orderId, rideRating, rideTip, rideComment, driverInfo, user?.id]);
+  }, [orderId, rideRating, rideTip, rideComment, driverInfo, user?.id, paymentMethod, selectedPrice]);
 
   const toggleFavorite = useCallback(async () => {
     if (!driverInfo?.driverId || !user?.id) return;
@@ -1039,6 +1087,16 @@ export default function TaxiPassenger() {
                     );
                   })}
                 </div>
+                {paymentMethod === 'wallet' && (
+                  <div className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs mb-1 ${
+                    (user?.balance || 0) >= (selectedPrice || 0)
+                      ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400'
+                      : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
+                  }`}>
+                    <span className="font-medium">Баланс кошелька</span>
+                    <span className="font-black">{formatTJS(user?.balance || 0)} TJS</span>
+                  </div>
+                )}
               </div>
 
               <div className="px-4 pb-4 flex-shrink-0">
@@ -1060,7 +1118,7 @@ export default function TaxiPassenger() {
             </div>
           )}
           {['searching', 'found', 'en_route', 'riding', 'completed'].includes(orderState) && !pickTarget && (
-            <div className="bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl rounded-t-3xl shadow-2xl border-t border-slate-200/60 dark:border-slate-800/60">
+            <div className="relative z-10 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl rounded-t-3xl shadow-2xl border-t border-slate-200/60 dark:border-slate-800/60 flex-1 min-h-0 overflow-y-auto custom-scrollbar pointer-events-auto">
               {renderOrderFlow()}
             </div>
           )}

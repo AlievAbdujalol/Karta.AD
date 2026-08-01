@@ -4,6 +4,7 @@ import { Map, User, Bus, CalendarDays, ShieldCheck, Square, MessageSquare, Car }
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useTrip } from '@/lib/TripContext';
 import { useLanguage, LANG_KEY } from '@/lib/useLanguage';
+import { useTaxiIncoming } from '@/hooks/useTaxiIncoming';
 
 export default function Layout() {
   const { user } = /** @type {any} */ (useCurrentUser());
@@ -12,6 +13,7 @@ export default function Layout() {
   const isAdmin = user?.role === 'admin';
   const { isTracking, gpsInfo, activeRoute, endTrip } = useTrip();
   const { t, setLang } = useLanguage();
+  useTaxiIncoming(user);
 
   useEffect(() => {
     if (user?.language && !localStorage.getItem(LANG_KEY)) {

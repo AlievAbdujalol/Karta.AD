@@ -344,9 +344,33 @@ export default function TaxiDriverDashboard() {
     }
     if (newStatus === 'completed') {
       await supabase.from('taxi_orders').update({ completed_at: new Date().toISOString() }).eq('id', currentOrder.id);
+      // Автосписание для оплаты через кошелёк
+      if (currentOrder.payment_method === 'wallet') {
+        const { data: payResult } = await supabase.rpc('taxi_pay_wallet', {
+          p_passenger_id: currentOrder.passenger_id,
+          p_driver_id: user.id,
+          p_amount: Number(currentOrder.price) || 0,
+          p_order_id: currentOrder.id,
+        });
+        if (payResult === false) {
+          toast.error('Оплата через кошелёк не удалась — недостаточно средств');
+        } else {
+          // Уведомление: последние 4 цифры пассажира + сумма
+          const { data: pp } = await supabase.from('profiles').select('phone').eq('id', currentOrder.passenger_id).single();
+          const last4 = (pp?.phone || '').slice(-4);
+          const amt = Number(currentOrder.price) || 0;
+          addLocalNotification({ title: `Оплата ${formatTJS(amt)} TJS`, body: `Кошелёк · ****${last4}`, type: 'taxi_wallet_payment' });
+          supabase.from('notifications').insert({
+            user_id: user.id,
+            title: `Оплата ${formatTJS(amt)} TJS`,
+            body: `Кошелёк · ****${last4}`,
+            type: 'taxi_wallet_payment',
+          }).then().catch(() => {});
+        }
+      }
       setCurrentOrder(prev => prev ? { ...prev, status: 'completed' } : null);
-      setCardPhase('payment');
-      toast.success('Поездка завершена! Получите оплату');
+      setCardPhase(currentOrder.payment_method === 'wallet' ? 'rate' : 'payment');
+      toast.success(currentOrder.payment_method === 'wallet' ? 'Оплата списана автоматически!' : 'Поездка завершена! Получите оплату');
       return;
     }
     setCurrentOrder(prev => prev ? { ...prev, status: newStatus } : null);
