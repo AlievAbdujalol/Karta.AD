@@ -55,6 +55,13 @@ const userIcon = L.divIcon({
   iconAnchor: [12, 12],
 });
 
+const previewIcon = L.divIcon({
+  className: '',
+  html: '<div style="background:#f59e0b;color:white;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 4px 15px rgba(245,158,11,0.5);border:3px solid white;animation:bounce 1s infinite;">⭐</div>',
+  iconSize: [36, 36],
+  iconAnchor: [18, 18],
+});
+
 const PAYMENT_METHODS = [
   { id: 'cash', label: 'Наличные', icon: Banknote, gradient: 'from-green-500 to-emerald-600' },
   { id: 'card', label: 'Карта', icon: CreditCard, gradient: 'from-blue-500 to-indigo-600' },
@@ -92,6 +99,14 @@ function LocationMarker({ userPosition, setUserPosition }) {
     }
   }, [map, userPosition, setUserPosition]);
 
+  return null;
+}
+
+function CenterOnPreview({ place }) {
+  const map = useMap();
+  useEffect(() => {
+    if (place) map.setView([place.lat, place.lng], 16, { animate: true });
+  }, [place, map]);
   return null;
 }
 
@@ -191,6 +206,7 @@ export default function TaxiPassenger() {
   });
   const [saveTarget, setSaveTarget] = useState(null);
   const [routeGeometry, setRouteGeometry] = useState([]);
+  const [previewPlace, setPreviewPlace] = useState(null);
   const searchTimer = useRef(null);
 
   // Восстановление активного заказа после перезагрузки страницы
@@ -908,6 +924,7 @@ export default function TaxiPassenger() {
         >
           <TileLayer url={TILE_URL} attribution={ATTR} />
           <LocationMarker userPosition={userPosition} setUserPosition={setUserPosition} />
+          <CenterOnPreview place={previewPlace} />
           <MapClickHandler onMapClick={handleMapClick} />
           {nearbyDrivers.length > 0 && <NearbyDrivers drivers={nearbyDrivers} />}
           {fromCoord && (
@@ -932,6 +949,7 @@ export default function TaxiPassenger() {
           )}
           {driverPosition && <Marker position={driverPosition} icon={carIcon} />}
           {userPosition && <Marker position={userPosition} icon={userIcon} />}
+          {previewPlace && <Marker position={[previewPlace.lat, previewPlace.lng]} icon={previewIcon} />}
           {routeGeometry.length > 1 && (
             <Polyline positions={routeGeometry} pathOptions={{ color: '#3b82f6', weight: 5, opacity: 0.7 }} />
           )}
@@ -939,10 +957,41 @@ export default function TaxiPassenger() {
       </div>
 
       {/* Pick mode hint */}
-      {pickTarget && (
+      {pickTarget && !previewPlace && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg flex items-center gap-2">
           <MapPin size={14} />
           Выберите точку на карте
+        </div>
+      )}
+
+      {/* Preview place bar */}
+      {previewPlace && (
+        <div className="absolute bottom-0 left-0 right-0 z-50 px-4 pb-4">
+          <div className="bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-slate-200/60 dark:border-slate-800/60 p-4 space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+                <Star size={16} className="text-amber-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">{previewPlace.name}</p>
+                <p className="text-[10px] text-slate-400">Проверьте место на карте</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPreviewPlace(null)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold hover:bg-slate-200 transition-colors"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={() => { applyAddress(previewPlace); setPreviewPlace(null); setShowSearch(false); }}
+                className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 shadow-lg shadow-blue-500/25 transition-colors"
+              >
+                Выбрать
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1033,7 +1082,7 @@ export default function TaxiPassenger() {
                     {recents.map((r, i) => (
                       <button
                         key={i}
-                        onClick={() => { applyAddress(r); setShowSearch(false); }}
+                        onClick={() => { setPreviewPlace({ name: r.name, lat: r.lat, lng: r.lng, target: pickTarget || 'from' }); setShowSearch(false); }}
                         className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors"
                       >
                         <MapPin size={15} className="text-slate-400 flex-shrink-0" />
@@ -1051,7 +1100,7 @@ export default function TaxiPassenger() {
                     {popularPlaces.map((p, i) => (
                       <button
                         key={`${p.lat}-${p.lng}-${i}`}
-                        onClick={() => { applyAddress(p); setShowSearch(false); }}
+                        onClick={() => { setPreviewPlace({ name: p.name, lat: p.lat, lng: p.lng, target: pickTarget || 'from' }); setShowSearch(false); }}
                         className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors"
                       >
                         <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
@@ -1088,7 +1137,7 @@ export default function TaxiPassenger() {
         </div>
       ) : (
         <div className="absolute bottom-0 left-0 right-0 z-40 flex flex-col max-h-[65vh]">
-          {['idle', 'cancelled'].includes(orderState) && !pickTarget && (
+          {['idle', 'cancelled'].includes(orderState) && !pickTarget && !previewPlace && (
             <div className="bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl rounded-t-3xl shadow-2xl border-t border-slate-200/60 dark:border-slate-800/60 flex flex-col max-h-[65vh]">
               <div className="flex items-center justify-between px-5 pt-4 pb-2 flex-shrink-0">
                 <div className="flex items-center gap-2">
