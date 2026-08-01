@@ -536,6 +536,7 @@ export default function TaxiPassenger() {
     setPopularPlaces(Object.values(all).sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, 5));
     if (pickTarget === 'from') { setFromText(item.name); setFromCoord([item.lat, item.lng]); }
     else { setToText(item.name); setToCoord([item.lat, item.lng]); }
+    setPickTarget(null);
     if (saveTarget) {
       setFavorites(prev => {
         const next = { ...prev, [saveTarget]: { name: item.name, lat: item.lat, lng: item.lng } };
@@ -979,7 +980,7 @@ export default function TaxiPassenger() {
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => setPreviewPlace(null)}
+                onClick={() => { setPreviewPlace(null); setShowSearch(true); }}
                 className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold hover:bg-slate-200 transition-colors"
               >
                 Отмена
@@ -1057,7 +1058,7 @@ export default function TaxiPassenger() {
                       )}
                       <button
                         onClick={() => {
-                          if (saved) { applyAddress({ name: saved.name, lat: saved.lat, lng: saved.lng }); setShowSearch(false); }
+                          if (saved) { setPreviewPlace({ name: saved.name, lat: saved.lat, lng: saved.lng, target: pickTarget || 'from' }); setShowSearch(false); }
                           else { setSaveTarget(f.key); setPickTarget('from'); }
                         }}
                         className="w-full flex items-center gap-1.5 px-3 py-2.5"

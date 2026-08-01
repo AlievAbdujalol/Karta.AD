@@ -103,6 +103,71 @@ See `src/types/database.ts` for TypeScript interfaces matching the live schema.
 
 `src/lib/taxi.js` — единый источник: `TARIFFS` (11), `PASSENGER_TARIFFS` (8), `TAXI_COMMISSION` (0.2), `calcPrice`, `haversineKm`, `estimateRide`. Цены дублируются в RPC `calculate_taxi_price` — при изменении менять оба.
 
+## Delivery Platform (Доставка)
+
+Полностью автоматическая платформа: магазин создаёт API-ключ, копирует SDK, доставка работает.
+
+### Таблицы
+
+| Table | Purpose | Key Columns |
+|-------|---------|-------------|
+| `delivery_api_keys` | API-ключи магазинов | `api_key` (`dk_...`), `secret`, `is_active`, `is_sandbox`, `requests_count` |
+| `delivery_orders` | Заказы доставки | `api_key_id`, `order_number`, `status`, `courier_id`, `is_sandbox`, `eta_min`, `payment_status` |
+| `delivery_order_items` | Позиции заказа | `order_id`, `name`, `qty`, `price`, `weight_kg` |
+| `delivery_tracking` | Журнал статусов + геолокация | `order_id`, `courier_id`, `status`, `lat`, `lng`, `note` |
+| `delivery_couriers` | Курьеры | `user_id` (→ profiles), `status`, `lat`, `lng`, `is_verified` |
+| `delivery_webhook_configs` | Webhook-подписки магазина | `api_key_id`, `url`, `secret`, `events[]` |
+| `delivery_webhook_events` | Журнал webhook-событий | `config_id`, `event`, `payload`, `status` |
+| `delivery_api_logs` | Журнал API-запросов | `api_key_id`, `method`, `path`, `status`, `ms` |
+
+### Статусы заказа
+
+`pending` → `assigned` → `picked_up` → `delivered` | `cancelled` (плюс `searching` для taxi)
+
+### RPC Functions (доставка)
+
+| Function | Purpose | Вызов |
+|----------|---------|-------|
+| `create_delivery_order_v2(api_key, ...)` | Создать заказ (проверяет ключ, считает цену) | Edge Function |
+| `calculate_delivery_price(lat, lng, lat, lng, weight)` | Цена + ETA (min 6с., 4с. + 1.8с./км) | Edge Function |
+| `get_delivery_order(order_id)` | Заказ + позиции + трекинг | Edge Function |
+| `cancel_delivery_order(api_key, order_id, reason)` | Отмена заказа | Edge Function |
+| `validate_delivery_api_key(api_key)` | Проверка ключа | — |
+| `find_nearest_delivery_courier(lat, lng, km)` | Поиск свободного курьера | — |
+| `courier_accept_delivery(order_id)` | Курьер принимает заказ (auth.uid) | Приложение курьера |
+| `courier_update_delivery_status(order_id, status, note)` | `picked_up` / `delivered` | Приложение курьера |
+| `courier_update_location(lat, lng)` | Геопозиция + трекинг | Приложение курьера |
+| `queue_delivery_webhooks(order_id, event, payload)` | Поставить событие webhook | Edge Function / RPC |
+| `delivery_notify_new_order(order_id)` | Уведомить онлайн-курьеров | Edge Function |
+| `delivery_verify_signature(payload, sig, secret)` | Проверка HMAC-подписи | — |
+
+### Webhooks
+
+- События: `order.created`, `order.accepted`, `order.started`, `order.completed`, `order.cancelled`, `courier.location`, `payment.completed`
+- Отправка: триггер `trg_delivery_webhook_dispatch` на INSERT в `delivery_webhook_events` → `net.http_post` (pg_net), асинхронно
+- Подпись: `X-Karta-Signature: sha256=HMAC-SHA256(secret, body)` (pgcrypto `hmac()`)
+- Sandbox-заказы не шлют webhooks
+
+### Edge Function: `delivery-api`
+
+REST API (base: `https://eotkmnwneivithfkweds.supabase.co/functions/v1/delivery-api`):
+
+| Endpoint | Описание |
+|----------|----------|
+| `GET /health` | Статус сервиса |
+| `POST /api/v1/orders` | Создать заказ |
+| `GET /api/v1/orders/:id` | Полный заказ |
+| `GET /api/v1/status/:id` | Статус заказа |
+| `POST /api/v1/cancel` | Отменить заказ |
+| `POST /api/v1/calculate-price` | Расчёт цены |
+| `GET /api/v1/orders` | Список заказов магазина |
+
+Auth: `X-API-Key: dk_...` (или Bearer). Rate limit: 60 запросов/мин на ключ (in-memory).
+
+### SDK
+
+`packages/delivery` → `@karta-ad/delivery` (npm). Build: `node scripts/build.mjs` (CJS + ESM + d.ts). Документация: `docs/delivery/openapi.yaml`, `docs/delivery/postman.json` (копии в `public/delivery/`).
+
 ## Row Level Security (RLS)
 
 All tables have RLS enabled. Policies:
@@ -197,6 +262,9 @@ All migrations are in `supabase/migrations/`:
 8. `20260624_notifications_table.sql`
 9. `20260624_transactions_table.sql`
 10. `20260624_realtime_vehicles.sql`
+11. `20260801000000_delivery_api_keys.sql` — ключи + заказы доставки (v1)
+12. `20260801010000_delivery_platform.sql` — полная схема платформы (items, tracking, webhooks, logs, sandbox, RPC)
+13. `20260801020000_delivery_courier_workflow.sql` — курьерский цикл + pg_net webhook dispatch
 
 ### Applying Migrations
 

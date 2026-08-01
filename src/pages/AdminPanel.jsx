@@ -3,7 +3,7 @@ import { City, Route, Vehicle } from '@/api/entities';
 import { supabase } from '@/api/supabase';
 import { useLanguage } from '@/lib/useLanguage';
 import { useCurrentUser } from '@/lib/useCurrentUser';
-import { Building2, Map, Users, TrendingUp, Car } from 'lucide-react';
+import { Building2, Map, Users, TrendingUp, Car, Package } from 'lucide-react';
 import CitiesManager from '@/components/admin/CitiesManager';
 import RouteStats from '@/components/admin/RouteStats';
 import TripCharts from '@/components/admin/TripCharts';
@@ -11,6 +11,7 @@ import RoutesManager from '@/components/admin/RoutesManager';
 import DriversManager from '@/components/admin/DriversManager';
 import VehiclesManager from '@/components/admin/VehiclesManager';
 import TaxiAdmin from '@/components/admin/TaxiAdmin';
+import DeliveryAdmin from '@/components/admin/DeliveryAdmin';
 
 import RouteMapEditor from '@/components/admin/RouteMapEditor';
 import { Link } from 'react-router-dom';
@@ -21,6 +22,7 @@ export default function AdminPanel() {
   const [tab, setTab] = useState('cities');
   const [stats, setStats] = useState({ cities: 0, routes: 0, active: 0, pending: 0 });
   const [taxiDrivers, setTaxiDrivers] = useState([]);
+  const [deliveryKeys, setDeliveryKeys] = useState([]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -39,6 +41,9 @@ export default function AdminPanel() {
     });
     supabase.from('taxi_drivers').select('*').order('created_at', { ascending: false }).then(({ data }) => {
       if (data) setTaxiDrivers(data);
+    });
+    supabase.from('delivery_api_keys').select('id', { count: 'exact', head: true }).then(({ count }) => {
+      setDeliveryKeys(Array(count || 0).fill(0));
     });
   }, [user?.id]);
 
@@ -62,6 +67,7 @@ export default function AdminPanel() {
     { id: 'drivers', label: t('drivers'), icon: Users },
     { id: 'vehicles', label: t('admin.tabVehicles'), icon: Map },
     { id: 'taxi', label: 'Такси', icon: Car },
+    { id: 'delivery', label: 'Доставка', icon: Package },
   ];
 
   const statCards = [
@@ -69,12 +75,13 @@ export default function AdminPanel() {
     { label: t('totalRoutes'), value: stats.routes, bg: 'bg-indigo-600' },
     { label: t('activeVehicles'), value: stats.active, bg: 'bg-green-600' },
     { label: 'Такси', value: taxiDrivers.length, bg: 'bg-amber-500' },
+    { label: 'Доставка', value: deliveryKeys.length, bg: 'bg-emerald-500' },
   ];
 
   return (
     <div className="h-full overflow-y-auto bg-gray-50">
       <div className="max-w-2xl mx-auto p-4 space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {statCards.map(s => (
             <div key={s.label} className={`${s.bg} text-white rounded-2xl p-4`}>
               <p className="text-3xl font-bold">{s.value}</p>
@@ -107,6 +114,7 @@ export default function AdminPanel() {
         {tab === 'vehicles' && <VehiclesManager />}
         {tab === 'map' && <RouteMapEditor />}
         {tab === 'taxi' && <TaxiAdmin />}
+        {tab === 'delivery' && <DeliveryAdmin />}
       </div>
     </div>
   );
