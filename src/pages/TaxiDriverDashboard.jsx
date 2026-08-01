@@ -355,7 +355,6 @@ export default function TaxiDriverDashboard() {
         if (payResult === false) {
           toast.error('Оплата через кошелёк не удалась — недостаточно средств');
         } else {
-          // Уведомление: последние 4 цифры пассажира + сумма
           const { data: pp } = await supabase.from('profiles').select('phone').eq('id', currentOrder.passenger_id).single();
           const last4 = (pp?.phone || '').slice(-4);
           const amt = Number(currentOrder.price) || 0;
@@ -366,7 +365,31 @@ export default function TaxiDriverDashboard() {
             body: `Кошелёк · ****${last4}`,
             type: 'taxi_wallet_payment',
           }).then().catch(() => {});
+          // Записать платёж + начислить водителю
+          const amount = Number(currentOrder.price) || 0;
+          const commission = Math.round(amount * TAXI_COMMISSION * 100) / 100;
+          const earnings = Math.round((amount - commission) * 100) / 100;
+          await supabase.from('taxi_ride_payments').insert({
+            order_id: currentOrder.id, amount, commission, driver_earnings: earnings,
+            method: 'wallet', status: 'completed', paid_at: new Date().toISOString(),
+          });
+          await supabase.from('taxi_wallet_transactions').insert({
+            driver_id: user.id, amount: earnings, type: 'earnings',
+            order_id: currentOrder.id, description: 'Оплата поездки (кошелёк)',
+          });
+          const { data: drv } = await supabase.from('taxi_drivers').select('rides_count, total_earnings').eq('user_id', user.id).single();
+          await supabase.from('taxi_drivers').update({
+            rides_count: (drv?.rides_count || 0) + 1,
+            total_earnings: Math.round(((Number(drv?.total_earnings) || 0) + earnings) * 100) / 100,
+            status: 'free',
+          }).eq('user_id', user.id);
+          await supabase.from('taxi_driver_locations').update({ status: 'free' }).eq('driver_id', user.id);
+          setStats(prev => ({ ...prev, rides: (prev.rides || 0) + 1, today: Math.round((prev.today + earnings) * 100) / 100 }));
         }
+      } else {
+        // Для наличных/карты/QR — сбросить статус сразу
+        await supabase.from('taxi_drivers').update({ status: 'free' }).eq('user_id', user.id);
+        await supabase.from('taxi_driver_locations').update({ status: 'free' }).eq('driver_id', user.id);
       }
       setCurrentOrder(prev => prev ? { ...prev, status: 'completed' } : null);
       setCardPhase(currentOrder.payment_method === 'wallet' ? 'rate' : 'payment');
@@ -419,12 +442,16 @@ export default function TaxiDriverDashboard() {
       to_id: currentOrder.passenger_id,
       rating: stars,
     });
+    await supabase.from('taxi_drivers').update({ status: 'free' }).eq('user_id', user.id);
+    await supabase.from('taxi_driver_locations').update({ status: 'free' }).eq('driver_id', user.id);
     toast.success('Спасибо! Поездка завершена');
     setCurrentOrder(null);
     setCardPhase('active');
     setChatOpen(false);
     setPassengerInfo(null);
     loadStats();
+    const { data: drv } = await supabase.from('taxi_drivers').select('rating, rides_count').eq('user_id', user.id).single();
+    if (drv) setStats(prev => ({ ...prev, rating: drv.rating || 5.0, rides: drv.rides_count || 0 }));
   }, [currentOrder, user?.id, loadStats]);
 
   const handleSos = useCallback(() => {
