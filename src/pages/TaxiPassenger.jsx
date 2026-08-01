@@ -470,8 +470,10 @@ export default function TaxiPassenger() {
         const addr = data.display_name?.split(',').slice(0, 3).join(',') || 'Выбранная точка';
         if (target === 'from') { setFromText(addr); setFromCoord([lat, lng]); }
         else { setToText(addr); setToCoord([lat, lng]); }
+        return addr;
       }
     } catch {}
+    return null;
   }, []);
 
   const handleSearch = useCallback((val) => {
@@ -544,12 +546,25 @@ export default function TaxiPassenger() {
     rec.start();
   }, [handleSearch]);
 
-  const handleMapClick = useCallback((latlng) => {
+  const handleMapClick = useCallback(async (latlng) => {
     if (!pickTarget) return;
-    geocodeLatLng(latlng.lat, latlng.lng, pickTarget);
+    const target = pickTarget;
+    const currentSave = saveTarget;
     setPickTarget(null);
-    setSaveTarget(null);
-  }, [pickTarget, geocodeLatLng]);
+    const addr = await geocodeLatLng(latlng.lat, latlng.lng, target);
+    if (currentSave && addr) {
+      const item = { name: addr, lat: latlng.lat, lng: latlng.lng };
+      setFavorites(prev => {
+        const next = { ...prev, [currentSave]: item };
+        saveJSON('kartaad_favs', next);
+        return next;
+      });
+      setSaveTarget(null);
+      toast.success(`Адрес сохранён как «${FAVORITE_PLACES.find(f => f.key === currentSave)?.label}»`);
+    } else {
+      setSaveTarget(null);
+    }
+  }, [pickTarget, saveTarget, geocodeLatLng]);
 
   const handleOrder = useCallback(async () => {
     if (!fromText) { toast.error('Укажите откуда'); return; }
@@ -977,7 +992,7 @@ export default function TaxiPassenger() {
                       key={f.key}
                       onClick={() => {
                         if (saved) { applyAddress({ name: saved.name, lat: saved.lat, lng: saved.lng }); setShowSearch(false); }
-                        else { setSaveTarget(f.key); }
+                        else { setSaveTarget(f.key); setPickTarget('from'); }
                       }}
                       className={`flex-1 flex items-center gap-1.5 px-3 py-2.5 rounded-xl border-2 text-[11px] font-bold transition-all ${
                         saveTarget === f.key
