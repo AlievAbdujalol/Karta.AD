@@ -154,6 +154,7 @@ export default function TaxiDriverDashboard() {
     }
     const id = navigator.geolocation.watchPosition(
       async (pos) => {
+        if (!navigator.onLine) return;
         const lat = pos.coords.latitude, lng = pos.coords.longitude;
         setDriverPosition([lat, lng]);
         try {
@@ -274,6 +275,7 @@ export default function TaxiDriverDashboard() {
       toast.error('Активируйте подписку такси в профиле (25 TJS/мес)');
       return;
     }
+    try {
     const newStatus = isOnline ? 'offline' : 'free';
     setIsOnline(!isOnline);
     const updates = { status: newStatus };
@@ -283,6 +285,7 @@ export default function TaxiDriverDashboard() {
       driver_id: user.id, status: isOnline ? 'offline' : 'free', updated_at: new Date().toISOString(),
     }, { onConflict: 'driver_id' });
     toast.success(isOnline ? 'Вы вышли с линии' : 'Вы на линии! Приступаем к поиску заказов');
+    } catch { setIsOnline(isOnline); toast.error('Ошибка сети'); }
   }, [isOnline, user?.id]);
 
   const handleAcceptOrder = useCallback(async (order) => {
@@ -323,6 +326,7 @@ export default function TaxiDriverDashboard() {
 
   const handleOrderAction = useCallback(async (newStatus) => {
     if (!currentOrder?.id) return;
+    try {
     if (newStatus === 'cancelled') {
       await supabase.from('taxi_orders').update({ status: 'cancelled', cancelled_by: 'driver' }).eq('id', currentOrder.id);
       await supabase.from('taxi_drivers').update({ status: 'free' }).eq('user_id', user.id);
@@ -399,10 +403,12 @@ export default function TaxiDriverDashboard() {
     setCurrentOrder(prev => prev ? { ...prev, status: newStatus } : null);
     if (newStatus === 'arrived') toast.info('Ожидаем пассажира...');
     if (newStatus === 'riding') toast.info('Поездка началась!');
+    } catch { toast.error('Ошибка сети. Проверьте подключение'); }
   }, [currentOrder, user?.id]);
 
   const handlePaid = useCallback(async (method) => {
     if (!currentOrder?.id) return;
+    try {
     const amount = Number(currentOrder.price) || 0;
     const commission = Math.round(amount * TAXI_COMMISSION * 100) / 100;
     const earnings = Math.round((amount - commission) * 100) / 100;
@@ -432,10 +438,12 @@ export default function TaxiDriverDashboard() {
     setStats(prev => ({ ...prev, rides: (prev.rides || 0) + 1, today: Math.round((prev.today + earnings) * 100) / 100 }));
     setCardPhase('rate');
     toast.success(`Оплата получена: ${formatTJS(earnings)} TJS`);
+    } catch { toast.error('Ошибка сети при оплате'); }
   }, [currentOrder, user?.id]);
 
   const handleRated = useCallback(async (stars) => {
     if (!currentOrder?.id || !stars) return;
+    try {
     await supabase.from('taxi_ratings').insert({
       order_id: currentOrder.id,
       from_id: user.id,
@@ -452,6 +460,7 @@ export default function TaxiDriverDashboard() {
     loadStats();
     const { data: drv } = await supabase.from('taxi_drivers').select('rating, rides_count').eq('user_id', user.id).single();
     if (drv) setStats(prev => ({ ...prev, rating: drv.rating || 5.0, rides: drv.rides_count || 0 }));
+    } catch {}
   }, [currentOrder, user?.id, loadStats]);
 
   const handleSos = useCallback(() => {

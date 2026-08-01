@@ -350,17 +350,20 @@ export default function TaxiPassenger() {
     if (!fromCoord || !user?.id) return;
     let alive = true;
     const load = async () => {
-      const [{ data: coef }, { data: summary }] = await Promise.all([
-        supabase.rpc('taxi_demand_coefficient', { p_lat: fromCoord[0], p_lng: fromCoord[1], p_radius_km: 3 }),
-        supabase.rpc('taxi_nearby_summary', { p_lat: fromCoord[0], p_lng: fromCoord[1], p_radius_km: 5 }),
-      ]);
-      if (!alive) return;
-      if (coef != null) setDemandCoef(Number(coef));
-      const carsMap = {};
-      (summary || []).forEach(r => {
-        carsMap[r.category] = { cars: Number(r.cars) || 0, nearestKm: r.nearest_km != null ? Number(r.nearest_km) : null };
-      });
-      setNearbyCars(carsMap);
+      if (!navigator.onLine) return;
+      try {
+        const [{ data: coef }, { data: summary }] = await Promise.all([
+          supabase.rpc('taxi_demand_coefficient', { p_lat: fromCoord[0], p_lng: fromCoord[1], p_radius_km: 3 }),
+          supabase.rpc('taxi_nearby_summary', { p_lat: fromCoord[0], p_lng: fromCoord[1], p_radius_km: 5 }),
+        ]);
+        if (!alive) return;
+        if (coef != null) setDemandCoef(Number(coef));
+        const carsMap = {};
+        (summary || []).forEach(r => {
+          carsMap[r.category] = { cars: Number(r.cars) || 0, nearestKm: r.nearest_km != null ? Number(r.nearest_km) : null };
+        });
+        setNearbyCars(carsMap);
+      } catch {}
     };
     load();
     const t = setInterval(load, 20000);
@@ -371,18 +374,21 @@ export default function TaxiPassenger() {
     if (orderState === 'searching' || orderState === 'found') {
       let alive = true;
       const refresh = async () => {
-        const { data } = await supabase
-          .from('taxi_driver_locations')
-          .select('driver_id, lat, lng, heading')
-          .eq('status', 'free')
-          .not('lat', 'is', null)
-          .not('lng', 'is', null)
-          .order('updated_at', { ascending: false })
-          .limit(12);
-        if (!data || !alive) return;
-        const snapped = await snapPositions(data.map(d => [d.lat, d.lng]));
-        if (!alive) return;
-        setNearbyDrivers(data.map((d, i) => ({ ...d, lat: snapped[i][0], lng: snapped[i][1] })));
+        if (!navigator.onLine) return;
+        try {
+          const { data } = await supabase
+            .from('taxi_driver_locations')
+            .select('driver_id, lat, lng, heading')
+            .eq('status', 'free')
+            .not('lat', 'is', null)
+            .not('lng', 'is', null)
+            .order('updated_at', { ascending: false })
+            .limit(12);
+          if (!data || !alive) return;
+          const snapped = await snapPositions(data.map(d => [d.lat, d.lng]));
+          if (!alive) return;
+          setNearbyDrivers(data.map((d, i) => ({ ...d, lat: snapped[i][0], lng: snapped[i][1] })));
+        } catch {}
       };
       refresh();
       const interval = setInterval(refresh, 3000);
@@ -596,15 +602,14 @@ export default function TaxiPassenger() {
       setOrderId(data.id);
       toast.success(`Ищем водителя · ${formatTJS(selectedPrice)} TJS`);
     } catch (e) {
-      console.error(e);
-      toast.error('Ошибка при создании заказа');
+      toast.error(navigator.onLine ? 'Ошибка при создании заказа' : 'Нет интернета. Проверьте подключение');
       setOrderState('idle');
     }
   }, [fromText, fromCoord, toText, toCoord, category, paymentMethod, routeInfo, selectedPrice, demandCoef, user?.id]);
 
   const handleCancel = useCallback(async () => {
     if (!orderId) return;
-    await supabase.from('taxi_orders').update({ status: 'cancelled', cancelled_by: 'passenger' }).eq('id', orderId);
+    try { await supabase.from('taxi_orders').update({ status: 'cancelled', cancelled_by: 'passenger' }).eq('id', orderId); } catch {}
     setOrderState('idle');
     setOrderId(null);
     setDriverInfo(null);
