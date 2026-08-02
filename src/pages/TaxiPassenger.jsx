@@ -705,10 +705,7 @@ export default function TaxiPassenger() {
       tip: tip || null,
     });
     if (error) { console.error(error); toast.error('Не удалось сохранить оценку'); return; }
-    const { data: all } = await supabase.from('taxi_ratings').select('rating').eq('to_id', driverInfo?.driverId);
-    const list = all || [];
-    const avg = list.length ? list.reduce((s, r) => s + Number(r.rating), 0) / list.length : rideRating;
-    await supabase.from('taxi_drivers').update({ rating: Math.round(avg * 10) / 10, rating_count: list.length }).eq('user_id', driverInfo?.driverId);
+    await supabase.rpc('taxi_recompute_driver_rating', { p_driver_id: driverInfo?.driverId });
     toast.success('Спасибо за оценку!');
     setOrderState('idle');
     setOrderId(null);

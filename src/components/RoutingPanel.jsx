@@ -1,9 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Navigation, MapPin, Plus, X, RotateCcw, Locate, Route, AlertCircle, Loader2, Crosshair, ChevronUp, ChevronDown } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/lib/useLanguage';
 
 const TRANSPORT_MODES = [
   { id: 'driving', icon: '🚗', label: 'Авто', osrmProfile: 'driving', color: '#2563EB' },
+  { id: 'taxi', icon: '🚕', label: 'Такси', osrmProfile: 'driving', color: '#F59E0B' },
   { id: 'walking', icon: '🚶', label: 'Пешком', osrmProfile: 'walking', color: '#7C3AED' },
   { id: 'cycling', icon: '🚲', label: 'Велосипед', osrmProfile: 'cycling', color: '#059669' },
   { id: 'bus', icon: '🚌', label: 'Автобус', osrmProfile: 'driving', color: '#F59E0B' },
@@ -187,6 +189,7 @@ function LocationField({ value, placeholder, icon: Icon, iconColor, onPick, onCl
 
 export default function RoutingPanel({ onClose, onRouteBuilt, mapCenter, user, onRequestMapPick, onLocateAndPick, onLocateMe, mapPickResult, mapPickTarget }) {
   const { t } = useLanguage();
+  const navigate = useNavigate();
   const [from, setFrom] = useState(null);
   const [to, setTo] = useState(null);
   const [fromText, setFromText] = useState('');
@@ -294,6 +297,7 @@ export default function RoutingPanel({ onClose, onRouteBuilt, mapCenter, user, o
   const estimateCost = (distance, mode) => {
     const km = distance / 1000;
     if (mode === 'driving') return Math.round(km * 1.5 + 10);
+    if (mode === 'taxi') return Math.round(km * 2 + 15);
     if (mode === 'bus') return 3;
     if (mode === 'minibus') return 3;
     if (mode === 'walking') return 0;
@@ -477,7 +481,7 @@ export default function RoutingPanel({ onClose, onRouteBuilt, mapCenter, user, o
             </div>
 
             {/* Steps */}
-            {routeData.steps && routeData.steps.length > 0 && (
+            {routeData.steps && routeData.steps.length > 0 && routeData.mode !== 'taxi' && (
               <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 max-h-40 overflow-y-auto">
                 {routeData.steps.slice(0, 20).map((step, i) => {
                   const icons = {
@@ -499,6 +503,27 @@ export default function RoutingPanel({ onClose, onRouteBuilt, mapCenter, user, o
                   );
                 })}
               </div>
+            )}
+
+            {/* Order taxi button */}
+            {routeData.mode === 'taxi' && (
+              <button
+                onClick={() => {
+                  navigate('/taxi', {
+                    state: {
+                      trip: {
+                        from: { name: fromText, lat: from?.lat, lng: from?.lng },
+                        to: { name: toText, lat: to?.lat, lng: to?.lng },
+                      },
+                    },
+                  });
+                  onClose?.();
+                }}
+                className="w-full py-3 rounded-xl font-bold text-sm bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/25 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              >
+                <span>🚕</span>
+                Заказать такси — {estimateCost(routeData.distance, 'taxi')} TJS
+              </button>
             )}
           </div>
         )}
