@@ -28,11 +28,11 @@ export default function DriverDashboard() {
           setLiveStatus(data.driver_status);
           setLiveRole(data.role);
         }
-      }).catch(() => {});
+      }).catch(err => console.error('[DriverDashboard] status load failed:', err));
   };
 
   useEffect(() => {
-    City.list().then(setCities).catch(() => {});
+    City.list().then(setCities).catch(err => console.error('[DriverDashboard] cities load failed:', err));
   }, []);
 
   useEffect(() => {
@@ -40,10 +40,10 @@ export default function DriverDashboard() {
   }, [user]);
 
   useEffect(() => {
-    const q = supabase.from('routes').select('*').not('created_by_id', 'is', null);
-    if (selectedCity) q.eq('city_id', selectedCity);
+    const q = supabase.from('routes').select('*');
+    if (selectedCity) q.or(`city_id.is.null,city_id.eq.${selectedCity}`);
     q.order('created_at', { ascending: false });
-    q.then(({ data }) => setRoutes(data || [])).catch(() => {});
+    q.then(({ data }) => setRoutes(data || [])).catch(err => console.error('[DriverDashboard] routes load failed:', err));
   }, [selectedCity]);
 
   useEffect(() => {

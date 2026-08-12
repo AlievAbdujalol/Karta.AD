@@ -274,6 +274,8 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
             route_type: vehicle.type,
             route_color: vehicle.route_color || '#1565C0',
             city_name: vehicle.city_name || '',
+          }).then(({ error }) => {
+            if (error) console.error('[TripLog] insert failed:', error);
           }).catch(() => {});
           refetch();
         }
@@ -395,7 +397,7 @@ async function snapToRoad(lat, lng) {
   return { lat, lng };
 }
 
-export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen }) {
+export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip }) {
   const [tileIndex, setTileIndex] = useState(0);
   const [showLabels, setShowLabels] = useState(true);
   const [routingOpen, setRoutingOpen] = useState(false);
@@ -486,10 +488,11 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
     setRoutingOpen(prev => {
       const opening = !prev;
       if (opening && onRoutingOpen) onRoutingOpen();
+      if (onRoutingStateChange) onRoutingStateChange(opening);
       return opening;
     });
     if (routingOpen) { setRoutingRoute(null); setMapPickTarget(null); }
-  }, [routingOpen, onRoutingOpen]);
+  }, [routingOpen, onRoutingOpen, onRoutingStateChange]);
 
   function MapPickerOverlay({ target, onPick, onCancel }) {
     const map = useMap();
@@ -649,7 +652,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
     iconAnchor: [10, 10],
   });
 
-  const isHybrid = tileIndex === 1;
+  const isHybrid = TILE_LAYERS[tileIndex].isHybrid;
   useEffect(() => {
     if (isHybrid) setShowLabels(true);
   }, [isHybrid]);
@@ -702,8 +705,8 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       />
       <MapController center={center} mapRef={mapRef} />
       <FlyToHandler flyTo={flyTo} onDone={onFlyDone} />
-      {!mapPickTarget && <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={routingOpen} onFinderToggle={handleFinderToggle} />}
       <ScaleControl position="bottomleft" imperial={false} metric={true} />
+      {!mapPickTarget && <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={routingOpen} onFinderToggle={handleFinderToggle} onShareTrip={onShareTrip} />}
 
       {showLabels && (
         <TileLayer
@@ -844,10 +847,77 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         </>
       )}
 
-      {/* Routing panel */}
+      {mapPickTarget && (
+        <MapPickerOverlay
+          target={mapPickTarget}
+          onPick={(latlng) => handleMapPick({ lat: latlng.lat, lng: latlng.lng, target: mapPickTarget })}
+          onCancel={() => { setMapPickTarget(null); setMapPickResult(null); }}
+        />
+      )}
+
+      <UserLocationMarker />
+
+      {/* Group route members */}
+      {groupRouteMembers.filter(m => m.lat && m.lng).map((member) => {
+        const isCreator = member.role === 'creator';
+        const color = isCreator ? '#3b82f6' : '#ef4444';
+        const icon = L.divIcon({
+          className: '',
+          html: `<div style="position:relative;width:40px;height:40px;">
+            <div style="width:40px;height:40px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);">
+              <span style="color:white;font-size:13px;font-weight:700;">${(member.full_name || member.user_id || '?')[0]}</span>
+            </div>
+            <div style="position:absolute;bottom:-3px;right:-3px;width:14px;height:14px;background:#22c55e;border-radius:50%;border:2px solid white;"></div>
+          </div>`,
+          iconSize: [40, 40],
+          iconAnchor: [20, 20],
+        });
+        return (
+          <Marker key={`group-member-${member.user_id}`} position={[member.lat, member.lng]} icon={icon}>
+            <Popup>
+              <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>
+                <div>{member.full_name || 'Участник'}</div>
+                <div style={{ fontSize: 10, color: isCreator ? '#3b82f6' : '#ef4444', marginTop: 2 }}>
+                  {isCreator ? 'Создатель' : 'Участник'}
+                </div>
+              </div>
+            </Popup>
+          </Marker>
+        );
+      })}
+
+      {/* Contact locations */}
+      {contactLocations.filter(c => c.lat && c.lng).map((contact) => {
+        const icon = L.divIcon({
+          className: '',
+          html: `<div style="position:relative;width:36px;height:36px;">
+            <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);">
+              <span style="color:white;font-size:12px;font-weight:700;">${(contact.full_name || '?')[0]}</span>
+            </div>
+            <div style="position:absolute;bottom:-2px;right:-2px;width:12px;height:12px;background:#22c55e;border-radius:50%;border:2px solid white;"></div>
+          </div>`,
+          iconSize: [36, 36],
+          iconAnchor: [18, 18],
+        });
+        return (
+          <Marker key={`contact-${contact.user_id}`} position={[contact.lat, contact.lng]} icon={icon}>
+            <Popup>
+              <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>
+                <div>{contact.full_name}</div>
+                <div style={{ fontSize: 10, color: '#666', marginTop: 2 }}>
+                  {contact.updated_at ? new Date(contact.updated_at).toLocaleTimeString('ru') : ''}
+                </div>
+              </div>
+            </Popup>
+          </Marker>
+        );
+      })}
+    </MapContainer>
+
+      {/* Routing panel — outside MapContainer to avoid Leaflet stacking context */}
       {routingOpen && (
         <RoutingPanel
-          onClose={() => { setRoutingOpen(false); setRoutingRoute(null); setMapPickTarget(null); setMapPickResult(null); }}
+          onClose={() => { setRoutingOpen(false); setRoutingRoute(null); setMapPickTarget(null); setMapPickResult(null); if (onRoutingStateChange) onRoutingStateChange(false); }}
           onRouteBuilt={(route) => setRoutingRoute(route)}
           mapCenter={center}
           user={user}
@@ -859,16 +929,6 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         />
       )}
 
-      {mapPickTarget && (
-        <MapPickerOverlay
-          target={mapPickTarget}
-          onPick={(latlng) => handleMapPick({ lat: latlng.lat, lng: latlng.lng, target: mapPickTarget })}
-          onCancel={() => { setMapPickTarget(null); setMapPickResult(null); }}
-        />
-      )}
-
-      <UserLocationMarker />
-    </MapContainer>
     </div>
   );
 }

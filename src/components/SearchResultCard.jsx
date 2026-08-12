@@ -50,7 +50,7 @@ export default function SearchResultCard({ result, onClose }) {
   if (!result) return null;
 
   return (
-    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[1001] w-[calc(100%-32px)] max-w-md">
+    <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-[650] w-[calc(100%-32px)] max-w-md">
       <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-slate-200/60 dark:border-slate-700/80 p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">

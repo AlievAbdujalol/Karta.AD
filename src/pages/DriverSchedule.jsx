@@ -210,7 +210,7 @@ export default function DriverSchedule() {
         .from('profiles')
         .select('*')
         .eq('id', authUser.id)
-        .single();
+        .maybeSingle();
       setUser(profile);
 
       if (!profile?.id) { setLoading(false); return; }

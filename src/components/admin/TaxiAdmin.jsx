@@ -38,7 +38,7 @@ export default function TaxiAdmin() {
   const [loading, setLoading] = useState(true);
 
   const notify = useCallback((userId, title, body) => {
-    supabase.from('notifications').insert({ user_id: userId, title, body, type: 'taxi_docs' }).then().catch(() => {});
+    supabase.from('notifications').insert({ user_id: userId, title, body, type: 'taxi_docs' }).then(({ error }) => { if (error) console.error('[TaxiAdmin] notification failed:', error); }).catch(() => {});
   }, []);
 
   // Заявки на верификацию
@@ -99,8 +99,9 @@ export default function TaxiAdmin() {
     const { error } = await supabase.from('taxi_driver_documents').update({
       status: 'approved', is_verified: true, verified_by: user.id, verified_at: new Date().toISOString(),
     }).eq('id', doc.id);
-    if (error) { toast.error('Не удалось одобрить'); return; }
-    await supabase.from('taxi_drivers').update({ is_verified: true }).eq('user_id', doc.driver_id);
+    if (error) { toast.error('Не удалось одобрить документы'); return; }
+    const { error: driverErr } = await supabase.from('taxi_drivers').update({ is_verified: true }).eq('user_id', doc.driver_id);
+    if (driverErr) { toast.error('Документы одобрены, но статус водителя не обновлён'); loadDocs(); return; }
     notify(doc.driver_id, 'Документы одобрены ✅', 'Вы можете выходить на линию. Приятных поездок!');
     toast.success(`Заявка ${doc.driver?.full_name || ''} одобрена`);
     loadDocs(); loadDrivers();
@@ -109,10 +110,12 @@ export default function TaxiAdmin() {
   const handleReject = async (doc) => {
     const reason = window.prompt('Причина отклонения (видна водителю):', 'Нечитаемые документы');
     if (reason === null) return;
-    await supabase.from('taxi_driver_documents').update({
+    const { error } = await supabase.from('taxi_driver_documents').update({
       status: 'rejected', is_verified: false, reject_reason: reason || 'Документы не прошли проверку',
     }).eq('id', doc.id);
-    await supabase.from('taxi_drivers').update({ is_verified: false }).eq('user_id', doc.driver_id);
+    if (error) { toast.error('Не удалось отклонить документы'); return; }
+    const { error: driverErr } = await supabase.from('taxi_drivers').update({ is_verified: false }).eq('user_id', doc.driver_id);
+    if (driverErr) { toast.warning('Документы отклонены, но статус водителя не обновлён'); loadDocs(); return; }
     notify(doc.driver_id, 'Документы отклонены ❌', reason || 'Документы не прошли проверку. Обновите их в профиле.');
     toast.info('Заявка отклонена');
     loadDocs(); loadDrivers();
@@ -120,7 +123,8 @@ export default function TaxiAdmin() {
 
   const toggleVerified = async (d) => {
     const next = !d.is_verified;
-    await supabase.from('taxi_drivers').update({ is_verified: next }).eq('user_id', d.user_id);
+    const { error } = await supabase.from('taxi_drivers').update({ is_verified: next }).eq('user_id', d.user_id);
+    if (error) { toast.error('Не удалось изменить верификацию'); return; }
     await supabase.from('taxi_driver_documents').update({ status: next ? 'approved' : 'pending' }).eq('driver_id', d.user_id);
     setDrivers(prev => prev.map(x => x.user_id === d.user_id ? { ...x, is_verified: next } : x));
     notify(d.user_id, next ? 'Документы одобрены ✅' : 'Верификация снята', next ? 'Вы можете выходить на линию.' : 'Администратор снял верификацию. Обновите документы.');
@@ -129,7 +133,8 @@ export default function TaxiAdmin() {
 
   const toggleBlock = async (d) => {
     const next = d.status === 'blocked' ? 'offline' : 'blocked';
-    await supabase.from('taxi_drivers').update({ status: next }).eq('user_id', d.user_id);
+    const { error } = await supabase.from('taxi_drivers').update({ status: next }).eq('user_id', d.user_id);
+    if (error) { toast.error('Не удалось изменить статус'); return; }
     await supabase.from('taxi_driver_locations').update({ status: next === 'blocked' ? 'blocked' : 'offline' }).eq('driver_id', d.user_id);
     setDrivers(prev => prev.map(x => x.user_id === d.user_id ? { ...x, status: next } : x));
     toast.success(next === 'blocked' ? 'Водитель заблокирован' : 'Водитель разблокирован');

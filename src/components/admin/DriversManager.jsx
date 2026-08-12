@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { UserProfile } from '@/api/entities';
 import { useLanguage } from '@/lib/useLanguage';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { CheckCircle2, XCircle, User } from 'lucide-react';
@@ -10,15 +9,25 @@ export default function DriversManager() {
   const { t } = useLanguage();
   const { user } = useCurrentUser();
   const [drivers, setDrivers] = useState([]);
+  const [routes, setRoutes] = useState([]);
 
   const load = () => {
-    supabase.rpc('get_admin_driver_requests')
-      .then(({ data }) => setDrivers(data || []));
+    supabase.from('profiles')
+      .select('id, full_name, email, phone, vehicle_number, driver_status, city_id, route_id, role')
+      .not('driver_status', 'is', null)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => setDrivers(data || []))
+      .catch(() => setDrivers([]));
+    supabase.from('routes')
+      .select('id, number, name, type')
+      .then(({ data }) => setRoutes(data || []))
+      .catch((err) => console.error('[DriversManager] routes load error:', err));
   };
   useEffect(() => { load(); }, []);
 
   const updateStatus = async (id, status) => {
-    await UserProfile.update(id, { driver_status: status, created_by_id: user?.id });
+    const { error } = await supabase.from('profiles').update({ driver_status: status }).eq('id', id);
+    if (error) { toast.error('Не удалось обновить статус'); return; }
     load();
     toast.success(status === 'approved' ? t('approved') : t('blocked'));
   };
@@ -52,6 +61,11 @@ export default function DriversManager() {
                     {driver.vehicle_number && (
                       <p className="text-xs text-gray-500">№ {driver.vehicle_number}</p>
                     )}
+                    {driver.route_id && (() => {
+                      const r = routes.find(x => x.id === driver.route_id);
+                      return r ? <p className="text-xs text-blue-600">#{r.number} {r.name || ''}</p> : null;
+                    })()}
+                    <p className="text-xs text-gray-400 mt-0.5">Роль: {driver.role}</p>
                   </div>
                 </div>
                 <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${cfg.cls}`}>

@@ -69,7 +69,7 @@ export async function searchAll(query, options = {}) {
   promises.push((async () => {
     let sq = supabase.from('stops').select('*');
     if (cityId) {
-      const { data: cityRoutes } = await supabase.from('routes').select('id').eq('city_id', cityId);
+      const { data: cityRoutes } = await supabase.from('routes').select('id').or(`city_id.is.null,city_id.eq.${cityId}`);
       if (cityRoutes?.length) {
         sq = sq.in('route_id', cityRoutes.map(r => r.id));
       }
@@ -94,7 +94,7 @@ export async function searchAll(query, options = {}) {
   promises.push((async () => {
     let vq = supabase.from('vehicles').select('*').eq('is_active', true);
     if (cityId) {
-      const { data: cityRoutes } = await supabase.from('routes').select('id').eq('city_id', cityId);
+      const { data: cityRoutes } = await supabase.from('routes').select('id').or(`city_id.is.null,city_id.eq.${cityId}`);
       if (cityRoutes?.length) {
         vq = vq.in('route_id', cityRoutes.map(r => r.id));
       }

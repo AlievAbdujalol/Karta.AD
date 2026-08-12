@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { City, Route, UserProfile, Vehicle } from '@/api/entities';
+import { City, Route, Vehicle } from '@/api/entities';
+import { supabase } from '@/api/supabase';
 import { useLanguage } from '@/lib/useLanguage';
 import { COUNTRIES, getFlag } from '@/lib/countryData';
 import { Plus, Trash2, CheckCircle, XCircle, MapPin, Bus, Users, Globe, Search, X } from 'lucide-react';
@@ -22,13 +23,13 @@ export default function AdminDashboard() {
   const [stopForm, setStopForm] = useState({ name: '', lat: '', lng: '' });
 
   const loadAll = async () => {
-    const [c, r, u, v] = await Promise.all([
+    const [c, r, v] = await Promise.all([
       City.list(),
       Route.list(),
-      UserProfile.list(),
       Vehicle.filter({ is_active: true }),
     ]);
-    setCities(c); setRoutes(r); setUsers(u); setVehicles(v);
+    const { data: u } = await supabase.from('profiles').select('id, full_name, email, role, driver_status, city_id, phone').order('created_at', { ascending: false });
+    setCities(c); setRoutes(r); setUsers(u || []); setVehicles(v);
   };
 
   useEffect(() => { loadAll(); }, []);
@@ -59,12 +60,12 @@ export default function AdminDashboard() {
   };
 
   const approveDriver = async (uid) => {
-    await UserProfile.update(uid, { driver_status: 'approved' });
+    await supabase.from('profiles').update({ driver_status: 'approved' }).eq('id', uid);
     loadAll();
   };
 
   const blockDriver = async (uid) => {
-    await UserProfile.update(uid, { driver_status: 'blocked' });
+    await supabase.from('profiles').update({ driver_status: 'blocked' }).eq('id', uid);
     loadAll();
   };
 

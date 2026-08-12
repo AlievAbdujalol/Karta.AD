@@ -318,8 +318,8 @@ export default function TaxiPassenger() {
   useEffect(() => {
     const fetchDriverInfo = async () => {
       if (!driverInfo?.driverId) return;
-      const { data: driver } = await supabase.from('taxi_drivers').select('full_name, phone, photo_url, rating, rides_count').eq('user_id', driverInfo.driverId).single();
-      const { data: vehicle } = await supabase.from('taxi_vehicles').select('make, model, color, plate_number, category').eq('driver_id', driverInfo.driverId).single();
+      const { data: driver } = await supabase.from('taxi_drivers').select('full_name, phone, photo_url, rating, rides_count').eq('user_id', driverInfo.driverId).maybeSingle();
+      const { data: vehicle } = await supabase.from('taxi_vehicles').select('make, model, color, plate_number, category').eq('driver_id', driverInfo.driverId).maybeSingle();
       if (driver || vehicle) {
         setDriverInfo(prev => ({
           ...prev,
@@ -341,7 +341,8 @@ export default function TaxiPassenger() {
     if (!driverInfo?.driverId || !user?.id) return;
     supabase.from('taxi_favorite_drivers')
       .select('id').eq('passenger_id', user.id).eq('driver_id', driverInfo.driverId).maybeSingle()
-      .then(({ data }) => setIsFavoriteDriver(!!data));
+      .then(({ data }) => setIsFavoriteDriver(!!data))
+      .catch(() => {});
   }, [driverInfo?.driverId, user?.id]);
 
   // Новые сообщения в чате активного заказа
@@ -626,16 +627,21 @@ export default function TaxiPassenger() {
 
   const handleCancel = useCallback(async () => {
     if (!orderId) return;
-    try { await supabase.from('taxi_orders').update({ status: 'cancelled', cancelled_by: 'passenger' }).eq('id', orderId); } catch {}
-    setOrderState('idle');
-    setOrderId(null);
-    setDriverInfo(null);
-    setDriverPosition(null);
-    setChatOpen(false);
-    setRideRating(0);
-    setRideTip('');
-    setRideComment('');
-    toast.info('Заказ отменён');
+    try {
+      const { error } = await supabase.from('taxi_orders').update({ status: 'cancelled', cancelled_by: 'passenger' }).eq('id', orderId);
+      if (error) throw new Error(error.message);
+      setOrderState('idle');
+      setOrderId(null);
+      setDriverInfo(null);
+      setDriverPosition(null);
+      setChatOpen(false);
+      setRideRating(0);
+      setRideTip('');
+      setRideComment('');
+      toast.info('Заказ отменён');
+    } catch (err) {
+      toast.error(err.message || 'Ошибка отмены заказа');
+    }
   }, [orderId]);
 
   const shareText = useMemo(() =>
@@ -651,7 +657,9 @@ export default function TaxiPassenger() {
         lat,
         lng,
         message: `SOS от пассажира. Водитель: ${driverInfo?.name || '—'} ${driverInfo?.plate || ''}`,
-      }).then().catch(() => {});
+      }).then(({ error }) => {
+        if (error) toast.error('Ошибка отправки SOS в систему');
+      });
       const coords = `https://maps.google.com/?q=${lat},${lng}`;
       const msg = `SOS! Поездка Karta.AD. Мои координаты: ${coords}. Водитель: ${driverInfo?.name || '—'} ${driverInfo?.plate || ''}`;
       try { if (navigator.share) navigator.share({ title: 'SOS', text: msg }); else toast.info(msg); } catch {}
@@ -684,7 +692,7 @@ export default function TaxiPassenger() {
         return;
       }
       // Уведомление водителю: последние 4 цифры + сумма
-      const { data: passengerProfile } = await supabase.from('profiles').select('phone').eq('id', user.id).single();
+      const { data: passengerProfile } = await supabase.from('profiles').select('phone').eq('id', user.id).maybeSingle();
       const last4 = (passengerProfile?.phone || '').slice(-4);
       const amount = formatTJS(selectedPrice || 0);
       supabase.from('notifications').insert({
@@ -692,7 +700,7 @@ export default function TaxiPassenger() {
         title: `Оплата ${amount} TJS`,
         body: `Кошелёк · ****${last4}`,
         type: 'taxi_wallet_payment',
-      }).then().catch(() => {});
+      }).then(({ error }) => { if (error) console.error('[TaxiPassenger] notification failed:', error); }).catch(() => {});
     }
 
     const tip = parseFloat(rideTip) || 0;

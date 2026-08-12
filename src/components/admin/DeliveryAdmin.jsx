@@ -887,7 +887,7 @@ function CouriersTab() {
   const load = useCallback(async () => {
     setLoading(true);
     const { data } = await supabase.from('delivery_couriers')
-      .select('*, profiles(full_name, phone, avatar_url)')
+      .select('*, profiles(full_name, phone, photo_url)')
       .order('last_seen', { ascending: false });
     setCouriers(data || []);
     setLoading(false);

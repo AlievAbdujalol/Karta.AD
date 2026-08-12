@@ -23,7 +23,7 @@ export default function RoutesManager() {
 
   const load = async () => {
     const [r, c] = await Promise.all([
-      Route.filter({ created_by_id: user?.id }),
+      Route.list(),
       City.list(),
     ]);
     setRoutes(r);

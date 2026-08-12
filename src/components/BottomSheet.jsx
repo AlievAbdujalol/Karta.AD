@@ -164,7 +164,7 @@ export default function BottomSheet({
       {/* Desktop toggle button */}
       <button
         onClick={() => setPanelCollapsed(!panelCollapsed)}
-        className="hidden md:flex absolute left-[calc(380px+16px)] top-1/2 -translate-y-1/2 z-[1001] w-8 h-12 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/60 dark:border-slate-700/80 rounded-r-xl shadow-lg items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer"
+        className="hidden md:flex absolute left-[calc(380px+16px)] top-1/2 -translate-y-1/2 z-[450] w-8 h-12 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/60 dark:border-slate-700/80 rounded-r-xl shadow-lg items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer"
         style={{ left: panelCollapsed ? '16px' : 'calc(380px + 16px)' }}
       >
         {panelCollapsed ? <ChevronRight size={16} className="text-slate-500" /> : <ChevronLeft size={16} className="text-slate-500" />}
@@ -172,7 +172,7 @@ export default function BottomSheet({
 
       {/* Desktop panel */}
       <div
-        className={`hidden md:flex flex-col absolute left-3 top-[140px] bottom-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-slate-200/60 dark:border-slate-800/80 z-[1000] overflow-hidden transition-all duration-300 ${panelCollapsed ? 'w-0 opacity-0 pointer-events-none p-0 border-0' : 'w-[380px]'}`}
+        className={`hidden md:flex flex-col absolute left-3 top-[140px] bottom-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-slate-200/60 dark:border-slate-800/80 z-[400] overflow-hidden transition-all duration-300 ${panelCollapsed ? 'w-0 opacity-0 pointer-events-none p-0 border-0' : 'w-[380px]'}`}
         onMouseDown={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
@@ -238,7 +238,7 @@ export default function BottomSheet({
 
       {/* Mobile left panel */}
       <div
-        className={`md:hidden absolute left-0 top-[140px] bottom-0 z-[1000] flex overflow-hidden transition-all duration-300 ${
+        className={`md:hidden absolute left-0 top-[140px] bottom-0 z-[400] flex overflow-hidden transition-all duration-300 ${
           sheetState === 'collapsed' ? 'w-9' : sheetState === 'half' ? 'w-[316px]' : 'w-[calc(100%-12px)]'
         }`}
         onMouseDown={(e) => e.stopPropagation()}
@@ -485,9 +485,9 @@ function TabContent({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                supabase.from('favorite_drivers').delete().eq('id', d.id).then(() => {
-                  onRemoveFavDriver?.(d.id);
-                }).catch(() => {});
+                supabase.from('favorite_drivers').delete().eq('id', d.id).then(({ error }) => {
+                  if (!error) onRemoveFavDriver?.(d.id);
+                }).catch((err) => console.error('[BottomSheet] delete favorite_driver error:', err));
               }}
               className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 text-red-500"
             >

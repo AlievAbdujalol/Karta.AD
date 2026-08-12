@@ -138,14 +138,14 @@ export default function BottomSheet({
     <>
       <button
         onClick={() => setPanelCollapsed(!panelCollapsed)}
-        className="hidden md:flex absolute left-[calc(380px+16px)] top-1/2 -translate-y-1/2 z-[1001] w-8 h-12 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/60 dark:border-slate-700/80 rounded-r-xl shadow-lg items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer"
+        className="hidden md:flex absolute left-[calc(380px+16px)] top-1/2 -translate-y-1/2 z-[450] w-8 h-12 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/60 dark:border-slate-700/80 rounded-r-xl shadow-lg items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer"
         style={{ left: panelCollapsed ? '16px' : 'calc(380px + 16px)' }}
       >
         {panelCollapsed ? <ChevronRight size={16} className="text-slate-500" /> : <ChevronLeft size={16} className="text-slate-500" />}
       </button>
 
       <div
-        className={`hidden md:flex flex-col absolute left-3 top-[140px] bottom-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-slate-200/60 dark:border-slate-800/80 z-[1000] overflow-hidden transition-all duration-300 ${panelCollapsed ? 'w-0 opacity-0 pointer-events-none p-0 border-0' : 'w-[380px]'}`}
+        className={`hidden md:flex flex-col absolute left-3 top-[140px] bottom-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-slate-200/60 dark:border-slate-800/80 z-[400] overflow-hidden transition-all duration-300 ${panelCollapsed ? 'w-0 opacity-0 pointer-events-none p-0 border-0' : 'w-[380px]'}`}
         onMouseDown={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
@@ -210,7 +210,7 @@ export default function BottomSheet({
       </div>
 
       <motion.div
-        className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-100 dark:border-slate-800/80 z-[1000] shadow-2xl flex flex-col rounded-t-[28px]"
+        className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-100 dark:border-slate-800/80 z-[400] shadow-2xl flex flex-col rounded-t-[28px]"
         initial="half"
         animate={sheetState}
         variants={{
@@ -466,8 +466,8 @@ function TabContent({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                supabase.from('favorite_drivers').delete().eq('id', d.id).then(() => {
-                  onRemoveFavDriver?.(d.id);
+                supabase.from('favorite_drivers').delete().eq('id', d.id).then(({ error }) => {
+                  if (!error) onRemoveFavDriver?.(d.id);
                 }).catch(() => {});
               }}
               className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 text-red-500"

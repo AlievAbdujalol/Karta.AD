@@ -1,24 +1,36 @@
-import { Layers, Crosshair, Plus, Minus, Navigation } from 'lucide-react';
+import { Layers, Crosshair, Plus, Minus, Navigation, Share2 } from 'lucide-react';
 import { useMap } from 'react-leaflet';
 import { useLanguage } from '@/lib/useLanguage';
+import { toast } from 'sonner';
 
 const TILE_LAYERS = [
   { labelKey: 'mapControls.layerStandard', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', isHybrid: false },
   { labelKey: 'mapControls.layerHybrid', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', isHybrid: true },
   { labelKey: 'mapControls.layerOsm', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', isHybrid: false },
+  { labelKey: 'mapControls.layerYandex', url: 'https://core-renderer-tiles.maps.yandex.net/tiles?l=map&x={x}&y={y}&z={z}&scale=1&lang=ru_RU', isHybrid: false },
+  { labelKey: 'mapControls.layerYandexSat', url: 'https://core-sat.maps.yandex.net/tiles?l=sat&x={x}&y={y}&z={z}&scale=1&lang=ru_RU', isHybrid: true },
+  { labelKey: 'mapControls.layerGoogle', url: 'https://mt0.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', isHybrid: false },
+  { labelKey: 'mapControls.layerGoogleSat', url: 'https://mt0.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', isHybrid: true },
+  { labelKey: 'mapControls.layerGoogleHybrid', url: 'https://mt0.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', isHybrid: true },
 ];
 
 const LABEL_OVERLAY_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/light_only_labels/{z}/{x}/{y}{r}.png';
 
-export default function MapControls({ tileIndex, setTileIndex, finderActive, onFinderToggle }) {
+export default function MapControls({ tileIndex, setTileIndex, finderActive, onFinderToggle, onShareTrip }) {
   const map = useMap();
   const { t } = useLanguage();
 
   const locate = () => {
+    toast.info(t('mapControls.myLocation'));
     navigator.geolocation?.getCurrentPosition(
       (pos) => map.setView([pos.coords.latitude, pos.coords.longitude], 16),
-      (err) => console.log('Location error:', err),
-      { enableHighAccuracy: true, timeout: 5000 }
+      (err) => {
+        console.error('Location error:', err);
+        if (err.code === 1) toast.error('Разрешите доступ к геолокации в браузере');
+        else if (err.code === 2) toast.error('Геолокация недоступна');
+        else toast.error('Геолокация истекла — попробуйте ещё раз');
+      },
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
     );
   };
 
@@ -81,6 +93,17 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
           {tileIndex + 1}
         </span>
       </button>
+
+      {/* 6. Share trip */}
+      {onShareTrip && (
+        <button
+          onClick={onShareTrip}
+          className={`${btnClass} !bg-gradient-to-tr !from-emerald-500 !to-teal-500 hover:!from-emerald-600 hover:!to-teal-600 !text-white border-none shadow-emerald-500/20`}
+          title={t('groupRoute.shareTrip') || 'Поделиться поездкой'}
+        >
+          <Share2 size={18} className="stroke-[2.2]" />
+        </button>
+      )}
     </div>
   );
 }

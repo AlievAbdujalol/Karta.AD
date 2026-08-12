@@ -21,7 +21,7 @@ export function TripProvider({ children, user }) {
         lng: longitude,
         speed: speedKmh,
         last_updated: new Date().toISOString(),
-      }).catch(() => {});
+      }).catch(err => console.error('[TripContext] location update failed:', err));
     }
   }, []);
 
@@ -38,13 +38,13 @@ export function TripProvider({ children, user }) {
         setGpsInfo({ speed: speedKmh, lat: latitude, lng: longitude });
         updateLocation(latitude, longitude, speedKmh);
       },
-      () => {},
+      (err) => console.error('[TripContext] GPS error:', err),
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
     );
 
     intervalRef.current = setInterval(() => {
       if (vehicleIdRef.current) {
-        Vehicle.update(vehicleIdRef.current, { last_updated: new Date().toISOString() }).catch(() => {});
+        Vehicle.update(vehicleIdRef.current, { last_updated: new Date().toISOString() }).catch(err => console.error('[TripContext] heartbeat failed:', err));
       }
     }, 30000);
   }, [updateLocation]);
@@ -103,7 +103,9 @@ export function TripProvider({ children, user }) {
         title: 'Водитель вышел на маршрут',
         body: `${driverUser.full_name || driverUser.email} начал рейс на маршруте #${route.number}`,
         type: 'driver_trip_start',
-      }).then().catch(() => {});
+      }).then(({ error }) => {
+        if (error) console.error('[TripContext] notification failed:', error);
+      }).catch(() => {});
     }
 
     startGpsWatch();
@@ -113,7 +115,11 @@ export function TripProvider({ children, user }) {
   const endTrip = useCallback(async () => {
     stopGpsWatch();
     if (vehicleIdRef.current) {
-      await Vehicle.update(vehicleIdRef.current, { is_active: false }).catch(() => {});
+      try {
+        await Vehicle.update(vehicleIdRef.current, { is_active: false });
+      } catch (err) {
+        console.error('[TripContext] endTrip failed:', err);
+      }
       vehicleIdRef.current = null;
     }
     setIsTracking(false);

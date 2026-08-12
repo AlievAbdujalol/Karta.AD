@@ -89,11 +89,9 @@ export default function TaxiDriverDashboard() {
     const dayStart = new Date(now); dayStart.setHours(0, 0, 0, 0);
     const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay());
     const monthStart = new Date(now); monthStart.setDate(1);
-    const base = supabase.from('taxi_orders').select('price, created_at').eq('driver_id', user.id).eq('status', 'completed');
+    const mk = (from) => supabase.from('taxi_orders').select('price, created_at').eq('driver_id', user.id).eq('status', 'completed').gte('created_at', from.toISOString());
     const [today, week, month] = await Promise.all([
-      base.gte('created_at', dayStart.toISOString()),
-      base.gte('created_at', weekStart.toISOString()),
-      base.gte('created_at', monthStart.toISOString()),
+      mk(dayStart), mk(weekStart), mk(monthStart),
     ]);
     const sum = (list) => (list || []).reduce((s, o) => s + (parseFloat(o.price) || 0), 0);
     setStats(prev => ({ ...prev, today: sum(today.data), week: sum(week.data), month: sum(month.data) }));
@@ -103,8 +101,8 @@ export default function TaxiDriverDashboard() {
     const fetchDriver = async () => {
       if (!user?.id) return;
       const [{ data: driver }, { data: vehicle }] = await Promise.all([
-        supabase.from('taxi_drivers').select('*').eq('user_id', user.id).single(),
-        supabase.from('taxi_vehicles').select('category').eq('driver_id', user.id).single(),
+        supabase.from('taxi_drivers').select('*').eq('user_id', user.id).maybeSingle(),
+        supabase.from('taxi_vehicles').select('category').eq('driver_id', user.id).maybeSingle(),
       ]);
       if (driver) {
         isVerifiedRef.current = !!driver.is_verified;
@@ -225,7 +223,7 @@ export default function TaxiDriverDashboard() {
           title: `Новый заказ · ${formatTJS(row.price)} TJS`,
           body: `${row.pickup_address || 'Забор'} -> ${row.dropoff_address || ''}`,
           type: 'taxi_new_order',
-        }).then().catch(() => {});
+        }).then(({ error }) => { if (error) console.error('[TaxiDriver] notification failed:', error); }).catch(() => {});
         addLocalNotification({
           title: `Новый заказ! ${formatTJS(row.price)} TJS`,
           body: `${row.pickup_address || 'Забор'} -> ${row.dropoff_address || ''}`,
@@ -243,7 +241,7 @@ export default function TaxiDriverDashboard() {
 
   useEffect(() => {
     if (currentOrder?.passenger_id) {
-      supabase.from('profiles').select('full_name, phone, photo_url').eq('id', currentOrder.passenger_id).single()
+      supabase.from('profiles').select('full_name, phone, photo_url').eq('id', currentOrder.passenger_id).maybeSingle()
         .then(({ data }) => { if (data) setPassengerInfo(data); });
     }
   }, [currentOrder?.passenger_id]);
@@ -359,7 +357,7 @@ export default function TaxiDriverDashboard() {
         if (payResult === false) {
           toast.error('Оплата через кошелёк не удалась — недостаточно средств');
         } else {
-          const { data: pp } = await supabase.from('profiles').select('phone').eq('id', currentOrder.passenger_id).single();
+          const { data: pp } = await supabase.from('profiles').select('phone').eq('id', currentOrder.passenger_id).maybeSingle();
           const last4 = (pp?.phone || '').slice(-4);
           const amt = Number(currentOrder.price) || 0;
           addLocalNotification({ title: `Оплата ${formatTJS(amt)} TJS`, body: `Кошелёк · ****${last4}`, type: 'taxi_wallet_payment' });
@@ -368,7 +366,7 @@ export default function TaxiDriverDashboard() {
             title: `Оплата ${formatTJS(amt)} TJS`,
             body: `Кошелёк · ****${last4}`,
             type: 'taxi_wallet_payment',
-          }).then().catch(() => {});
+          }).then(({ error }) => { if (error) console.error('[TaxiDriver] wallet notification failed:', error); }).catch(() => {});
           // Записать платёж + начислить водителю
           const amount = Number(currentOrder.price) || 0;
           const commission = Math.round(amount * TAXI_COMMISSION * 100) / 100;
@@ -381,7 +379,7 @@ export default function TaxiDriverDashboard() {
             driver_id: user.id, amount: earnings, type: 'earnings',
             order_id: currentOrder.id, description: 'Оплата поездки (кошелёк)',
           });
-          const { data: drv } = await supabase.from('taxi_drivers').select('rides_count, total_earnings').eq('user_id', user.id).single();
+          const { data: drv } = await supabase.from('taxi_drivers').select('rides_count, total_earnings').eq('user_id', user.id).maybeSingle();
           await supabase.from('taxi_drivers').update({
             rides_count: (drv?.rides_count || 0) + 1,
             total_earnings: Math.round(((Number(drv?.total_earnings) || 0) + earnings) * 100) / 100,
@@ -428,7 +426,7 @@ export default function TaxiDriverDashboard() {
       order_id: currentOrder.id,
       description: `Оплата поездки (${method})`,
     });
-    const { data: driver } = await supabase.from('taxi_drivers').select('rides_count, total_earnings').eq('user_id', user.id).single();
+    const { data: driver } = await supabase.from('taxi_drivers').select('rides_count, total_earnings').eq('user_id', user.id).maybeSingle();
     await supabase.from('taxi_drivers').update({
       rides_count: (driver?.rides_count || 0) + 1,
       total_earnings: Math.round(((Number(driver?.total_earnings) || 0) + earnings) * 100) / 100,
@@ -458,9 +456,12 @@ export default function TaxiDriverDashboard() {
     setChatOpen(false);
     setPassengerInfo(null);
     loadStats();
-    const { data: drv } = await supabase.from('taxi_drivers').select('rating, rides_count').eq('user_id', user.id).single();
+    const { data: drv } = await supabase.from('taxi_drivers').select('rating, rides_count').eq('user_id', user.id).maybeSingle();
     if (drv) setStats(prev => ({ ...prev, rating: drv.rating || 5.0, rides: drv.rides_count || 0 }));
-    } catch {}
+    } catch (err) {
+      console.error('[handleRated]', err);
+      toast.error('Ошибка сохранения оценки');
+    }
   }, [currentOrder, user?.id, loadStats]);
 
   const handleSos = useCallback(() => {
@@ -472,7 +473,9 @@ export default function TaxiDriverDashboard() {
         lat,
         lng,
         message: `SOS от водителя. Пассажир: ${passengerInfo?.full_name || '—'}`,
-      }).then().catch(() => {});
+      }).then(({ error }) => {
+        if (error) toast.error('Ошибка отправки SOS в систему');
+      });
       const coords = `https://maps.google.com/?q=${lat},${lng}`;
       const msg = `SOS! Водитель Karta.AD. Координаты: ${coords}. Пассажир: ${passengerInfo?.full_name || '—'}`;
       try { if (navigator.share) navigator.share({ title: 'SOS', text: msg }); else toast.info(msg); } catch {}

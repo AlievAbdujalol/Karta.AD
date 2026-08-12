@@ -1,10 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import { City, Route, Vehicle, FavoriteRoute, TripLog } from '@/api/entities';
+import { City, Vehicle, FavoriteRoute, TripLog } from '@/api/entities';
+import { supabase } from '@/api/supabase';
 import { useLanguage, LANG_KEY } from '@/lib/useLanguage';
+import { toast } from 'sonner';
 import BusMap from '@/components/BusMap';
 import StopWatcher from '@/components/StopWatcher';
 import { useStopNotifier } from '@/hooks/useStopNotifier';
+import { useLocationSharing } from '@/hooks/useLocationSharing';
+import { useGroupRoute } from '@/hooks/useGroupRoute';
 import SchedulePanel from '@/components/SchedulePanel';
+import LocationSharingPanel from '@/components/LocationSharingPanel';
+import GroupRoutePanel from '@/components/GroupRoutePanel';
 import HomeHeader from '@/components/HomeHeader';
 import SearchResultCard from '@/components/SearchResultCard';
 import { WifiOff } from 'lucide-react';
@@ -13,11 +19,12 @@ import ErrorBoundary, { BusMapErrorFallback } from '@/components/ErrorBoundary';
 import { useNotificationCount } from '@/lib/NotificationContext';
 import { useLocation } from 'react-router-dom';
 import BottomSheet from '@/components/BottomSheet';
-import { supabase } from '@/api/supabase';
 
 export default function Home() {
   const { t, lang, setLang } = useLanguage();
   const { user: currentUser } = useCurrentUser();
+  const { contactLocations, sharingEnabled, toggleSharing } = useLocationSharing(currentUser?.id);
+  const { groupRoute, members, onlineMembers, sharingEnabled: groupSharingEnabled, createGroup, joinGroup, leaveGroup, finishGroup, toggleSharing: toggleGroupSharing } = useGroupRoute(currentUser?.id);
   const [cities, setCities] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [vehicles, setVehicles] = useState([]);
@@ -39,6 +46,7 @@ export default function Home() {
   const location = useLocation();
   const [sheetState, setSheetState] = useState('collapsed');
   const [activeTab, setActiveTab] = useState('stops');
+  const [routingOpen, setRoutingOpen] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -92,20 +100,28 @@ export default function Home() {
 
   const toggleFavorite = async (route) => {
     if (!currentUser) return;
-    const isFav = favorites.includes(route.id);
-    if (isFav) {
-      const existing = await FavoriteRoute.filter({ user_id: currentUser.id, route_id: route.id });
-      if (existing[0]) await FavoriteRoute.delete(existing[0].id);
-      setFavorites(f => f.filter(id => id !== route.id));
-    } else {
-      const city = cities.find(c => c.id === route.city_id);
-      await FavoriteRoute.create({
-        user_id: currentUser.id, route_id: route.id,
-        route_number: route.number, route_name: route.name,
-        route_type: route.type, route_color: route.color,
-        city_name: city?.name || '',
-      });
-      setFavorites(f => [...f, route.id]);
+    try {
+      const isFav = favorites.includes(route.id);
+      if (isFav) {
+        const existing = await FavoriteRoute.filter({ user_id: currentUser.id, route_id: route.id });
+        if (existing[0]) {
+          const { error } = await supabase.from('favorite_routes').delete().eq('id', existing[0].id);
+          if (error) throw new Error(error.message);
+        }
+        setFavorites(f => f.filter(id => id !== route.id));
+      } else {
+        const city = cities.find(c => c.id === route.city_id);
+        const { error } = await supabase.from('favorite_routes').insert({
+          user_id: currentUser.id, route_id: route.id,
+          route_number: route.number, route_name: route.name,
+          route_type: route.type, route_color: route.color,
+          city_name: city?.name || '',
+        });
+        if (error) throw new Error(error.message);
+        setFavorites(f => [...f, route.id]);
+      }
+    } catch (err) {
+      toast.error(err.message || 'Ошибка избранного');
     }
   };
 
@@ -119,6 +135,31 @@ export default function Home() {
       city_name: city?.name || '',
     });
   };
+
+  const handleShareTrip = useCallback(async () => {
+    if (!currentUser) return;
+    if (groupRoute) {
+      await leaveGroup();
+      toast.success(t('groupRoute.left') || 'Вы вышли из группы');
+      return;
+    }
+    if (!selectedRoute) {
+      toast.info(t('groupRoute.selectRoute') || 'Сначала выберите маршрут');
+      return;
+    }
+    const group = await createGroup({
+      routeId: selectedRoute.id,
+      fromName: 'Текущее положение',
+      fromLat: null,
+      fromLng: null,
+      toName: selectedRoute.name || selectedRoute.number,
+      toLat: null,
+      toLng: null,
+    });
+    if (group) {
+      toast.success(t('groupRoute.created') || 'Группа создана! Друзья увидят вас на карте');
+    }
+  }, [currentUser, groupRoute, selectedRoute, createGroup, leaveGroup, t]);
 
   const handleSelectResult = useCallback((item) => {
     setSearchResult(item);
@@ -167,12 +208,15 @@ export default function Home() {
 
   useEffect(() => {
     if (selectedCity) {
-      Route.filter({ city_id: selectedCity.id }).then(data => {
-        setRoutes(data);
-        setIsOffline(false);
-      }).catch(() => {
-        setIsOffline(true);
-      });
+      supabase.from('routes').select('*')
+        .or(`city_id.is.null,city_id.eq.${selectedCity.id}`)
+        .order('created_at', { ascending: false })
+        .then(({ data }) => {
+          setRoutes(data || []);
+          setIsOffline(false);
+        }).catch(() => {
+          setIsOffline(true);
+        });
     } else {
       setRoutes([]);
       setSelectedRoute(null);
@@ -216,11 +260,11 @@ export default function Home() {
     <div className="relative w-full h-full bg-slate-50 dark:bg-slate-950 overflow-hidden select-none">
       <div className="absolute inset-0 w-full h-full z-0">
         <ErrorBoundary fallback={(error) => <BusMapErrorFallback error={error} />}>
-          <BusMap vehicles={vehicles} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} flyTo={flyTo} onFlyDone={() => setFlyTo(null)} routes={routes} onRoutingOpen={() => setSheetState('collapsed')} />
+          <BusMap vehicles={vehicles} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} flyTo={flyTo} onFlyDone={() => setFlyTo(null)} routes={routes} onRoutingOpen={() => setSheetState('collapsed')} onRoutingStateChange={setRoutingOpen} contactLocations={contactLocations} groupRouteMembers={onlineMembers} onShareTrip={handleShareTrip} />
         </ErrorBoundary>
       </div>
 
-      <div className="absolute top-0 left-2 sm:left-1/2 sm:-translate-x-1/2 z-[999] pointer-events-auto pt-3">
+      <div className="absolute top-0 left-2 sm:left-1/2 sm:-translate-x-1/2 z-[600] pointer-events-auto pt-3">
         <HomeHeader
           lang={lang} setLang={setLang}
           countries={countries}
@@ -240,7 +284,7 @@ export default function Home() {
       </div>
 
       {isOffline && (
-        <div className="absolute top-36 left-1/2 -translate-x-1/2 z-[999] bg-amber-500/95 backdrop-blur-md text-white text-[10px] font-extrabold px-3 py-1.5 rounded-2xl flex items-center justify-center gap-1.5 shadow-lg pointer-events-auto animate-pulse">
+        <div className="absolute top-36 left-1/2 -translate-x-1/2 z-[700] bg-amber-500/95 backdrop-blur-md text-white text-[10px] font-extrabold px-3 py-1.5 rounded-2xl flex items-center justify-center gap-1.5 shadow-lg pointer-events-auto animate-pulse">
           <WifiOff size={12} />
           {t('home.offlineMode')}
         </div>
@@ -249,6 +293,17 @@ export default function Home() {
       {searchResult && (
         <SearchResultCard result={searchResult} onClose={() => setSearchResult(null)} />
       )}
+
+      {/* Group Route Panel */}
+      <GroupRoutePanel
+        groupRoute={groupRoute}
+        members={members}
+        onlineMembers={onlineMembers}
+        sharingEnabled={groupSharingEnabled}
+        onLeave={leaveGroup}
+        onFinish={finishGroup}
+        onToggleSharing={toggleGroupSharing}
+      />
 
       <BottomSheet
         selectedCity={selectedCity}
@@ -279,9 +334,15 @@ export default function Home() {
         }}
       />
 
-      <SchedulePanel route={selectedRoute} />
+      <SchedulePanel route={selectedRoute} hidden={routingOpen} />
 
-      <div className="absolute top-40 md:top-3 left-1/2 -translate-x-1/2 md:left-[400px] md:translate-x-0 z-[998] pointer-events-none flex flex-col gap-2 items-start">
+      <LocationSharingPanel
+        contactLocations={contactLocations}
+        sharingEnabled={sharingEnabled}
+        onToggleSharing={toggleSharing}
+      />
+
+      <div className="absolute top-40 md:top-3 left-1/2 -translate-x-1/2 md:left-[400px] md:translate-x-0 z-[200] pointer-events-none flex flex-col gap-2 items-start">
         {locating && (
           <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl px-4 py-2 rounded-full shadow-lg border border-slate-200/50 dark:border-slate-800/80 flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-400 pointer-events-auto">
             <span className="w-3.5 h-3.5 border-2 border-emerald-600 dark:border-emerald-400 border-t-transparent rounded-full animate-spin" />

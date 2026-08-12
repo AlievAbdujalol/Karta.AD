@@ -200,6 +200,7 @@ export default function RoutingPanel({ onClose, onRouteBuilt, mapCenter, user, o
   const [routeData, setRouteData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [minimized, setMinimized] = useState(false);
 
   useEffect(() => {
     if (mapPickResult && mapPickResult.target) {
@@ -233,6 +234,7 @@ export default function RoutingPanel({ onClose, onRouteBuilt, mapCenter, user, o
     if (result) {
       setRouteData({ ...result, mode: transportMode });
       if (onRouteBuilt) onRouteBuilt({ ...result, mode: transportMode, from, to, waypoints: validWaypoints });
+      setMinimized(true);
     } else {
       setError(t('routeFinder.noRoutesFound') || 'Маршрут не найден');
     }
@@ -306,7 +308,20 @@ export default function RoutingPanel({ onClose, onRouteBuilt, mapCenter, user, o
   };
 
   return (
-    <div className={`absolute bottom-[72px] left-0 right-0 md:bottom-auto md:left-auto md:top-[140px] md:right-4 z-[1000] bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl shadow-2xl border-t md:border md:rounded-3xl border-slate-200/60 dark:border-slate-800/80 flex flex-col max-h-[calc(100vh-144px)] md:max-h-[calc(100vh-180px)] md:w-[380px] ${mapPickTarget ? 'hidden' : ''}`}>
+    <div className={`absolute bottom-[72px] left-2 right-2 md:bottom-auto md:left-auto md:top-[140px] md:right-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl shadow-2xl border-t md:border md:rounded-3xl border-slate-200/60 dark:border-slate-800/80 flex flex-col max-h-[calc(100vh-144px)] md:max-h-[calc(100vh-180px)] md:w-[380px] ${mapPickTarget || minimized ? 'hidden' : ''}`}>
+
+      {/* Minimized icon — shown after route is built */}
+      {minimized && routeData && (
+        <div className="absolute bottom-[72px] right-4 z-[500]">
+          <button
+            onClick={() => setMinimized(false)}
+            className="w-12 h-12 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/30 flex items-center justify-center active:scale-95 transition-all"
+          >
+            <Navigation size={20} className="stroke-[2.2]" />
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-800/80">
         <div className="flex items-center gap-2">

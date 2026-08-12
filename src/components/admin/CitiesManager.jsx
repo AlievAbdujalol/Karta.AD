@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { City } from '@/api/entities';
+import { supabase } from '@/api/supabase';
 import { useLanguage } from '@/lib/useLanguage';
 import { COUNTRIES, getFlag, getCountryCenter } from '@/lib/countryData';
 import { Plus, Trash2, MapPin, Search, X } from 'lucide-react';
@@ -64,7 +65,8 @@ export default function CitiesManager() {
   };
 
   const handleDelete = async (id) => {
-    await City.delete(id);
+    const { error } = await supabase.from('cities').delete().eq('id', id);
+    if (error) { toast.error('Не удалось удалить город'); return; }
     load();
   };
 

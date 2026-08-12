@@ -132,7 +132,7 @@ export default function Profile() {
 
   useEffect(() => {
     if (user?.id && user?.role === 'taxi_driver') {
-      supabase.from('taxi_drivers').select('*').eq('user_id', user.id).single().then(({ data }) => {
+      supabase.from('taxi_drivers').select('*').eq('user_id', user.id).maybeSingle().then(({ data }) => {
         if (data) {
           setTaxiDriver(data);
           setTaxiEdit({
@@ -142,10 +142,10 @@ export default function Profile() {
             email: data.email || '',
           });
         }
-      });
-      supabase.from('taxi_vehicles').select('*').eq('driver_id', user.id).order('created_at', { ascending: false }).limit(1).single().then(({ data }) => {
+      }).catch((err) => console.error('[Profile] taxi_drivers load error:', err));
+      supabase.from('taxi_vehicles').select('*').eq('driver_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle().then(({ data }) => {
         if (data) setTaxiVehicle(data);
-      });
+      }).catch((err) => console.error('[Profile] taxi_vehicles load error:', err));
     }
   }, [user?.id, user?.role]);
 
@@ -166,10 +166,10 @@ export default function Profile() {
   }, [user?.id]);
 
   useEffect(() => {
-    City.list().then(setCities).catch(() => {});
-    Vehicle.list().then(setVehicles).catch(() => {});
-    supabase.from('routes').select('*').not('created_by_id', 'is', null).order('created_at', { ascending: false })
-      .then(({ data }) => setRoutes(data || [])).catch(() => {});
+    City.list().then(setCities).catch((err) => console.error('[Profile] cities load error:', err));
+    Vehicle.list().then(setVehicles).catch((err) => console.error('[Profile] vehicles load error:', err));
+    supabase.from('routes').select('*').order('created_at', { ascending: false })
+      .then(({ data }) => setRoutes(data || [])).catch((err) => console.error('[Profile] routes load error:', err));
   }, []);
 
   useEffect(() => {
@@ -194,6 +194,7 @@ export default function Profile() {
         phone: localNumber,
       });
       setBioForm(user.bio || '');
+      setSelectedRouteId(user.route_id || '');
       if (user.language && !localStorage.getItem(LANG_KEY)) {
         setLang(user.language);
       }
@@ -244,6 +245,12 @@ export default function Profile() {
         delete data.vehicle_number;
       }
 
+      if (form.role === 'driver' && selectedRouteId) {
+        data.route_id = selectedRouteId;
+      } else {
+        data.route_id = null;
+      }
+
       setLang(data.language);
       await update(data);
 
@@ -256,7 +263,7 @@ export default function Profile() {
             title: t('profile.notificationDriverSelectedRoute'),
             body: `${user.full_name || user.email} ${t('profile.notificationDriverSelectedRoute')} #${route.number} ${route.name || ''}`,
             type: 'driver_route_selected',
-          }).then().catch(() => {});
+          }).then(({ error }) => { if (error) console.error('[Profile] notification failed:', error); }).catch(() => {});
         }
       }
 
@@ -371,11 +378,12 @@ export default function Profile() {
         city: taxiEdit.city,
         email: taxiEdit.email,
       };
-      await supabase.from('taxi_drivers').update(updates).eq('user_id', user.id);
+      const { error } = await supabase.from('taxi_drivers').update(updates).eq('user_id', user.id);
+      if (error) throw new Error(error.message);
       setTaxiDriver(prev => ({ ...prev, ...updates }));
       toast.success('Данные водителя обновлены');
     } catch (err) {
-      toast.error('Ошибка сохранения');
+      toast.error(err.message || 'Ошибка сохранения');
     }
     setTaxiSaving(false);
   };
@@ -384,7 +392,7 @@ export default function Profile() {
     if (!taxiVehicle?.id) return;
     setTaxiSaving(true);
     try {
-      await supabase.from('taxi_vehicles').update({
+      const { error } = await supabase.from('taxi_vehicles').update({
         make: taxiVehicle.make,
         model: taxiVehicle.model,
         year: parseInt(taxiVehicle.year) || null,
@@ -394,9 +402,10 @@ export default function Profile() {
         seats: parseInt(taxiVehicle.seats) || 4,
         category: taxiVehicle.category,
       }).eq('id', taxiVehicle.id);
+      if (error) throw new Error(error.message);
       toast.success('Данные автомобиля обновлены');
     } catch (err) {
-      toast.error('Ошибка сохранения');
+      toast.error(err.message || 'Ошибка сохранения');
     }
     setTaxiSaving(false);
   };
@@ -1018,7 +1027,7 @@ export default function Profile() {
                 className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-sm bg-white dark:bg-gray-700 dark:text-gray-100"
               >
                 <option value="">{t('profile.routePlaceholder')}</option>
-                {routes.filter(r => !form.city_id || r.city_id === form.city_id).map(r => (
+                {routes.filter(r => !form.city_id || !r.city_id || r.city_id === form.city_id).map(r => (
                   <option key={r.id} value={r.id}>
                     #{r.number} {r.name || ''} ({r.type === 'bus' ? t('bus') : t('minibus')})
                   </option>

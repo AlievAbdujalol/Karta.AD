@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Route, Vehicle, Review } from '@/api/entities';
+import { supabase } from '@/api/supabase';
 import { Star, Send, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '@/lib/useLanguage';
@@ -25,6 +26,7 @@ function StarRating({ value, onChange, label }) {
 }
 
 function ReviewCard({ review }) {
+  const { t } = useLanguage();
   const avg = ((review.cleanliness || 0) + (review.politeness || 0) + (review.punctuality || 0)) / 3;
   return (
     <div className="bg-white dark:bg-slate-800 rounded-[20px] p-5 shadow-sm border border-slate-100 dark:border-slate-700/60 space-y-3.5 hover:shadow-md transition-shadow">
@@ -82,12 +84,14 @@ export default function Reviews() {
   useEffect(() => {
     Promise.all([
       Route.list(),
-      Vehicle.filter({ is_active: false }),
+      Vehicle.list(),
       Review.list('-created_at', 50),
     ]).then(([r, v, rv]) => {
       setRoutes(r);
       setVehicles(v);
       setReviews(rv);
+    }).catch((err) => {
+      console.error('[Reviews] load error:', err);
     });
   }, []);
 
@@ -98,22 +102,27 @@ export default function Reviews() {
     if (!form.cleanliness && !form.politeness && !form.punctuality)
       return toast.error(t('reviews.ratingRequiredError'));
     setSubmitting(true);
-    const vehicle = vehicles.find(v => v.route_id === form.route_id);
-    await Review.create({
-      route_id: form.route_id,
-      route_number: selectedRoute?.number || '',
-      driver_name: vehicle?.driver_name || '',
-      vehicle_number: form.vehicle_number || vehicle?.vehicle_number || '',
-      cleanliness: form.cleanliness || null,
-      politeness: form.politeness || null,
-      punctuality: form.punctuality || null,
-      comment: form.comment,
-    });
-    toast.success(t('reviews.submitSuccess'));
-    setForm({ route_id: '', vehicle_number: '', cleanliness: 0, politeness: 0, punctuality: 0, comment: '' });
-    const updated = await Review.list('-created_at', 50);
-    setReviews(updated);
-    setTab('list');
+    try {
+      const vehicle = vehicles.find(v => v.route_id === form.route_id);
+      const { error } = await supabase.from('reviews').insert({
+        route_id: form.route_id,
+        route_number: selectedRoute?.number || '',
+        driver_name: vehicle?.driver_name || '',
+        vehicle_number: form.vehicle_number || vehicle?.vehicle_number || '',
+        cleanliness: form.cleanliness || null,
+        politeness: form.politeness || null,
+        punctuality: form.punctuality || null,
+        comment: form.comment,
+      });
+      if (error) throw new Error(error.message);
+      toast.success(t('reviews.submitSuccess'));
+      setForm({ route_id: '', vehicle_number: '', cleanliness: 0, politeness: 0, punctuality: 0, comment: '' });
+      const updated = await Review.list('-created_at', 50);
+      setReviews(updated);
+      setTab('list');
+    } catch (err) {
+      toast.error(err.message || 'Ошибка отправки отзыва');
+    }
     setSubmitting(false);
   };
 

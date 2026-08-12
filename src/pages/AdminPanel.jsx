@@ -28,15 +28,15 @@ export default function AdminPanel() {
     if (!user?.id) return;
     Promise.all([
       City.list(),
-      Route.filter({ created_by_id: user.id }),
+      Route.list(),
       Vehicle.filter({ is_active: true }),
-      supabase.rpc('get_admin_driver_requests').then(({ data }) => data || []),
-    ]).then(([cities, routes, vehicles, pending]) => {
+      supabase.from('profiles').select('id', { count: 'exact', head: true }).not('driver_status', 'is', null).eq('driver_status', 'pending'),
+    ]).then(([cities, routes, vehicles, { count }]) => {
       setStats({
         cities: cities.length,
         routes: routes.length,
         active: vehicles.length,
-        pending: pending.length,
+        pending: count || 0,
       });
     });
     supabase.from('taxi_drivers').select('*').order('created_at', { ascending: false }).then(({ data }) => {

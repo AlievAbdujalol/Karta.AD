@@ -143,7 +143,7 @@ export default function SearchBar({ cityId, onSelectResult, mapCenter }) {
   };
 
   return (
-    <div className="relative w-full max-w-lg mx-auto z-[1001]" ref={containerRef}>
+    <div className="relative w-full max-w-lg mx-auto z-[650]" ref={containerRef}>
       <div className="relative flex items-center">
         <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
         <input
