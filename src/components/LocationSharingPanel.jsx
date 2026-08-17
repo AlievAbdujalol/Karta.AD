@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { MapPin, Share2, ChevronDown, ChevronUp, Search } from 'lucide-react';
+import { MapPin, Share2, ChevronDown, ChevronUp, Search, Check } from 'lucide-react';
 import { useLanguage } from '@/lib/useLanguage';
 import { supabase } from '@/api/supabase';
 
@@ -8,6 +8,7 @@ export default function LocationSharingPanel({ contactLocations = [], sharingEna
   const [expanded, setExpanded] = useState(false);
   const [contacts, setContacts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sharedWith, setSharedWith] = useState([]);
 
   useEffect(() => {
     supabase.from('profiles').select('id, full_name, photo_url, phone')
@@ -15,6 +16,16 @@ export default function LocationSharingPanel({ contactLocations = [], sharingEna
         if (data) setContacts(data);
       }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!sharingEnabled) { setSharedWith([]); return; }
+    supabase.from('location_shares')
+      .select('shared_with_id')
+      .eq('status', 'active')
+      .then(({ data }) => {
+        if (data) setSharedWith(data.map(r => r.shared_with_id));
+      }).catch(() => {});
+  }, [sharingEnabled, expanded]);
 
   const filteredContacts = contacts.filter(c =>
     c.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -30,7 +41,7 @@ export default function LocationSharingPanel({ contactLocations = [], sharingEna
   };
 
   return (
-    <div className="absolute bottom-20 md:bottom-6 right-4 z-[250] w-[min(280px,calc(100vw-32px))]">
+    <div className="absolute bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-[250] w-[min(280px,calc(100vw-32px))]">
       <div className="rounded-[20px] overflow-hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/50 dark:border-slate-800/80 shadow-[0_8px_32px_rgba(15,23,42,0.06)]">
         <button
           onClick={() => setExpanded(e => !e)}
@@ -108,7 +119,20 @@ export default function LocationSharingPanel({ contactLocations = [], sharingEna
                 </div>
                 <div className="max-h-40 overflow-y-auto space-y-1">
                   {filteredContacts.slice(0, 10).map(c => (
-                    <ContactRow key={c.id} contact={c} />
+                    <ContactRow
+                      key={c.id}
+                      contact={c}
+                      isShared={sharedWith.includes(c.id)}
+                      onClick={() => {
+                        if (sharedWith.includes(c.id)) {
+                          onUnshareWith?.(c.id);
+                          setSharedWith(prev => prev.filter(id => id !== c.id));
+                        } else {
+                          onShareWith?.(c.id);
+                          setSharedWith(prev => [...prev, c.id]);
+                        }
+                      }}
+                    />
                   ))}
                 </div>
               </div>
@@ -120,9 +144,12 @@ export default function LocationSharingPanel({ contactLocations = [], sharingEna
   );
 }
 
-function ContactRow({ contact }) {
+function ContactRow({ contact, isShared, onClick }) {
   return (
-    <div className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
+    >
       <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
         {contact.photo_url ? (
           <img src={contact.photo_url} alt="" className="w-full h-full rounded-full object-cover" />
@@ -133,6 +160,7 @@ function ContactRow({ contact }) {
       <div className="flex-1 min-w-0">
         <div className="text-[11px] font-medium text-slate-700 dark:text-slate-200 truncate">{contact.full_name}</div>
       </div>
-    </div>
+      {isShared && <Check size={12} className="text-emerald-500 flex-shrink-0" />}
+    </button>
   );
 }

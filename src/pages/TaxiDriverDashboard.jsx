@@ -301,7 +301,7 @@ export default function TaxiDriverDashboard() {
         setIncomingOrder(null);
         return;
       }
-      setCurrentOrder(data);
+      setCurrentOrder(data[0]);
       setCardPhase('active');
       setShowNewOrder(false);
       setIncomingOrder(null);

@@ -23,7 +23,7 @@ import BottomSheet from '@/components/BottomSheet';
 export default function Home() {
   const { t, lang, setLang } = useLanguage();
   const { user: currentUser } = useCurrentUser();
-  const { contactLocations, sharingEnabled, toggleSharing } = useLocationSharing(currentUser?.id);
+  const { contactLocations, sharingEnabled, toggleSharing, shareWith, unshareWith } = useLocationSharing(currentUser?.id);
   const { groupRoute, members, onlineMembers, sharingEnabled: groupSharingEnabled, createGroup, joinGroup, leaveGroup, finishGroup, toggleSharing: toggleGroupSharing } = useGroupRoute(currentUser?.id);
   const [cities, setCities] = useState([]);
   const [routes, setRoutes] = useState([]);
@@ -340,6 +340,8 @@ export default function Home() {
         contactLocations={contactLocations}
         sharingEnabled={sharingEnabled}
         onToggleSharing={toggleSharing}
+        onShareWith={shareWith}
+        onUnshareWith={unshareWith}
       />
 
       <div className="absolute top-40 md:top-3 left-1/2 -translate-x-1/2 md:left-[400px] md:translate-x-0 z-[200] pointer-events-none flex flex-col gap-2 items-start">

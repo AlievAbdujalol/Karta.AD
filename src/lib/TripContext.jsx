@@ -49,6 +49,27 @@ export function TripProvider({ children, user }) {
     }, 30000);
   }, [updateLocation]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    (async () => {
+      const { data: vehicle } = await supabase
+        .from('vehicles')
+        .select('id, route_id, route_number, vehicle_number, type')
+        .eq('driver_id', user.id)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (!vehicle) return;
+      vehicleIdRef.current = vehicle.id;
+      setVehicleNumber(vehicle.vehicle_number || '');
+      setIsTracking(true);
+      if (vehicle.route_id) {
+        const { data: route } = await supabase.from('routes').select('*').eq('id', vehicle.route_id).maybeSingle();
+        if (route) setActiveRoute(route);
+      }
+      startGpsWatch();
+    })();
+  }, [user?.id]);
+
   const stopGpsWatch = useCallback(() => {
     if (watchIdRef.current) {
       navigator.geolocation.clearWatch(watchIdRef.current);

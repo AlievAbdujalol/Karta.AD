@@ -218,7 +218,7 @@ export default function TaxiPassenger() {
         .from('taxi_orders')
         .select('id, status, category, pickup_address, dropoff_address, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, driver_id, price, payment_method')
         .eq('passenger_id', user.id)
-        .in('status', ['searching', 'found', 'en_route', 'riding'])
+        .in('status', ['searching', 'found', 'en_route', 'arrived', 'riding'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();

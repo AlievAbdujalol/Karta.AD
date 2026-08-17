@@ -102,6 +102,7 @@ export default function TaxiAdmin() {
     if (error) { toast.error('Не удалось одобрить документы'); return; }
     const { error: driverErr } = await supabase.from('taxi_drivers').update({ is_verified: true }).eq('user_id', doc.driver_id);
     if (driverErr) { toast.error('Документы одобрены, но статус водителя не обновлён'); loadDocs(); return; }
+    await supabase.from('profiles').update({ driver_status: 'approved' }).eq('id', doc.driver_id);
     notify(doc.driver_id, 'Документы одобрены ✅', 'Вы можете выходить на линию. Приятных поездок!');
     toast.success(`Заявка ${doc.driver?.full_name || ''} одобрена`);
     loadDocs(); loadDrivers();
@@ -116,6 +117,7 @@ export default function TaxiAdmin() {
     if (error) { toast.error('Не удалось отклонить документы'); return; }
     const { error: driverErr } = await supabase.from('taxi_drivers').update({ is_verified: false }).eq('user_id', doc.driver_id);
     if (driverErr) { toast.warning('Документы отклонены, но статус водителя не обновлён'); loadDocs(); return; }
+    await supabase.from('profiles').update({ driver_status: 'pending' }).eq('id', doc.driver_id);
     notify(doc.driver_id, 'Документы отклонены ❌', reason || 'Документы не прошли проверку. Обновите их в профиле.');
     toast.info('Заявка отклонена');
     loadDocs(); loadDrivers();
@@ -126,6 +128,7 @@ export default function TaxiAdmin() {
     const { error } = await supabase.from('taxi_drivers').update({ is_verified: next }).eq('user_id', d.user_id);
     if (error) { toast.error('Не удалось изменить верификацию'); return; }
     await supabase.from('taxi_driver_documents').update({ status: next ? 'approved' : 'pending' }).eq('driver_id', d.user_id);
+    await supabase.from('profiles').update({ driver_status: next ? 'approved' : 'pending' }).eq('id', d.user_id);
     setDrivers(prev => prev.map(x => x.user_id === d.user_id ? { ...x, is_verified: next } : x));
     notify(d.user_id, next ? 'Документы одобрены ✅' : 'Верификация снята', next ? 'Вы можете выходить на линию.' : 'Администратор снял верификацию. Обновите документы.');
     toast.success(next ? 'Водитель верифицирован' : 'Верификация снята');

@@ -60,12 +60,14 @@ export default function AdminDashboard() {
   };
 
   const approveDriver = async (uid) => {
-    await supabase.from('profiles').update({ driver_status: 'approved' }).eq('id', uid);
+    const { error } = await supabase.from('profiles').update({ driver_status: 'approved', role: 'driver' }).eq('id', uid);
+    if (error) { console.error('[AdminDashboard] approve error:', error.message); return; }
     loadAll();
   };
 
   const blockDriver = async (uid) => {
-    await supabase.from('profiles').update({ driver_status: 'blocked' }).eq('id', uid);
+    const { error } = await supabase.from('profiles').update({ driver_status: 'blocked' }).eq('id', uid);
+    if (error) { console.error('[AdminDashboard] block error:', error.message); return; }
     loadAll();
   };
 
