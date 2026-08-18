@@ -23,6 +23,7 @@ const TaxiFinance = lazy(() => import('./pages/TaxiFinance'));
 
 import ErrorBoundary, { BusMapErrorFallback } from '@/components/ErrorBoundary';
 import { TripProvider } from '@/lib/TripContext';
+import { NavigationProvider } from '@/lib/NavigationContext';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated, user } = useAuth();
@@ -52,7 +53,7 @@ const AuthenticatedApp = () => {
       <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center"><div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div></div>}>
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={<ErrorBoundary fallback={(err) => <BusMapErrorFallback error={err} />}><Home /></ErrorBoundary>} />
+          <Route path="/" element={<ErrorBoundary fallback={(err) => <BusMapErrorFallback error={err} />}><NavigationProvider><Home /></NavigationProvider></ErrorBoundary>} />
           <Route path="/driver" element={<ErrorBoundary><DriverDashboard /></ErrorBoundary>} />
           <Route path="/admin" element={<ErrorBoundary><AdminPanel /></ErrorBoundary>} />
           <Route path="/profile" element={<ErrorBoundary><Profile /></ErrorBoundary>} />

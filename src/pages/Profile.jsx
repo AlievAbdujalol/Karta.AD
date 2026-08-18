@@ -131,6 +131,10 @@ export default function Profile() {
   const CAR_TYPES = ['Седан', 'Хэтчбек', 'Универсал', 'Минивэн', 'Внедорожник', 'Купе', 'Пикап', 'Электромобиль'];
 
   useEffect(() => {
+    if (user?.id) refetch();
+  }, []);
+
+  useEffect(() => {
     if (user?.id && user?.role === 'taxi_driver') {
       supabase.from('taxi_drivers').select('*').eq('user_id', user.id).maybeSingle().then(({ data }) => {
         if (data) {

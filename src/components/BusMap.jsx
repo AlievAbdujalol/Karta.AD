@@ -6,6 +6,7 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, Circle, Scal
 import MapControls, { TILE_LAYERS, LABEL_OVERLAY_URL } from './MapControls';
 import RoutingPanel from './RoutingPanel';
 import { useCurrentUser } from '@/lib/useCurrentUser';
+import { useNavigation } from '@/lib/NavigationContext';
 import { supabase } from '@/api/supabase';
 import { toast } from 'sonner';
 import { Heart, X, Crosshair, MapPin, Loader2, Check } from 'lucide-react';
@@ -397,7 +398,50 @@ async function snapToRoad(lat, lng) {
   return { lat, lng };
 }
 
-export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip }) {
+function NavigationCamera({ followUser, userPosition, userHeading, reroute, routeData }) {
+  const map = useMap();
+  const lastRerouteRef = useRef(0);
+  const lastPosRef = useRef(null);
+
+  useEffect(() => {
+    if (!followUser || !userPosition) return;
+    map.setView(userPosition, Math.max(map.getZoom(), 17), { animate: true, duration: 0.5 });
+  }, [userPosition, followUser, map]);
+
+  useEffect(() => {
+    if (!userPosition || !userHeading) return;
+    try {
+      map.setBearing(-userHeading * 0.3);
+    } catch {}
+  }, [userHeading, userPosition, map]);
+
+  // Auto-reroute when deviated >30m
+  useEffect(() => {
+    if (!userPosition || !routeData?.from || !routeData?.to) return;
+    const now = Date.now();
+    if (now - lastRerouteRef.current < 30000) return;
+
+    const last = lastPosRef.current;
+    lastPosRef.current = userPosition;
+
+    if (!last || !routeData?.geometry?.length) return;
+
+    let minDist = Infinity;
+    for (const pt of routeData.geometry) {
+      const d = Math.hypot(userPosition[0] - pt[0], userPosition[1] - pt[1]) * 111320;
+      if (d < minDist) minDist = d;
+    }
+
+    if (minDist > 30) {
+      lastRerouteRef.current = now;
+      reroute?.(routeData.from, routeData.to, routeData.mode === 'walking' ? 'walking' : 'driving');
+    }
+  }, [userPosition, routeData, reroute]);
+
+  return null;
+}
+
+export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute, panelVisible }) {
   const [tileIndex, setTileIndex] = useState(0);
   const [showLabels, setShowLabels] = useState(true);
   const [routingOpen, setRoutingOpen] = useState(false);
@@ -409,6 +453,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
   const { t } = useLanguage();
   const { user } = useCurrentUser();
   const mapRef = useRef(null);
+  const nav = useNavigation();
 
   const handleMapPick = useCallback(async (data) => {
     let name = `${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}`;
@@ -488,11 +533,14 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
     setRoutingOpen(prev => {
       const opening = !prev;
       if (opening && onRoutingOpen) onRoutingOpen();
-      if (onRoutingStateChange) onRoutingStateChange(opening);
       return opening;
     });
     if (routingOpen) { setRoutingRoute(null); setMapPickTarget(null); }
-  }, [routingOpen, onRoutingOpen, onRoutingStateChange]);
+  }, [routingOpen, onRoutingOpen]);
+
+  useEffect(() => {
+    if (onRoutingStateChange) onRoutingStateChange(routingOpen);
+  }, [routingOpen, onRoutingStateChange]);
 
   function MapPickerOverlay({ target, onPick, onCancel }) {
     const map = useMap();
@@ -702,11 +750,12 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       <TileLayer
         attribution=""
         url={TILE_LAYERS[tileIndex].url}
+        tms={TILE_LAYERS[tileIndex].tms || false}
       />
       <MapController center={center} mapRef={mapRef} />
       <FlyToHandler flyTo={flyTo} onDone={onFlyDone} />
       <ScaleControl position="bottomleft" imperial={false} metric={true} />
-      {!mapPickTarget && <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={routingOpen} onFinderToggle={handleFinderToggle} onShareTrip={onShareTrip} />}
+      {!mapPickTarget && <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={routingOpen} onFinderToggle={handleFinderToggle} onShareTrip={onShareTrip} rightOffset={routingOpen ? 400 : panelVisible ? 360 : 0} isNavigating={nav.isActive} />}
 
       {showLabels && (
         <TileLayer
@@ -857,6 +906,9 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
 
       <UserLocationMarker />
 
+      {/* Navigation camera follow + arrow */}
+      {nav.isActive && <NavigationCamera followUser={nav.followUser} userPosition={nav.userPosition} userHeading={nav.userHeading} reroute={nav.reroute} routeData={nav.routeData} />}
+
       {/* Group route members */}
       {groupRouteMembers.filter(m => m.lat && m.lng).map((member) => {
         const isCreator = member.role === 'creator';
@@ -919,6 +971,14 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         <RoutingPanel
           onClose={() => { setRoutingOpen(false); setRoutingRoute(null); setMapPickTarget(null); setMapPickResult(null); if (onRoutingStateChange) onRoutingStateChange(false); }}
           onRouteBuilt={(route) => setRoutingRoute(route)}
+          onStartNavigation={(route) => {
+            nav.startNavigationWithFromTo(route, route.from, route.to);
+            setRoutingOpen(false);
+            setRoutingRoute(null);
+            setMapPickTarget(null);
+            setMapPickResult(null);
+            if (onRoutingStateChange) onRoutingStateChange(false);
+          }}
           mapCenter={center}
           user={user}
           onRequestMapPick={setMapPickTarget}

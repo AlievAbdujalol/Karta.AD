@@ -39,7 +39,7 @@ export default function SchedulePanel({ route, hidden }) {
   const totalPrice = schedule.stops_schedule.reduce((sum, s) => sum + (parseFloat(s.price_from_prev) || 0), 0);
 
   return (
-    <div className="absolute bottom-20 md:bottom-6 left-4 md:left-[400px] z-[200] w-[min(300px,calc(100vw-420px))]">
+    <div className="absolute bottom-20 md:bottom-6 left-4 md:left-[400px] z-[200] w-[min(300px,calc(100vw-2rem))] md:w-[min(300px,calc(100vw-420px))]">
       <div className="rounded-[20px] overflow-hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/50 dark:border-slate-800/80 shadow-[0_8px_32px_rgba(15,23,42,0.06)] dark:text-gray-100">
 
         <button

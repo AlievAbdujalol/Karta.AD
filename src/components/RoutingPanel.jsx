@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Navigation, MapPin, Plus, X, RotateCcw, Locate, Route, AlertCircle, Loader2, Crosshair, ChevronUp, ChevronDown } from 'lucide-react';
+import { Navigation, MapPin, Plus, X, RotateCcw, Locate, Route, AlertCircle, Loader2, Crosshair, ChevronUp, ChevronDown, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/lib/useLanguage';
 
@@ -187,7 +187,7 @@ function LocationField({ value, placeholder, icon: Icon, iconColor, onPick, onCl
   );
 }
 
-export default function RoutingPanel({ onClose, onRouteBuilt, mapCenter, user, onRequestMapPick, onLocateAndPick, onLocateMe, mapPickResult, mapPickTarget }) {
+export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation, mapCenter, user, onRequestMapPick, onLocateAndPick, onLocateMe, mapPickResult, mapPickTarget }) {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const [from, setFrom] = useState(null);
@@ -234,7 +234,6 @@ export default function RoutingPanel({ onClose, onRouteBuilt, mapCenter, user, o
     if (result) {
       setRouteData({ ...result, mode: transportMode });
       if (onRouteBuilt) onRouteBuilt({ ...result, mode: transportMode, from, to, waypoints: validWaypoints });
-      setMinimized(true);
     } else {
       setError(t('routeFinder.noRoutesFound') || 'Маршрут не найден');
     }
@@ -440,24 +439,26 @@ export default function RoutingPanel({ onClose, onRouteBuilt, mapCenter, user, o
         )}
 
         {/* Build route button */}
-        <button
-          onClick={handleBuildRoute}
-          disabled={!from || !to || loading}
-          className={`w-full py-3 rounded-xl font-bold text-sm transition-all ${
-            from && to && !loading
-              ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/25 active:scale-[0.98]'
-              : 'bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
-          }`}
-        >
-          {loading ? (
-            <span className="flex items-center justify-center gap-2">
-              <Loader2 size={16} className="animate-spin" />
-              Построение...
-            </span>
-          ) : (
-            'Построить маршрут'
-          )}
-        </button>
+        {!routeData && (
+          <button
+            onClick={handleBuildRoute}
+            disabled={!from || !to || loading}
+            className={`w-full py-3 rounded-xl font-bold text-sm transition-all ${
+              from && to && !loading
+                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/25 active:scale-[0.98]'
+                : 'bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
+            }`}
+          >
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <Loader2 size={16} className="animate-spin" />
+                Построение...
+              </span>
+            ) : (
+              'Построить маршрут'
+            )}
+          </button>
+        )}
 
         {/* Error */}
         {error && (
@@ -494,6 +495,26 @@ export default function RoutingPanel({ onClose, onRouteBuilt, mapCenter, user, o
                 </p>
               </div>
             </div>
+
+            {/* Поехать — Start Navigation */}
+            {routeData.mode !== 'taxi' && (
+              <button
+                onClick={() => {
+                  const navRoute = {
+                    ...routeData,
+                    from: { lat: from.lat, lng: from.lng, shortName: fromText },
+                    to: { lat: to.lat, lng: to.lng, shortName: toText },
+                    waypoints: waypoints.filter(Boolean),
+                  };
+                  onStartNavigation?.(navRoute);
+                  onClose?.();
+                }}
+                className="w-full py-3.5 rounded-xl font-bold text-sm bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2.5"
+              >
+                <Play size={18} className="fill-white" />
+                Поехать
+              </button>
+            )}
 
             {/* Steps */}
             {routeData.steps && routeData.steps.length > 0 && routeData.mode !== 'taxi' && (

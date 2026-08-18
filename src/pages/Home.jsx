@@ -9,10 +9,13 @@ import { useStopNotifier } from '@/hooks/useStopNotifier';
 import { useLocationSharing } from '@/hooks/useLocationSharing';
 import { useGroupRoute } from '@/hooks/useGroupRoute';
 import SchedulePanel from '@/components/SchedulePanel';
-import LocationSharingPanel from '@/components/LocationSharingPanel';
 import GroupRoutePanel from '@/components/GroupRoutePanel';
 import HomeHeader from '@/components/HomeHeader';
 import SearchResultCard from '@/components/SearchResultCard';
+import NavigationHUD from '@/components/NavigationHUD';
+import NavigationBottomBar from '@/components/NavigationBottomBar';
+import TripSummary from '@/components/TripSummary';
+import { useNavigation } from '@/lib/NavigationContext';
 import { WifiOff } from 'lucide-react';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import ErrorBoundary, { BusMapErrorFallback } from '@/components/ErrorBoundary';
@@ -23,8 +26,9 @@ import BottomSheet from '@/components/BottomSheet';
 export default function Home() {
   const { t, lang, setLang } = useLanguage();
   const { user: currentUser } = useCurrentUser();
-  const { contactLocations, sharingEnabled, toggleSharing, shareWith, unshareWith } = useLocationSharing(currentUser?.id);
+  const { contactLocations, shareWith, unshareWith } = useLocationSharing(currentUser?.id);
   const { groupRoute, members, onlineMembers, sharingEnabled: groupSharingEnabled, createGroup, joinGroup, leaveGroup, finishGroup, toggleSharing: toggleGroupSharing } = useGroupRoute(currentUser?.id);
+  const nav = useNavigation();
   const [cities, setCities] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [vehicles, setVehicles] = useState([]);
@@ -136,30 +140,11 @@ export default function Home() {
     });
   };
 
-  const handleShareTrip = useCallback(async () => {
-    if (!currentUser) return;
-    if (groupRoute) {
-      await leaveGroup();
-      toast.success(t('groupRoute.left') || 'Вы вышли из группы');
-      return;
-    }
-    if (!selectedRoute) {
-      toast.info(t('groupRoute.selectRoute') || 'Сначала выберите маршрут');
-      return;
-    }
-    const group = await createGroup({
-      routeId: selectedRoute.id,
-      fromName: 'Текущее положение',
-      fromLat: null,
-      fromLng: null,
-      toName: selectedRoute.name || selectedRoute.number,
-      toLat: null,
-      toLng: null,
-    });
-    if (group) {
-      toast.success(t('groupRoute.created') || 'Группа создана! Друзья увидят вас на карте');
-    }
-  }, [currentUser, groupRoute, selectedRoute, createGroup, leaveGroup, t]);
+  const [panelVisible, setPanelVisible] = useState(false);
+
+  const handleShareTrip = useCallback(() => {
+    setPanelVisible(v => !v);
+  }, []);
 
   const handleSelectResult = useCallback((item) => {
     setSearchResult(item);
@@ -260,11 +245,16 @@ export default function Home() {
     <div className="relative w-full h-full bg-slate-50 dark:bg-slate-950 overflow-hidden select-none">
       <div className="absolute inset-0 w-full h-full z-0">
         <ErrorBoundary fallback={(error) => <BusMapErrorFallback error={error} />}>
-          <BusMap vehicles={vehicles} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} flyTo={flyTo} onFlyDone={() => setFlyTo(null)} routes={routes} onRoutingOpen={() => setSheetState('collapsed')} onRoutingStateChange={setRoutingOpen} contactLocations={contactLocations} groupRouteMembers={onlineMembers} onShareTrip={handleShareTrip} />
+          <BusMap vehicles={vehicles} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} flyTo={flyTo} onFlyDone={() => setFlyTo(null)} routes={routes} onRoutingOpen={() => setSheetState('collapsed')} onRoutingStateChange={setRoutingOpen} contactLocations={contactLocations} groupRouteMembers={onlineMembers} onShareTrip={handleShareTrip} groupRoute={groupRoute} panelVisible={panelVisible} />
         </ErrorBoundary>
       </div>
 
-      <div className="absolute top-0 left-2 sm:left-1/2 sm:-translate-x-1/2 z-[600] pointer-events-auto pt-3">
+      {/* Navigation overlays — rendered above z-0 map container */}
+      {nav.isActive && <NavigationHUD />}
+      {nav.isActive && <NavigationBottomBar />}
+      <TripSummary />
+
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 z-[600] pointer-events-auto pt-3">
         <HomeHeader
           lang={lang} setLang={setLang}
           countries={countries}
@@ -295,15 +285,21 @@ export default function Home() {
       )}
 
       {/* Group Route Panel */}
-      <GroupRoutePanel
-        groupRoute={groupRoute}
-        members={members}
-        onlineMembers={onlineMembers}
-        sharingEnabled={groupSharingEnabled}
-        onLeave={leaveGroup}
-        onFinish={finishGroup}
-        onToggleSharing={toggleGroupSharing}
-      />
+      {panelVisible && (
+        <GroupRoutePanel
+          groupRoute={groupRoute}
+          members={members}
+          onlineMembers={onlineMembers}
+          sharingEnabled={groupSharingEnabled}
+          onLeave={leaveGroup}
+          onFinish={finishGroup}
+          onToggleSharing={toggleGroupSharing}
+          contactLocations={contactLocations}
+          onShareWith={shareWith}
+          onUnshareWith={unshareWith}
+          onClose={() => setPanelVisible(false)}
+        />
+      )}
 
       <BottomSheet
         selectedCity={selectedCity}
@@ -336,14 +332,6 @@ export default function Home() {
 
       <SchedulePanel route={selectedRoute} hidden={routingOpen} />
 
-      <LocationSharingPanel
-        contactLocations={contactLocations}
-        sharingEnabled={sharingEnabled}
-        onToggleSharing={toggleSharing}
-        onShareWith={shareWith}
-        onUnshareWith={unshareWith}
-      />
-
       <div className="absolute top-40 md:top-3 left-1/2 -translate-x-1/2 md:left-[400px] md:translate-x-0 z-[200] pointer-events-none flex flex-col gap-2 items-start">
         {locating && (
           <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl px-4 py-2 rounded-full shadow-lg border border-slate-200/50 dark:border-slate-800/80 flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-400 pointer-events-auto">
@@ -359,7 +347,7 @@ export default function Home() {
         )}
       </div>
 
-      <div className="absolute right-4 top-24 z-[999] pointer-events-auto max-w-[220px]">
+      <div className="absolute right-4 top-24 md:top-24 z-[999] pointer-events-auto max-w-[220px] hidden md:block">
         <StopWatcher route={selectedRoute} watchedStop={watchedStop} onWatch={(stop) => setWatchedStop(stop)} />
       </div>
 

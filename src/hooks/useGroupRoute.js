@@ -28,7 +28,7 @@ export function useGroupRoute(userId) {
       setGroupRoute(group);
       const { data: mbrs } = await supabase
         .from('group_route_members')
-        .select('*')
+        .select('*, profiles:user_id(full_name, photo_url)')
         .eq('group_route_id', group.id);
       if (mbrs) setMembers(mbrs);
     } else {
@@ -71,8 +71,8 @@ export function useGroupRoute(userId) {
           speed: pos.coords.speed || null,
         }).eq('group_route_id', groupRoute.id).eq('user_id', userId);
       },
-      (err) => console.error('[GroupRoute] watch error:', err),
-      { enableHighAccuracy: false, timeout: 15000, maximumAge: 10000 }
+      (err) => {},
+      { enableHighAccuracy: false, timeout: 30000, maximumAge: 10000 }
     );
     return () => { if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current); };
   }, [userId, groupRoute, sharingEnabled]);
@@ -91,15 +91,16 @@ export function useGroupRoute(userId) {
     }).select().maybeSingle();
     if (gErr || !group) return null;
 
-    await supabase.from('group_route_members').insert({
+    const { error: mErr } = await supabase.from('group_route_members').insert({
       group_route_id: group.id,
       user_id: userId,
       role: 'creator',
     });
+    if (mErr) return null;
+
     setGroupRoute(group);
-    loadGroup();
     return group;
-  }, [userId, loadGroup]);
+  }, [userId]);
 
   const joinGroup = useCallback(async (groupId) => {
     if (!userId || !groupId) return;

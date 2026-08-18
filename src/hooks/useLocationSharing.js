@@ -53,8 +53,8 @@ export function useLocationSharing(userId) {
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       sendLocation,
-      (err) => console.error('[LocationSharing] watch error:', err),
-      { enableHighAccuracy: false, timeout: 15000, maximumAge: 10000 }
+      (err) => {},
+      { enableHighAccuracy: false, timeout: 30000, maximumAge: 10000 }
     );
 
     return () => {

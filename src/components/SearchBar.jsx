@@ -3,7 +3,7 @@ import { Search, X, MapPin, Bus, Route, Clock, Building2 } from 'lucide-react';
 import { searchAll, flattenResults, getSearchHistory, addToHistory, clearHistory } from '@/lib/searchUtils';
 import { useLanguage } from '@/lib/useLanguage';
 
-export default function SearchBar({ cityId, onSelectResult, mapCenter }) {
+export default function SearchBar({ cityId, selectedCity, selectedCountry, onSelectResult, mapCenter }) {
   const { t } = useLanguage();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState({ routes: [], stops: [], vehicles: [], addresses: [], pois: [] });
@@ -48,20 +48,130 @@ export default function SearchBar({ cityId, onSelectResult, mapCenter }) {
     setLoading(true);
     debounceRef.current = setTimeout(async () => {
       const res = await searchAll(query, { cityId });
+      const pois = [];
+      const seenCoords = new Set();
+
+      const addPoi = (p) => {
+        const key = `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
+        if (!seenCoords.has(key)) { seenCoords.add(key); pois.push(p); }
+      };
+
+      // Bias coordinates from selected city (fallback to Tajikistan center)
+      const biasLat = selectedCity?.lat || 38.559;
+      const biasLng = selectedCity?.lng || 68.773;
+      const biasCountry = selectedCountry || selectedCity?.country || '';
+
+      // Country code mapping for Google components parameter
+      const countryCodeMap = {
+        'Таджикистан': 'tj', 'Tajikistan': 'tj',
+        'Узбекистан': 'uz', 'Uzbekistan': 'uz',
+        'Кыргызстан': 'kg', 'Kyrgyzstan': 'kg',
+        'Казахстан': 'kz', 'Kazakhstan': 'kz',
+        'Россия': 'ru', 'Russia': 'ru',
+        'Туркменистан': 'tm', 'Turkmenistan': 'tm',
+      };
+      const googleCountry = countryCodeMap[biasCountry] || 'tj';
+
+      // Nominatim (OpenStreetMap) — biased toward selected city
       try {
-        const nom = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&countrycodes=TJ&addressdetails=1`);
+        const nomUrl = new URL('https://nominatim.openstreetmap.org/search');
+        nomUrl.searchParams.set('format', 'json');
+        nomUrl.searchParams.set('q', query);
+        nomUrl.searchParams.set('limit', '5');
+        nomUrl.searchParams.set('addressdetails', '1');
+        nomUrl.searchParams.set('viewbox', `${biasLng - 2},${biasLat + 2},${biasLng + 2},${biasLat - 2}`);
+        nomUrl.searchParams.set('bounded', '0');
+        const nom = await fetch(nomUrl.toString(), { headers: { 'Accept-Language': 'ru' } });
         const nomData = await nom.json();
-        res.pois = nomData.map(n => ({
-          _type: 'poi',
-          id: n.osm_id,
-          name: n.display_name.split(',')[0],
-          fullAddress: n.display_name,
-          lat: parseFloat(n.lat),
-          lng: parseFloat(n.lon),
-          category: n.type,
-          icon: n.icon,
+        nomData.forEach(n => addPoi({
+          _type: 'poi', id: `nom-${n.osm_id}`,
+          name: n.display_name.split(',')[0], fullAddress: n.display_name,
+          lat: parseFloat(n.lat), lng: parseFloat(n.lon),
+          category: n.type, source: 'OpenStreetMap',
         }));
-      } catch { res.pois = []; }
+      } catch {}
+
+      // Google Places Autocomplete — biased toward selected city
+      const googleKey = import.meta.env.VITE_GOOGLE_MAPS_KEY;
+      if (googleKey) {
+        try {
+          const gpUrl = new URL('https://maps.googleapis.com/maps/api/place/autocomplete/json');
+          gpUrl.searchParams.set('input', query);
+          gpUrl.searchParams.set('key', googleKey);
+          gpUrl.searchParams.set('language', 'ru');
+          gpUrl.searchParams.set('components', `country:${googleCountry}`);
+          gpUrl.searchParams.set('locationbias', `point:${biasLat},${biasLng}`);
+          const gp = await fetch(gpUrl.toString());
+          const gpData = await gp.json();
+          const placeIds = (gpData.predictions || []).slice(0, 5).map(p => p.place_id);
+          await Promise.all(placeIds.map(async (pid) => {
+            try {
+              const det = await fetch(`https://maps.googleapis.com/maps/api/place/details/json?place_id=${pid}&key=${googleKey}&language=ru&fields=geometry,formatted_address,name`);
+              const d = await det.json();
+              if (d.result?.geometry?.location) {
+                addPoi({
+                  _type: 'poi', id: `g-${pid}`,
+                  name: d.result.name || d.result.formatted_address?.split(',')[0],
+                  fullAddress: d.result.formatted_address,
+                  lat: d.result.geometry.location.lat, lng: d.result.geometry.location.lng,
+                  category: 'place', source: 'Google',
+                });
+              }
+            } catch {}
+          }));
+        } catch {}
+      }
+
+      // Yandex Geocoder — biased toward selected city
+      const yandexKey = import.meta.env.VITE_YANDEX_GEOCODER_KEY;
+      if (yandexKey) {
+        try {
+          const yxUrl = new URL('https://geocode-maps.yandex.ru/1.x/');
+          yxUrl.searchParams.set('apikey', yandexKey);
+          yxUrl.searchParams.set('geocode', query);
+          yxUrl.searchParams.set('format', 'json');
+          yxUrl.searchParams.set('lang', 'ru_RU');
+          yxUrl.searchParams.set('results', '5');
+          yxUrl.searchParams.set('ll', `${biasLng},${biasLat}`);
+          yxUrl.searchParams.set('spn', '2.0,2.0');
+          const yx = await fetch(yxUrl.toString());
+          const yxData = await yx.json();
+          (yxData.response?.GeoObjectCollection?.featureMember || []).forEach(m => {
+            const obj = m.GeoObject;
+            const pos = obj.Point?.pos?.split(' ');
+            if (pos) addPoi({
+              _type: 'poi', id: `yx-${obj.name}-${pos[0]}-${pos[1]}`,
+              name: obj.name, fullAddress: obj.metaDataProperty?.GeocoderMetaData?.text || obj.name,
+              lat: parseFloat(pos[1]), lng: parseFloat(pos[0]),
+              category: 'place', source: 'Yandex',
+            });
+          });
+        } catch {}
+      }
+
+      // Photon — biased toward selected city
+      try {
+        const phUrl = new URL('https://photon.komoot.io/api/');
+        phUrl.searchParams.set('q', query);
+        phUrl.searchParams.set('limit', '5');
+        phUrl.searchParams.set('lang', 'ru');
+        phUrl.searchParams.set('lon', String(biasLng));
+        phUrl.searchParams.set('lat', String(biasLat));
+        const ph = await fetch(phUrl.toString());
+        const phData = await ph.json();
+        (phData.features || []).forEach(f => {
+          const p = f.properties;
+          const label = [p.name, p.city, p.state, p.country].filter(Boolean).join(', ');
+          addPoi({
+            _type: 'poi', id: `ph-${f.properties.osm_id || f.properties.name}-${f.geometry.coordinates[0]}`,
+            name: p.name || label.split(',')[0], fullAddress: label,
+            lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0],
+            category: p.osm_key || 'place', source: 'Photon',
+          });
+        });
+      } catch {}
+
+      res.pois = pois;
       setResults(res);
       setFlat(flattenResults(res));
       setOpen(true);
@@ -154,7 +264,7 @@ export default function SearchBar({ cityId, onSelectResult, mapCenter }) {
           onFocus={focusInput}
           onKeyDown={handleKeyDown}
           placeholder={t('search.placeholder')}
-          className="w-full h-11 pl-9 pr-9 text-sm bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/60 dark:border-slate-700/80 rounded-2xl shadow-lg outline-none text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+          className="w-full h-9 sm:h-11 pl-9 pr-9 text-xs sm:text-sm bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/60 dark:border-slate-700/80 rounded-2xl shadow-lg outline-none text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
         />
         {query && (
           <button onClick={() => { setQuery(''); setOpen(false); inputRef.current?.focus(); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -228,7 +338,7 @@ export default function SearchBar({ cityId, onSelectResult, mapCenter }) {
                         {item._type === 'vehicle' && `${item.route_number ? `#${item.route_number} · ` : ''}${item.vehicle_number || ''}`}
                         {item._type === 'address' && (item.fullAddress || '')}
                         {item._type === 'route' && `${item.type === 'bus' ? t('search.busLabel') : t('search.minibusLabel')} · ${item.city_name || ''}`}
-                        {item._type === 'poi' && (item.fullAddress || '')}
+                        {item._type === 'poi' && (item.source ? `${item.source} · ` : '') + (item.fullAddress || '')}
                       </p>
                     </div>
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${colorCls}`}>{label}</span>

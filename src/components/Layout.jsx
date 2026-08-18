@@ -70,7 +70,7 @@ export default function Layout() {
 
       {/* Floating Bottom Navigation Bar for Mobile & Desktop */}
       <nav
-        className="z-[2000] w-full flex items-center justify-around px-2 py-1.5 flex-shrink-0"
+        className="z-[2000] w-full flex items-center justify-around px-2 py-1.5 flex-shrink-0 bg-white dark:bg-slate-950 border-t border-slate-200/60 dark:border-slate-800/80"
         style={{
           paddingBottom: 'max(env(safe-area-inset-bottom, 8px), 8px)',
           minHeight: '64px',

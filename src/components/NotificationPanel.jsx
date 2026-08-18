@@ -108,8 +108,7 @@ export default function NotificationPanel({ notifications, onClear }) {
       <button
         ref={btnRef}
         onClick={handleOpen}
-        className="relative w-9 h-9 rounded-full flex items-center justify-center cursor-pointer transition-colors"
-        style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)' }}
+        className="relative w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-colors bg-white/15 dark:bg-white/10 border border-white/20 dark:border-white/15"
       >
         <Bell size={18} className="text-white" />
         {unread > 0 && (
@@ -216,7 +215,7 @@ export default function NotificationPanel({ notifications, onClear }) {
                         <button
                           disabled={isProcessing}
                           onClick={(e) => { e.stopPropagation(); handleConfirm(n); }}
-                          className="flex items-center gap-1 bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                          className="flex items-center gap-1 bg-green-600 hover:bg-green-700 text-white text-[10px] font-bold px-3 py-2 min-h-[36px] rounded-lg transition-colors cursor-pointer disabled:opacity-50"
                         >
                           {isProcessing ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />}
                           {t('notifications.confirmButton')}
@@ -224,7 +223,7 @@ export default function NotificationPanel({ notifications, onClear }) {
                         <button
                           disabled={isProcessing}
                           onClick={(e) => { e.stopPropagation(); handleReject(n); }}
-                          className="flex items-center gap-1 bg-red-500 hover:bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                          className="flex items-center gap-1 bg-red-500 hover:bg-red-600 text-white text-[10px] font-bold px-3 py-2 min-h-[36px] rounded-lg transition-colors cursor-pointer disabled:opacity-50"
                         >
                           <Ban size={10} />
                           {t('notifications.rejectButton')}

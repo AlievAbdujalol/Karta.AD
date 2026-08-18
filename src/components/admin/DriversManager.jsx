@@ -40,7 +40,9 @@ export default function DriversManager() {
 
   const updateStatus = async (id, status) => {
     setLoading(prev => ({ ...prev, [id]: status }));
-    const { error } = await supabase.from('profiles').update({ driver_status: status }).eq('id', id);
+    const payload = { driver_status: status };
+    if (status === 'approved') payload.role = 'driver';
+    const { error } = await supabase.from('profiles').update(payload).eq('id', id);
     setLoading(prev => { const n = { ...prev }; delete n[id]; return n; });
     if (error) {
       console.error('[DriversManager] update error:', error.message);
