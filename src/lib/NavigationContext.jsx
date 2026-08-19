@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 
 const NavigationContext = createContext(null);
 
@@ -27,14 +27,13 @@ export function NavigationProvider({ children }) {
 
   const watchIdRef = useRef(null);
   const lastAnnounceRef = useRef(0);
-  const speechRef = useRef(null);
   const routeRef = useRef(null);
   const stepIndexRef = useRef(0);
   const traveledRef = useRef(0);
   const startTimeRef = useRef(null);
   const positionsRef = useRef([]);
   const isPausedRef = useRef(false);
-  const voiceEnabledRef = useRef(true);
+  const voiceEnabledRef = useRef(false);
 
   useEffect(() => { isPausedRef.current = isPaused; }, [isPaused]);
   useEffect(() => { voiceEnabledRef.current = voiceEnabled; }, [voiceEnabled]);
@@ -46,8 +45,7 @@ export function NavigationProvider({ children }) {
     }
   }, []);
 
-  const speakRef = useRef(null);
-  speakRef.current = (text) => {
+  const speak = useCallback((text) => {
     if (!voiceEnabledRef.current || !text) return;
     try {
       window.speechSynthesis.cancel();
@@ -55,13 +53,11 @@ export function NavigationProvider({ children }) {
       u.lang = 'ru-RU';
       u.rate = 1.1;
       u.pitch = 1;
-      speechRef.current = u;
       window.speechSynthesis.speak(u);
     } catch {}
-  };
+  }, []);
 
-  const getManeuverTextRef = useRef(null);
-  getManeuverTextRef.current = (instruction, modifier, distance) => {
+  const getManeuverText = useCallback((instruction, modifier, distance) => {
     const dir = {
       left: 'налево', right: 'направо', 'sharp left': 'резко налево',
       'sharp right': 'резко направо', 'slight left': 'слегка налево',
@@ -82,10 +78,9 @@ export function NavigationProvider({ children }) {
       return `Через ${distance >= 1000 ? `${(distance / 1000).toFixed(1)} км` : `${Math.round(distance)} м`} ${action.toLowerCase()}`;
     }
     return action;
-  };
+  }, []);
 
-  const findClosestStepRef = useRef(null);
-  findClosestStepRef.current = (lat, lng, steps) => {
+  const findClosestStep = useCallback((lat, lng, steps) => {
     if (!steps || steps.length === 0) return 0;
     let bestIdx = stepIndexRef.current;
     let bestDist = Infinity;
@@ -102,10 +97,9 @@ export function NavigationProvider({ children }) {
       if (Math.hypot(lat - nloc[1], lng - nloc[0]) < bestDist) bestIdx++;
     }
     return bestIdx;
-  };
+  }, []);
 
-  const processPositionRef = useRef(null);
-  processPositionRef.current = (lat, lng, heading, speed) => {
+  const processPosition = useCallback((lat, lng, heading, speed) => {
     setUserPosition([lat, lng]);
     setUserHeading(heading || 0);
     setUserSpeed(speed || 0);
@@ -124,7 +118,7 @@ export function NavigationProvider({ children }) {
     if (!route || !route.steps || route.steps.length === 0) return;
 
     const steps = route.steps;
-    const stepIdx = findClosestStepRef.current(lat, lng, steps);
+    const stepIdx = findClosestStep(lat, lng, steps);
     stepIndexRef.current = stepIdx;
 
     const step = steps[stepIdx];
@@ -132,7 +126,7 @@ export function NavigationProvider({ children }) {
     const distToStep = Math.hypot(lat - loc[1], lng - loc[0]) * 111320;
 
     setNextInstruction({
-      text: getManeuverTextRef.current(step.instruction, step.modifier, step.distance),
+      text: getManeuverText(step.instruction, step.modifier, step.distance),
       streetName: step.name || '',
       distance: distToStep,
       instruction: step.instruction,
@@ -141,11 +135,11 @@ export function NavigationProvider({ children }) {
 
     const now = Date.now();
     if (distToStep < 25 && step.instruction !== 'arrive' && now - lastAnnounceRef.current > 8000) {
-      speakRef.current(getManeuverTextRef.current(step.instruction, step.modifier, step.distance));
+      speak(getManeuverText(step.instruction, step.modifier, step.distance));
       lastAnnounceRef.current = now;
     }
     if (step.instruction === 'arrive' && distToStep < 30 && now - lastAnnounceRef.current > 8000) {
-      speakRef.current('Вы прибыли в пункт назначения');
+      speak('Вы прибыли в пункт назначения');
       lastAnnounceRef.current = now;
     }
 
@@ -161,7 +155,10 @@ export function NavigationProvider({ children }) {
     setEta(new Date(Date.now() + etaSec * 1000));
     setRemainingDuration(Math.round(etaSec));
     setTripStats({ distance: traveledRef.current, duration: elapsed, avgSpeed: avgSpd * 3.6 });
-  };
+  }, [findClosestStep, getManeuverText, speak]);
+
+  const processPositionRef = useRef(processPosition);
+  useEffect(() => { processPositionRef.current = processPosition; }, [processPosition]);
 
   const startGps = useCallback(() => {
     clearGps();
@@ -202,8 +199,8 @@ export function NavigationProvider({ children }) {
     isPausedRef.current = false;
     resetNavState();
     startGps();
-    speakRef.current('Начинаем навигацию');
-  }, [startGps, resetNavState]);
+    speak('Начинаем навигацию');
+  }, [startGps, resetNavState, speak]);
 
   const startNavigation = useCallback((route) => {
     routeRef.current = route;
@@ -213,12 +210,12 @@ export function NavigationProvider({ children }) {
     isPausedRef.current = false;
     resetNavState();
     startGps();
-    speakRef.current('Начинаем навигацию');
-  }, [startGps, resetNavState]);
+    speak('Начинаем навигацию');
+  }, [startGps, resetNavState, speak]);
 
   const stopNavigation = useCallback(() => {
     clearGps();
-    window.speechSynthesis.cancel();
+    try { window.speechSynthesis.cancel(); } catch {}
     const elapsed = startTimeRef.current ? (Date.now() - startTimeRef.current) / 1000 : 0;
     const dist = traveledRef.current;
     const avgSpd = elapsed > 0 ? (dist / elapsed) * 3.6 : 0;
@@ -230,11 +227,7 @@ export function NavigationProvider({ children }) {
     else if (endMode === 'bus' || endMode === 'minibus') cost = 3;
 
     setSummaryData({
-      duration: elapsed,
-      distance: dist,
-      avgSpeed: avgSpd,
-      cost,
-      mode: endMode,
+      duration: elapsed, distance: dist, avgSpeed: avgSpd, cost, mode: endMode,
       fromName: rd?.from?.shortName || rd?.from?.name || '',
       toName: rd?.to?.shortName || rd?.to?.name || '',
     });
@@ -244,14 +237,11 @@ export function NavigationProvider({ children }) {
     isPausedRef.current = false;
     setNextInstruction(null);
     setFollowUser(true);
-    speakRef.current('Вы прибыли');
-  }, [clearGps]);
+    speak('Вы прибыли');
+  }, [clearGps, speak]);
 
   const togglePause = useCallback(() => {
-    setIsPaused(p => {
-      isPausedRef.current = !p;
-      return !p;
-    });
+    setIsPaused(p => { isPausedRef.current = !p; return !p; });
   }, []);
 
   const toggleVoice = useCallback(() => setVoiceEnabled(v => !v), []);
@@ -272,20 +262,16 @@ export function NavigationProvider({ children }) {
       if (!data.routes?.length) return null;
       const r = data.routes[0];
       const steps = [];
-      if (r.legs) {
-        r.legs.forEach(leg => {
-          if (leg.steps) leg.steps.forEach(step => {
-            steps.push({
-              instruction: step.maneuver?.type || '',
-              modifier: step.maneuver?.modifier || '',
-              name: step.name || '',
-              distance: step.distance || 0,
-              duration: step.duration || 0,
-              start: step.maneuver?.location || [0, 0],
-            });
-          });
-        });
-      }
+      if (r.legs) r.legs.forEach(leg => {
+        if (leg.steps) leg.steps.forEach(step => steps.push({
+          instruction: step.maneuver?.type || '',
+          modifier: step.maneuver?.modifier || '',
+          name: step.name || '',
+          distance: step.distance || 0,
+          duration: step.duration || 0,
+          start: step.maneuver?.location || [0, 0],
+        }));
+      });
       const newRoute = {
         distance: r.distance, duration: r.duration,
         geometry: r.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
@@ -294,10 +280,10 @@ export function NavigationProvider({ children }) {
       routeRef.current = newRoute;
       setRouteData(newRoute);
       stepIndexRef.current = 0;
-      speakRef.current('Маршрут обновлён');
+      speak('Маршрут обновлён');
       return newRoute;
     } catch { return null; }
-  }, []);
+  }, [speak]);
 
   const closeSummary = useCallback(() => {
     setShowSummary(false);
@@ -309,10 +295,10 @@ export function NavigationProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    return () => { clearGps(); window.speechSynthesis.cancel(); };
+    return () => { clearGps(); try { window.speechSynthesis.cancel(); } catch {} };
   }, [clearGps]);
 
-  const value = {
+  const value = useMemo(() => ({
     isActive, isPaused,
     routeData, userPosition, userHeading, userSpeed,
     nextInstruction, remainingDistance, remainingDuration, eta, traveledDistance,
@@ -322,7 +308,16 @@ export function NavigationProvider({ children }) {
     togglePause, toggleVoice, toggleFollow,
     reroute, closeSummary,
     setUserPosition, setUserHeading, setUserSpeed, setFollowUser,
-  };
+  }), [
+    isActive, isPaused,
+    routeData, userPosition, userHeading, userSpeed,
+    nextInstruction, remainingDistance, remainingDuration, eta, traveledDistance,
+    startTime, voiceEnabled, followUser,
+    showSummary, summaryData, tripStats,
+    startNavigation, startNavigationWithFromTo, stopNavigation,
+    togglePause, toggleVoice, toggleFollow,
+    reroute, closeSummary,
+  ]);
 
   return <NavigationContext.Provider value={value}>{children}</NavigationContext.Provider>;
 }
