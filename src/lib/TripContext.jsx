@@ -26,6 +26,14 @@ export function TripProvider({ children, user }) {
   }, []);
 
   const startGpsWatch = useCallback(() => {
+    if (watchIdRef.current != null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
     if (!navigator.geolocation) {
       toast.error('Геолокация недоступна');
       return;

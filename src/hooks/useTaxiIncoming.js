@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { supabase } from '@/api/supabase';
 import { haversineKm, DRIVER_MATCH_RADIUS_KM } from '@/lib/taxi';
 import { snapToRoad } from '@/lib/osrm';
+import { toast } from 'sonner';
 
 const ORDER_SOUND = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVggoKIeGBGPoChoZ+LdmhRR4KXoZ6KdWxYTYiOn52Jc25cU42QnJuIc3BjWZCVmJeGc3FqYJeWlJJ/dnNvZ5qXlJF8dHNzap2XlI95c3V3b56Xk455cnV3cJ+Xkok=';
 
@@ -67,11 +68,8 @@ export function useTaxiIncoming(user) {
           } catch {}
         }
 
-        // Toast via import (sonner)
-        try {
-          const { toast } = await import('sonner');
-          toast.success(title, { description: body, duration: 8000, action: { label: 'Открыть', onClick: () => { window.location.href = '/taxi/driver'; } } });
-        } catch {}
+        // Toast (sonner)
+        toast.success(title, { description: body, duration: 8000, action: { label: 'Открыть', onClick: () => { window.location.href = '/taxi/driver'; } } });
       })
       .subscribe();
 

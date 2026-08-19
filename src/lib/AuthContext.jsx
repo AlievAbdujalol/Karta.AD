@@ -43,15 +43,22 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        const profile = await loadUserProfile(session.user);
-        setUser(profile || { ...session.user, id: session.user.id });
-        setIsAuthenticated(true);
-      }
-      setIsLoadingAuth(false);
-      setAuthChecked(true);
-    });
+    supabase.auth.getSession()
+      .then(async ({ data: { session } }) => {
+        if (session?.user) {
+          const profile = await loadUserProfile(session.user);
+          setUser(profile || { ...session.user, id: session.user.id });
+          setIsAuthenticated(true);
+        }
+      })
+      .catch((err) => {
+        console.error('[Auth] getSession error:', err?.message || err);
+        setAuthError({ type: 'auth_required', message: 'Failed to load session' });
+      })
+      .finally(() => {
+        setIsLoadingAuth(false);
+        setAuthChecked(true);
+      });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {

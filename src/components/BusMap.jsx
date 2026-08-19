@@ -131,6 +131,27 @@ function UserLocationMarker() {
   );
 }
 
+function NavigationUserArrow({ position, heading }) {
+  const icon = L.divIcon({
+    html: `<div style="position:relative;width:46px;height:46px;">
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transform:rotate(${heading || 0}deg);transition:transform 0.15s linear;">
+        <div style="position:relative;width:36px;height:36px;">
+          <svg width="36" height="36" viewBox="0 0 24 24" style="filter:drop-shadow(0 2px 6px rgba(37,99,235,0.6));">
+            <path d="M12 2 L20 20 L12 15.5 L4 20 Z" fill="#2563EB" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/>
+          </svg>
+          <div style="position:absolute;top:11px;left:50%;transform:translateX(-50%);width:10px;height:10px;border-radius:50%;background:#fff;"></div>
+        </div>
+      </div>
+      <div style="position:absolute;inset:-6px;border-radius:50%;background:radial-gradient(circle, rgba(37,99,235,0.25) 0%, rgba(37,99,235,0) 70%);"></div>
+    </div>`,
+    className: '',
+    iconSize: [46, 46],
+    iconAnchor: [23, 23],
+  });
+
+  return <Marker position={position} icon={icon} zIndexOffset={1000} interactive={false} />;
+}
+
 function RouteNumberLabel({ positions, routeNumber, routeName, color }) {
   const labels = useMemo(() => {
     if (!positions || positions.length < 3) return [];
@@ -398,7 +419,7 @@ async function snapToRoad(lat, lng) {
   return { lat, lng };
 }
 
-function NavigationCamera({ followUser, userPosition, userHeading, reroute, routeData }) {
+function NavigationCamera({ followUser, userPosition, reroute, routeData }) {
   const map = useMap();
   const lastRerouteRef = useRef(0);
   const lastPosRef = useRef(null);
@@ -407,13 +428,6 @@ function NavigationCamera({ followUser, userPosition, userHeading, reroute, rout
     if (!followUser || !userPosition) return;
     map.setView(userPosition, Math.max(map.getZoom(), 17), { animate: true, duration: 0.5 });
   }, [userPosition, followUser, map]);
-
-  useEffect(() => {
-    if (!userPosition || !userHeading) return;
-    try {
-      map.setBearing(-userHeading * 0.3);
-    } catch {}
-  }, [userHeading, userPosition, map]);
 
   // Auto-reroute when deviated >30m
   useEffect(() => {
@@ -904,10 +918,14 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         />
       )}
 
-      <UserLocationMarker />
+      {nav.isActive && nav.userPosition ? (
+        <NavigationUserArrow position={nav.userPosition} heading={nav.userHeading} />
+      ) : (
+        <UserLocationMarker />
+      )}
 
       {/* Navigation camera follow + arrow */}
-      {nav.isActive && <NavigationCamera followUser={nav.followUser} userPosition={nav.userPosition} userHeading={nav.userHeading} reroute={nav.reroute} routeData={nav.routeData} />}
+      {nav.isActive && <NavigationCamera followUser={nav.followUser} userPosition={nav.userPosition} reroute={nav.reroute} routeData={nav.routeData} />}
 
       {/* Group route members */}
       {groupRouteMembers.filter(m => m.lat && m.lng).map((member) => {

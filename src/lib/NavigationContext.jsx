@@ -6,6 +6,16 @@ export function useNavigation() {
   return useContext(NavigationContext);
 }
 
+function bearing(fromLat, fromLng, toLat, toLng) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const toDeg = (r) => (r * 180) / Math.PI;
+  const dLng = toRad(toLng - fromLng);
+  const y = Math.sin(dLng) * Math.cos(toRad(toLat));
+  const x = Math.cos(toRad(fromLat)) * Math.sin(toRad(toLat)) -
+    Math.sin(toRad(fromLat)) * Math.cos(toRad(toLat)) * Math.cos(dLng);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
 export function NavigationProvider({ children }) {
   const [isActive, setIsActive] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -101,14 +111,22 @@ export function NavigationProvider({ children }) {
 
   const processPosition = useCallback((lat, lng, heading, speed) => {
     setUserPosition([lat, lng]);
-    setUserHeading(heading || 0);
+
+    const lastPos = positionsRef.current[positionsRef.current.length - 1];
+    let effectiveHeading = heading;
+    if (!effectiveHeading && lastPos) {
+      const moved = Math.hypot(lat - lastPos.lat, lng - lastPos.lng) * 111320;
+      if (moved > 1) {
+        effectiveHeading = bearing(lastPos.lat, lastPos.lng, lat, lng);
+      }
+    }
+    setUserHeading(effectiveHeading || 0);
     setUserSpeed(speed || 0);
 
     if (isPausedRef.current) return;
 
-    const last = positionsRef.current[positionsRef.current.length - 1];
-    if (last) {
-      traveledRef.current += Math.hypot(lat - last.lat, lng - last.lng) * 111320;
+    if (lastPos) {
+      traveledRef.current += Math.hypot(lat - lastPos.lat, lng - lastPos.lng) * 111320;
       setTraveledDistance(traveledRef.current);
     }
     positionsRef.current.push({ lat, lng });
