@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
+import { Schedule } from '@/api/entities';
 import { Clock, ChevronUp, ChevronDown } from 'lucide-react';
+import { useLanguage } from '@/lib/useLanguage';
 
 function getNextTimes(times, count = 3) {
   if (!times?.length) return [];
@@ -20,21 +21,25 @@ function getNextTimes(times, count = 3) {
   return result.map(t => t.label);
 }
 
-export default function SchedulePanel({ route }) {
+export default function SchedulePanel({ route, hidden }) {
+  const { t } = useLanguage();
   const [schedule, setSchedule] = useState(null);
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     if (!route?.id) { setSchedule(null); return; }
-    base44.entities.Schedule.filter({ route_id: route.id }).then(res => setSchedule(res[0] || null));
+    Schedule.filter({ route_id: route.id }).then(res => setSchedule(res[0] || null));
   }, [route?.id]);
 
+  if (hidden) return null;
   if (!schedule || !schedule.stops_schedule?.length) return null;
   const stopsWithTimes = schedule.stops_schedule.filter(s => s.times?.length > 0);
   if (!stopsWithTimes.length) return null;
 
+  const totalPrice = schedule.stops_schedule.reduce((sum, s) => sum + (parseFloat(s.price_from_prev) || 0), 0);
+
   return (
-    <div className="absolute bottom-20 md:bottom-6 left-4 md:left-[412px] z-[998] w-[min(320px,calc(100%-80px))]">
+    <div className="absolute bottom-20 md:bottom-6 left-4 md:left-[400px] z-[200] w-[min(300px,calc(100vw-2rem))] md:w-[min(300px,calc(100vw-420px))]">
       <div className="rounded-[20px] overflow-hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/50 dark:border-slate-800/80 shadow-[0_8px_32px_rgba(15,23,42,0.06)] dark:text-gray-100">
 
         <button
@@ -46,10 +51,10 @@ export default function SchedulePanel({ route }) {
               <Clock size={13} className="text-white" />
             </div>
             <div className="text-left">
-              <p className="text-xs font-bold text-gray-800 dark:text-gray-100">Расписание</p>
-              <p className="text-[10px] text-gray-400 dark:text-gray-500">Маршрут #{route.number}</p>
-            </div>
-          </div>
+                    <p className="text-xs font-bold text-gray-800 dark:text-gray-100">{t('schedulePanel.title')}</p>
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500">{t('schedulePanel.routePrefix')}{route.number}{totalPrice > 0 ? ` · ${totalPrice.toFixed(2)} ${t('schedulePanel.somoni')}` : ''}</p>
+                  </div>
+                </div>
           <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
             {expanded
               ? <ChevronUp size={14} className="text-gray-500 dark:text-gray-400" />
@@ -81,6 +86,13 @@ export default function SchedulePanel({ route }) {
                           {t}
                         </span>
                       ))}
+                    </div>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {stop.price_from_prev > 0 && (
+                        <span className="text-[9px] text-green-600 dark:text-green-400 font-medium">
+                          +{Number(stop.price_from_prev).toFixed(2)} {t('schedulePanel.somAbbr')}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

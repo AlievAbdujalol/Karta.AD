@@ -40,7 +40,7 @@ export function useEntityList(entityName, conditions = {}, orderBy = '-created_a
 
   useEffect(() => {
     load();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [entityName, JSON.stringify(conditions)]);
 
   return { data, loading, error, refetch: load };

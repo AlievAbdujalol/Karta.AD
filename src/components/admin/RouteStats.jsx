@@ -1,149 +1,108 @@
 import { useState, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
-import { Plus, Trash2, Save, X, Clock } from 'lucide-react';
-import { toast } from 'sonner';
+import { Route, TripLog, Review } from '@/api/entities';
+import { BarChart2, Star, TrendingUp } from 'lucide-react';
+import { useLanguage } from '@/lib/useLanguage';
 
-export default function ScheduleManager({ route, onClose }) {
-  const [schedule, setSchedule] = useState(null);
-  const [stops, setStops] = useState([]);
-  const [saving, setSaving] = useState(false);
+export default function RouteStats() {
+  const { t } = useLanguage();
+  const [stats, setStats] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!route) return;
-    const routeStops = (route.stops || []).map((s, i) => ({
-      stop_index: i,
-      stop_name: s.name || `Остановка ${i + 1}`,
-      times: [],
-    }));
+    const load = async () => {
+      const [routes, trips, reviews] = await Promise.all([
+        Route.list(),
+        TripLog.list('-created_at', 1000),
+        Review.list('-created_at', 1000),
+      ]);
 
-    base44.entities.Schedule.filter({ route_id: route.id }).then(res => {
-      if (res[0]) {
-        setSchedule(res[0]);
-        // merge existing times with route stops
-        const merged = routeStops.map(rs => {
-          const existing = res[0].stops_schedule?.find(x => x.stop_index === rs.stop_index);
-          return existing ? { ...rs, times: existing.times || [] } : rs;
-        });
-        setStops(merged);
-      } else {
-        setSchedule(null);
-        setStops(routeStops);
+      const tripCounts = {};
+      for (const t of trips) {
+        tripCounts[t.route_id] = (tripCounts[t.route_id] || 0) + 1;
       }
-    });
-  }, [route?.id]);
 
-  const addTime = (stopIndex) => {
-    setStops(prev => prev.map(s =>
-      s.stop_index === stopIndex ? { ...s, times: [...s.times, ''] } : s
-    ));
-  };
+      const reviewData = {};
+      for (const r of reviews) {
+        if (!reviewData[r.route_id]) {
+          reviewData[r.route_id] = { count: 0, total: 0 };
+        }
+        const avg = ((r.cleanliness || 0) + (r.politeness || 0) + (r.punctuality || 0)) / 3;
+        reviewData[r.route_id].count += 1;
+        reviewData[r.route_id].total += avg;
+      }
 
-  const updateTime = (stopIndex, timeIdx, value) => {
-    setStops(prev => prev.map(s =>
-      s.stop_index === stopIndex
-        ? { ...s, times: s.times.map((t, i) => i === timeIdx ? value : t) }
-        : s
-    ));
-  };
+      const data = routes.map(r => ({
+        id: r.id,
+        number: r.number,
+        name: r.name || '',
+        type: r.type,
+        color: r.color || '#1565C0',
+        trips: tripCounts[r.id] || 0,
+        rating: reviewData[r.id]?.count ? (reviewData[r.id].total / reviewData[r.id].count).toFixed(1) : '—',
+        reviews: reviewData[r.id]?.count || 0,
+        stops: r.stops?.length || 0,
+      })).sort((a, b) => b.trips - a.trips);
 
-  const removeTime = (stopIndex, timeIdx) => {
-    setStops(prev => prev.map(s =>
-      s.stop_index === stopIndex
-        ? { ...s, times: s.times.filter((_, i) => i !== timeIdx) }
-        : s
-    ));
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    const data = {
-      route_id: route.id,
-      route_number: route.number,
-      city_id: route.city_id,
-      stops_schedule: stops.map(s => ({
-        ...s,
-        times: s.times.filter(t => t.trim()).sort(),
-      })),
+      setStats(data);
+      setLoading(false);
     };
-    if (schedule) {
-      await base44.entities.Schedule.update(schedule.id, data);
-    } else {
-      await base44.entities.Schedule.create(data);
-    }
-    setSaving(false);
-    toast.success('Расписание сохранено');
-    onClose();
-  };
+    load();
+  }, []);
 
-  if (!route.stops?.length) {
+  if (loading) {
     return (
-      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl p-6 max-w-sm w-full text-center">
-          <p className="text-gray-500 text-sm">У этого маршрута нет остановок. Сначала добавьте остановки.</p>
-          <button onClick={onClose} className="mt-4 bg-gray-100 px-4 py-2 rounded-xl text-sm font-medium">Закрыть</button>
-        </div>
+      <div className="flex items-center justify-center py-8">
+        <div className="w-6 h-6 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!stats.length) {
+    return (
+      <div className="bg-white rounded-2xl p-6 shadow-sm text-center text-gray-400 text-sm">
+        <BarChart2 size={28} className="mx-auto mb-2 opacity-30" />
+        {t('admin.stats.noData')}
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col shadow-2xl">
-        <div className="flex items-center justify-between px-5 py-4 border-b">
-          <div className="flex items-center gap-2">
-            <Clock size={18} className="text-blue-600" />
-            <h2 className="font-bold text-gray-800">Расписание: Маршрут #{route.number}</h2>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
-        </div>
-
-        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
-          {stops.map(stop => (
-            <div key={stop.stop_index} className="border border-gray-100 rounded-xl p-3">
-              <div className="flex items-center justify-between mb-2">
-                <p className="font-semibold text-sm text-gray-700">
-                  <span className="text-blue-600 mr-1">#{stop.stop_index + 1}</span>
-                  {stop.stop_name}
-                </p>
-                <button
-                  onClick={() => addTime(stop.stop_index)}
-                  className="text-xs text-blue-600 flex items-center gap-1 hover:text-blue-800"
-                >
-                  <Plus size={12} /> Время
-                </button>
+    <div className="bg-white rounded-2xl p-5 shadow-sm space-y-4">
+      <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2">
+        <TrendingUp size={15} className="text-blue-500" />
+        {t('admin.stats.title')}
+      </h3>
+      <div className="space-y-2">
+        {stats.map(route => (
+          <div key={route.id} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
+            <span
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+              style={{ backgroundColor: route.color }}
+            >
+              #{route.number}
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-gray-800 truncate">
+                {route.name || t('admin.stats.routeDefaultName')}
+              </p>
+              <p className="text-[10px] text-gray-400">
+                {route.type === 'bus' ? t('admin.stats.busLabel') : t('admin.stats.minibusLabel')} · {route.stops} {t('admin.stats.stopsLabel')}
+              </p>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              <div className="text-center">
+                <p className="font-bold text-blue-600">{route.trips}</p>
+                <p className="text-[9px] text-gray-400">{t('admin.stats.tripsLabel')}</p>
               </div>
-              {stop.times.length === 0 && (
-                <p className="text-xs text-gray-400 italic">Нет времени отправления</p>
-              )}
-              <div className="flex flex-wrap gap-2">
-                {stop.times.map((time, ti) => (
-                  <div key={ti} className="flex items-center gap-1 bg-blue-50 rounded-lg px-2 py-1">
-                    <input
-                      type="time"
-                      value={time}
-                      onChange={e => updateTime(stop.stop_index, ti, e.target.value)}
-                      className="text-xs text-blue-700 font-medium bg-transparent border-none outline-none w-20"
-                    />
-                    <button onClick={() => removeTime(stop.stop_index, ti)} className="text-gray-400 hover:text-red-500">
-                      <Trash2 size={11} />
-                    </button>
-                  </div>
-                ))}
+              <div className="text-center">
+                <p className="font-bold text-amber-600 flex items-center gap-0.5">
+                  {route.rating} <Star size={9} className="fill-amber-400 text-amber-400" />
+                </p>
+                <p className="text-[9px] text-gray-400">({route.reviews})</p>
               </div>
             </div>
-          ))}
-        </div>
-
-        <div className="px-5 py-4 border-t">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-60"
-          >
-            <Save size={16} />
-            {saving ? 'Сохранение...' : 'Сохранить расписание'}
-          </button>
-        </div>
+          </div>
+        ))}
       </div>
     </div>
   );

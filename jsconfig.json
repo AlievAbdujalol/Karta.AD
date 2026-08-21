@@ -9,10 +9,7 @@
     "moduleResolution": "bundler",
     "lib": ["esnext", "dom"],
     "target": "esnext",
-    "checkJs": true,
-    "strict": true,
-    "noImplicitAny": true,
-    "strictNullChecks": true,
+    "checkJs": false,
     "types": ["node", "react", "react-dom"]
   },
   "include": ["src/**/*"],

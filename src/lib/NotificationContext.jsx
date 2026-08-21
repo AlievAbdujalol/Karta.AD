@@ -10,6 +10,7 @@ import { useAuth } from '@/lib/AuthContext';
  * @property {(transactionId: string) => Promise<boolean>} confirmPayment - RPC to confirm payment
  * @property {(transactionId: string) => Promise<boolean>} rejectPayment - RPC to reject payment
  * @property {(n: any) => void} addLocalNotification - Add a local notification
+ * @property {(id: string) => Promise<void>} markAsRead - Mark a single notification as read
  */
 
 /** @type {import('react').Context<NotificationContextValue>} */
@@ -20,6 +21,7 @@ const NotificationContext = createContext({
   confirmPayment: /** @type {(transactionId: string) => Promise<boolean>} */ (async () => false),
   rejectPayment: /** @type {(transactionId: string) => Promise<boolean>} */ (async () => false),
   addLocalNotification: (/** @type {any} */ n) => {},
+  markAsRead: async (/** @type {string} */ id) => {},
 });
 
 /**
@@ -120,6 +122,15 @@ export function NotificationProvider({ children }) {
     return data;
   }, []);
 
+  const markAsRead = useCallback(async (/** @type {string} */ id) => {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('id', id);
+    if (error) console.error('[NotificationContext] markAsRead error:', error.message);
+    else setNotifications(prev => prev.filter(n => n.id !== id));
+  }, []);
+
   const addLocalNotification = useCallback(/** @param {any} n */ (n) => {
     setNotifications(prev => [
       {
@@ -141,6 +152,7 @@ export function NotificationProvider({ children }) {
     confirmPayment,
     rejectPayment,
     addLocalNotification,
+    markAsRead,
   };
 
   return (

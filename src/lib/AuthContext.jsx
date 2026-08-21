@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
 import { supabase } from '@/api/supabase';
 
 const AuthContext = createContext(null);
@@ -11,133 +11,74 @@ export const AuthProvider = ({ children }) => {
   const [authError, setAuthError] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
 
-  // Загружаем профиль пользователя из таблицы profiles
-  // Если профиль не существует — создаём его автоматически
-  const loadUserProfile = useCallback(async (authUser) => {
+  const loadUserProfile = async (authUser) => {
     if (!authUser) return null;
-    try {
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', authUser.id)
-        .maybeSingle();
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', authUser.id)
+      .maybeSingle();
 
-      if (error) {
-        console.warn('[Auth] loadUserProfile select error:', error.message);
-        return { ...authUser, id: authUser.id, role: authUser.role || 'passenger' };
-      }
+    if (profile) return profile;
 
-      if (profile) {
-        const localRole = localStorage.getItem(`demo_role_${authUser.id}`);
-        const localAdminActivated = localStorage.getItem(`demo_admin_activated_${authUser.id}`);
-        if (localRole) profile.role = localRole;
-        if (localAdminActivated) profile.admin_activated = localAdminActivated === 'true';
-        return profile;
-      }
+    const newProfile = {
+      id: authUser.id,
+      email: authUser.email,
+      full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || null,
+      photo_url: authUser.user_metadata?.avatar_url || authUser.user_metadata?.picture || null,
+      role: 'passenger',
+      language: 'ru',
+      driver_status: 'pending',
+      subscription_status: 'active',
+      balance: 0,
+    };
 
-      // Профиль не найден — создаём с базовыми данными из OAuth
-      const newProfile = {
-        id: authUser.id,
-        email: authUser.email,
-        full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || null,
-        photo_url: authUser.user_metadata?.avatar_url || authUser.user_metadata?.picture || null,
-        role: 'passenger',
-        language: 'ru',
-        driver_status: 'pending',
-        subscription_status: 'active',
-        balance: 0,
-      };
+    const { data: created } = await supabase
+      .from('profiles')
+      .insert(newProfile)
+      .select()
+      .single();
 
-      const { data: created, error: insertError } = await supabase
-        .from('profiles')
-        .insert(newProfile)
-        .select()
-        .single();
-
-      if (insertError) {
-        console.warn('[Auth] loadUserProfile insert error:', insertError.message);
-        return { ...authUser, id: authUser.id, role: 'passenger' };
-      }
-
-      return created || newProfile;
-    } catch (err) {
-      console.warn('[Auth] loadUserProfile exception:', err?.message || err);
-      return { ...authUser, id: authUser.id, role: authUser.role || 'passenger' };
-    }
-  }, []);
+    return created || newProfile;
+  };
 
   useEffect(() => {
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      setIsLoadingAuth(false);
-      setAuthChecked(true);
-    };
-
-    const clearStaleSession = () => {
-      try {
-        supabase.auth.signOut({ scope: 'local' });
-      } catch {}
-    };
-
-    // Применяем сессию без затирания уже загруженного профиля
-    const applySession = (session) => {
-      if (!session?.user) return;
-      setIsAuthenticated(true);
-      setAuthError(null);
-      setUser(prev => {
-        if (prev?.id === session.user.id && prev?.role) return prev;
-        return { ...session.user, id: session.user.id, role: session.user.role || 'passenger' };
-      });
-      loadUserProfile(session.user).then((profile) => {
-        if (profile) setUser(profile);
-      }).catch(() => {});
-    };
-
-    // Гарантия, что спиннер не висит вечно
-    const timeout = setTimeout(() => {
-      console.warn('[Auth] getSession timeout — forcing load complete');
-      finish();
-    }, 8000);
-
-    // Получаем текущую сессию при монтировании
     supabase.auth.getSession()
-      .then(({ data: { session } }) => {
-        applySession(session);
+      .then(async ({ data: { session } }) => {
+        if (session?.user) {
+          const profile = await loadUserProfile(session.user);
+          setUser(profile || { ...session.user, id: session.user.id });
+          setIsAuthenticated(true);
+        }
       })
       .catch((err) => {
-        // Сетевой сбой / DNS — очищаем протухшую сессию, чтобы не было цикла ретраев
         console.error('[Auth] getSession error:', err?.message || err);
-        clearStaleSession();
+        setAuthError({ type: 'auth_required', message: 'Failed to load session' });
       })
       .finally(() => {
-        clearTimeout(timeout);
-        finish();
+        setIsLoadingAuth(false);
+        setAuthChecked(true);
       });
 
-    // Слушаем изменения сессии (вход / выход / обновление токена)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      async (event, session) => {
         if (event === 'SIGNED_IN' && session?.user) {
-          applySession(session);
+          const profile = await loadUserProfile(session.user);
+          setUser(profile || { ...session.user, id: session.user.id });
+          setIsAuthenticated(true);
+          setAuthError(null);
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
           setIsAuthenticated(false);
-        } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-          // Тихое обновление токена — профиль не перезагружаем
         }
-        finish();
+        setIsLoadingAuth(false);
+        setAuthChecked(true);
       }
     );
 
-    return () => {
-      clearTimeout(timeout);
-      subscription.unsubscribe();
-    };
-  }, [loadUserProfile]);
+    return () => subscription.unsubscribe();
+  }, []);
 
-  // Вход через Google OAuth
   const navigateToLogin = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -151,62 +92,44 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Выход
   const logout = async (shouldRedirect = true) => {
     await supabase.auth.signOut();
     setUser(null);
     setIsAuthenticated(false);
-    setAuthError(null);
     if (shouldRedirect) {
       window.location.href = '/';
     }
   };
 
-  // Повторная проверка сессии (совместимость с ProtectedRoute)
   const checkUserAuth = async () => {
     setIsLoadingAuth(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const profile = await loadUserProfile(session.user);
-        setUser(profile || { ...session.user, id: session.user.id, role: session.user.role || 'passenger' });
-        setIsAuthenticated(true);
-        setAuthError(null);
-      } else {
-        setUser(null);
-        setIsAuthenticated(false);
-        setAuthError({ type: 'auth_required', message: 'Not authenticated' });
-      }
-    } catch (err) {
-      console.error('[Auth] checkUserAuth error:', err?.message || err);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      const profile = await loadUserProfile(session.user);
+      setUser(profile || { ...session.user, id: session.user.id });
+      setIsAuthenticated(true);
+      setAuthError(null);
+    } else {
       setUser(null);
       setIsAuthenticated(false);
-      setAuthError({ type: 'auth_required', message: 'Failed to check auth' });
-    } finally {
-      setIsLoadingAuth(false);
-      setAuthChecked(true);
+      setAuthError({ type: 'auth_required', message: 'Not authenticated' });
     }
+    setIsLoadingAuth(false);
+    setAuthChecked(true);
   };
 
-  // Тихое обновление профиля без блокировки UI (setIsLoadingAuth не трогаем)
   const refreshUser = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const profile = await loadUserProfile(session.user);
-        if (profile) setUser(profile);
-      }
-    } catch (err) {
-      console.error('[Auth] refreshUser error:', err?.message || err);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      const profile = await loadUserProfile(session.user);
+      if (profile) setUser(profile);
     }
   };
 
-  // Мгновенное локальное обновление user (без запроса к серверу)
   const patchUser = (data) => {
     setUser(prev => prev ? { ...prev, ...data } : prev);
   };
 
-  // Повторная проверка состояния приложения (совместимость с App.jsx)
   const checkAppState = checkUserAuth;
 
   return (

@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { TripLog, Route, Review } from '@/api/entities';
 import { Download, FileText, Loader2 } from 'lucide-react';
+import { useLanguage } from '@/lib/useLanguage';
 
 function toCSV(rows, headers) {
   const escape = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -22,18 +23,19 @@ function downloadCSV(content, filename) {
 }
 
 export default function ExportStats() {
+  const { t } = useLanguage();
   const [loading, setLoading] = useState(null);
 
   const exportTrips = async () => {
     setLoading('trips');
-    const trips = await base44.entities.TripLog.list('-created_at', 1000);
+    const trips = await TripLog.list('-created_at', 1000);
     const headers = [
-      { key: 'created_at', label: 'Дата и время' },
-      { key: 'route_number', label: 'Номер маршрута' },
-      { key: 'route_name', label: 'Название маршрута' },
-      { key: 'route_type', label: 'Тип' },
-      { key: 'city_name', label: 'Город' },
-      { key: 'user_id', label: 'ID пользователя' },
+      { key: 'created_at', label: t('admin.export.dateHeader') },
+      { key: 'route_number', label: t('admin.export.routeNumberHeader') },
+      { key: 'route_name', label: t('admin.export.routeNameHeader') },
+      { key: 'route_type', label: t('admin.export.typeHeader') },
+      { key: 'city_name', label: t('admin.export.cityHeader') },
+      { key: 'user_id', label: t('admin.export.userIdHeader') },
     ];
     const rows = trips.map(t => ({
       ...t,
@@ -46,11 +48,10 @@ export default function ExportStats() {
   const exportPopularRoutes = async () => {
     setLoading('routes');
     const [trips, routes] = await Promise.all([
-      base44.entities.TripLog.list('-created_at', 1000),
-      base44.entities.Route.list(),
+      TripLog.list('-created_at', 1000),
+      Route.list(),
     ]);
 
-    // Count trips per route
     const countMap = {};
     for (const t of trips) {
       countMap[t.route_id] = (countMap[t.route_id] || 0) + 1;
@@ -60,18 +61,18 @@ export default function ExportStats() {
       .map(r => ({
         route_number: r.number,
         route_name: r.name || '',
-        route_type: r.type === 'bus' ? 'Автобус' : 'Маршрутка',
+        route_type: r.type === 'bus' ? t('admin.export.busLabel') : t('admin.export.minibusLabel'),
         stops_count: r.stops?.length || 0,
         trip_count: countMap[r.id] || 0,
       }))
       .sort((a, b) => b.trip_count - a.trip_count);
 
     const headers = [
-      { key: 'route_number', label: 'Номер маршрута' },
-      { key: 'route_name', label: 'Название' },
-      { key: 'route_type', label: 'Тип' },
-      { key: 'stops_count', label: 'Кол-во остановок' },
-      { key: 'trip_count', label: 'Количество поездок' },
+      { key: 'route_number', label: t('admin.export.routeNumberHeader') },
+      { key: 'route_name', label: t('admin.export.routeNameShort') },
+      { key: 'route_type', label: t('admin.export.typeHeader') },
+      { key: 'stops_count', label: t('admin.export.stopsCountHeader') },
+      { key: 'trip_count', label: t('admin.export.tripCountHeader') },
     ];
     downloadCSV(toCSV(rows, headers), `popular_routes_${new Date().toISOString().slice(0,10)}.csv`);
     setLoading(null);
@@ -79,16 +80,16 @@ export default function ExportStats() {
 
   const exportReviews = async () => {
     setLoading('reviews');
-    const reviews = await base44.entities.Review.list('-created_at', 1000);
+    const reviews = await Review.list('-created_at', 1000);
     const headers = [
-      { key: 'created_at', label: 'Дата' },
-      { key: 'route_number', label: 'Маршрут' },
-      { key: 'driver_name', label: 'Водитель' },
-      { key: 'vehicle_number', label: 'Номер ТС' },
-      { key: 'cleanliness', label: 'Чистота' },
-      { key: 'politeness', label: 'Вежливость' },
-      { key: 'punctuality', label: 'Пунктуальность' },
-      { key: 'comment', label: 'Комментарий' },
+      { key: 'created_at', label: t('admin.export.dateShortHeader') },
+      { key: 'route_number', label: t('admin.export.routeShortHeader') },
+      { key: 'driver_name', label: t('admin.export.driverNameHeader') },
+      { key: 'vehicle_number', label: t('admin.export.vehicleNumberHeader') },
+      { key: 'cleanliness', label: t('admin.export.cleanlinessHeader') },
+      { key: 'politeness', label: t('admin.export.politenessHeader') },
+      { key: 'punctuality', label: t('admin.export.punctualityHeader') },
+      { key: 'comment', label: t('admin.export.commentHeader') },
     ];
     const rows = reviews.map(r => ({
       ...r,
@@ -101,24 +102,24 @@ export default function ExportStats() {
   const exports = [
     {
       id: 'trips',
-      title: 'Журнал поездок',
-      desc: 'Все поездки пассажиров с датами, маршрутами и городами',
+      title: t('admin.export.tripsTitle'),
+      desc: t('admin.export.tripsDesc'),
       action: exportTrips,
       color: 'bg-blue-50 border-blue-200 text-blue-700',
       iconColor: 'text-blue-500',
     },
     {
       id: 'routes',
-      title: 'Популярные маршруты',
-      desc: 'Рейтинг маршрутов по количеству поездок',
+      title: t('admin.export.routesTitle'),
+      desc: t('admin.export.routesDesc'),
       action: exportPopularRoutes,
       color: 'bg-green-50 border-green-200 text-green-700',
       iconColor: 'text-green-500',
     },
     {
       id: 'reviews',
-      title: 'Отзывы пассажиров',
-      desc: 'Все отзывы с оценками по чистоте, вежливости и пунктуальности',
+      title: t('admin.export.reviewsTitle'),
+      desc: t('admin.export.reviewsDesc'),
       action: exportReviews,
       color: 'bg-purple-50 border-purple-200 text-purple-700',
       iconColor: 'text-purple-500',
@@ -128,7 +129,7 @@ export default function ExportStats() {
   return (
     <div className="space-y-3">
       <p className="text-sm text-gray-500">
-        Файлы экспортируются в формате CSV (UTF-8). Открываются в Excel, Google Sheets и других табличных редакторах.
+        {t('admin.export.fileFormatNote')}
       </p>
       {exports.map(ex => (
         <div key={ex.id} className={`border rounded-2xl p-4 ${ex.color}`}>
@@ -149,7 +150,7 @@ export default function ExportStats() {
                 ? <Loader2 size={13} className="animate-spin" />
                 : <Download size={13} />
               }
-              {loading === ex.id ? 'Загрузка...' : 'Скачать'}
+              {loading === ex.id ? t('admin.export.loading') : t('admin.export.downloadButton')}
             </button>
           </div>
         </div>

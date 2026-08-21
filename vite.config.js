@@ -9,4 +9,21 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('leaflet') || id.includes('react-leaflet')) {
+              return 'vendor-map';
+            }
+            if (id.includes('recharts')) {
+              return 'vendor-charts';
+            }
+          }
+        },
+      },
+    },
+  },
 })

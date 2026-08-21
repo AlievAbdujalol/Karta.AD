@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
@@ -6,29 +7,31 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import Layout from './components/Layout';
-import Home from './pages/Home';
-import DriverDashboard from './pages/DriverDashboard';
-import AdminPanel from './pages/AdminPanel';
-import Profile from './pages/Profile';
-import Reviews from './pages/Reviews';
-import DriverSchedule from './pages/DriverSchedule';
 import Login from './pages/Login';
+
+const Home = lazy(() => import('./pages/Home'));
+const DriverDashboard = lazy(() => import('./pages/DriverDashboard'));
+const AdminPanel = lazy(() => import('./pages/AdminPanel'));
+const Profile = lazy(() => import('./pages/Profile'));
+const Reviews = lazy(() => import('./pages/Reviews'));
+const DriverSchedule = lazy(() => import('./pages/DriverSchedule'));
+const TaxiPassenger = lazy(() => import('./pages/TaxiPassenger'));
+const TaxiDriverRegistration = lazy(() => import('./pages/TaxiDriverRegistration'));
+const TaxiDriverDashboard = lazy(() => import('./pages/TaxiDriverDashboard'));
+const TaxiHistory = lazy(() => import('./pages/TaxiHistory'));
+const TaxiFinance = lazy(() => import('./pages/TaxiFinance'));
+
 import ErrorBoundary, { BusMapErrorFallback } from '@/components/ErrorBoundary';
+import { TripProvider } from '@/lib/TripContext';
+import { NavigationProvider } from '@/lib/NavigationContext';
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated } = useAuth();
+  const { isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated, user } = useAuth();
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center gap-4">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-500 rounded-full animate-spin"></div>
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="text-sm text-blue-600 hover:text-blue-800 underline"
-        >
-          Не загружается? Нажмите для перезагрузки
-        </button>
+      <div className="fixed inset-0 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -46,17 +49,26 @@ const AuthenticatedApp = () => {
 
   return (
     <ErrorBoundary>
+      <TripProvider user={user}>
+      <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center"><div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div></div>}>
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={<ErrorBoundary fallback={(err) => <BusMapErrorFallback error={err} />}><Home /></ErrorBoundary>} />
+          <Route path="/" element={<ErrorBoundary fallback={(err) => <BusMapErrorFallback error={err} />}><NavigationProvider><Home /></NavigationProvider></ErrorBoundary>} />
           <Route path="/driver" element={<ErrorBoundary><DriverDashboard /></ErrorBoundary>} />
           <Route path="/admin" element={<ErrorBoundary><AdminPanel /></ErrorBoundary>} />
           <Route path="/profile" element={<ErrorBoundary><Profile /></ErrorBoundary>} />
           <Route path="/reviews" element={<ErrorBoundary><Reviews /></ErrorBoundary>} />
           <Route path="/driver-schedule" element={<ErrorBoundary><DriverSchedule /></ErrorBoundary>} />
+          <Route path="/taxi" element={<ErrorBoundary><TaxiPassenger /></ErrorBoundary>} />
+          <Route path="/taxi/register" element={<ErrorBoundary><TaxiDriverRegistration /></ErrorBoundary>} />
+          <Route path="/taxi/driver" element={<ErrorBoundary><TaxiDriverDashboard /></ErrorBoundary>} />
+          <Route path="/taxi/history" element={<ErrorBoundary><TaxiHistory /></ErrorBoundary>} />
+          <Route path="/taxi/finance" element={<ErrorBoundary><TaxiFinance /></ErrorBoundary>} />
         </Route>
         <Route path="*" element={<PageNotFound />} />
       </Routes>
+      </Suspense>
+      </TripProvider>
     </ErrorBoundary>
   );
 };

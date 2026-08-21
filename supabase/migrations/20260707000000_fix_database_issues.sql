@@ -68,31 +68,41 @@ EXCEPTION WHEN OTHERS THEN
     -- Ignore if policies do not exist
 END $$;
 
--- 6. Create flexible RLS policies
+-- 6. Create helper function to avoid RLS recursion
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin');
+$$;
+
+-- 7. Create flexible RLS policies (using is_admin() to avoid recursion)
 -- ROUTES
 CREATE POLICY "routes_select" ON public.routes FOR SELECT USING (true);
 CREATE POLICY "routes_insert" ON public.routes FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-CREATE POLICY "routes_update" ON public.routes FOR UPDATE USING (auth.uid() = created_by_id OR EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin'));
-CREATE POLICY "routes_delete" ON public.routes FOR DELETE USING (auth.uid() = created_by_id OR EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin'));
+CREATE POLICY "routes_update" ON public.routes FOR UPDATE USING (auth.uid() = created_by_id OR public.is_admin());
+CREATE POLICY "routes_delete" ON public.routes FOR DELETE USING (auth.uid() = created_by_id OR public.is_admin());
 
 -- VEHICLES
 CREATE POLICY "vehicles_select" ON public.vehicles FOR SELECT USING (true);
 CREATE POLICY "vehicles_insert" ON public.vehicles FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-CREATE POLICY "vehicles_update" ON public.vehicles FOR UPDATE USING (auth.uid() = driver_id OR EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin'));
-CREATE POLICY "vehicles_delete" ON public.vehicles FOR DELETE USING (auth.uid() = driver_id OR EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin'));
+CREATE POLICY "vehicles_update" ON public.vehicles FOR UPDATE USING (auth.uid() = driver_id OR public.is_admin());
+CREATE POLICY "vehicles_delete" ON public.vehicles FOR DELETE USING (auth.uid() = driver_id OR public.is_admin());
 
 -- STOPS
 CREATE POLICY "stops_select" ON public.stops FOR SELECT USING (true);
 CREATE POLICY "stops_insert" ON public.stops FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-CREATE POLICY "stops_update" ON public.stops FOR UPDATE USING (auth.uid() = created_by_id OR EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin'));
-CREATE POLICY "stops_delete" ON public.stops FOR DELETE USING (auth.uid() = created_by_id OR EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin'));
+CREATE POLICY "stops_update" ON public.stops FOR UPDATE USING (auth.uid() = created_by_id OR public.is_admin());
+CREATE POLICY "stops_delete" ON public.stops FOR DELETE USING (auth.uid() = created_by_id OR public.is_admin());
 
 -- PROFILES
 CREATE POLICY "profiles_select" ON public.profiles FOR SELECT USING (true);
 CREATE POLICY "profiles_insert" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
-CREATE POLICY "profiles_update" ON public.profiles FOR UPDATE USING (auth.uid() = id OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role = 'admin'));
+CREATE POLICY "profiles_update" ON public.profiles FOR UPDATE USING (auth.uid() = id OR public.is_admin());
 
--- 7. Add Realtime (Publication)
+-- 8. Add Realtime (Publication)
 -- Supabase automatically sets up `supabase_realtime` publication, we just need to add tables
 -- Note: PostgreSQL `ALTER PUBLICATION` cannot use `IF NOT EXISTS` for adding tables directly without throwing an error if it's already there in some PG versions, so we catch exceptions if needed, but adding a table again usually throws an error. We will just execute it.
 DO $$
@@ -110,7 +120,7 @@ BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.stops;
 EXCEPTION WHEN OTHERS THEN END $$;
 
--- 8. Performance Indexes
+-- 9. Performance Indexes
 CREATE INDEX IF NOT EXISTS idx_vehicles_lat_lng ON public.vehicles(lat, lng);
 CREATE INDEX IF NOT EXISTS idx_vehicles_route_id ON public.vehicles(route_id);
 CREATE INDEX IF NOT EXISTS idx_vehicles_driver_id ON public.vehicles(driver_id);

@@ -4,9 +4,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.error(
-    '[Supabase] VITE_SUPABASE_URL и VITE_SUPABASE_ANON_KEY должны быть заданы в .env.local'
-  );
+  throw new Error('[Supabase] VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY must be defined in .env.local');
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
