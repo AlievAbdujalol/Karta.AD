@@ -1,0 +1,368 @@
+openapi: 3.1.0
+info:
+  title: Karta-AD Delivery API
+  description: |
+    REST API для интеграции интернет-магазинов с курьерской доставкой Karta-AD.
+
+    Авторизация: заголовок `X-API-Key` со значением вашего Delivery API Key (`dk_...`).
+
+    Webhook-подписи: заголовок `X-Karta-Signature: sha256=<HMAC-SHA256(secret, body)>`.
+  version: 2.0.0
+  contact:
+    name: Karta-AD
+servers:
+  - url: https://eotkmnwneivithfkweds.supabase.co/functions/v1/delivery-api
+    description: Production
+
+security:
+  - apiKey: []
+
+tags:
+  - name: Orders
+    description: Управление заказами доставки
+  - name: Status
+    description: Статусы и трекинг
+  - name: Pricing
+    description: Расчёт стоимости
+
+paths:
+  /health:
+    get:
+      tags: [Orders]
+      summary: Проверка работоспособности API
+      security: []
+      responses:
+        "200":
+          description: Сервис работает
+
+  /api/v1/orders:
+    post:
+      tags: [Orders]
+      summary: Создать заказ доставки
+      operationId: createDeliveryOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderRequest"
+      responses:
+        "201":
+          description: Заказ создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateOrderResponse"
+        "400":
+          description: Ошибка валидации
+        "401":
+          description: Неверный API-ключ
+        "429":
+          description: Превышен rate limit
+    get:
+      tags: [Orders]
+      summary: Список заказов магазина
+      operationId: listOrders
+      responses:
+        "200":
+          description: Список последних 50 заказов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  orders:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Order"
+
+  /api/v1/orders/{id}:
+    get:
+      tags: [Orders]
+      summary: Получить заказ (заказ + позиции + трекинг)
+      operationId: getOrder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Полная информация о заказе
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  order:
+                    $ref: "#/components/schemas/OrderFull"
+        "403":
+          description: Заказ не принадлежит этому ключу
+        "404":
+          description: Заказ не найден
+
+  /api/v1/status/{id}:
+    get:
+      tags: [Status]
+      summary: Получить статус заказа
+      operationId: getStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Статус заказа
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  order:
+                    type: object
+                    properties:
+                      status:
+                        $ref: "#/components/schemas/DeliveryStatus"
+
+  /api/v1/cancel:
+    post:
+      tags: [Orders]
+      summary: Отменить заказ
+      operationId: cancelOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order_id]
+              properties:
+                order_id:
+                  type: string
+                  format: uuid
+                reason:
+                  type: string
+                  example: Клиент передумал
+      responses:
+        "200":
+          description: Заказ отменён
+        "400":
+          description: Заказ уже доставлен или отменён
+
+  /api/v1/calculate-price:
+    post:
+      tags: [Pricing]
+      summary: Рассчитать стоимость доставки
+      operationId: calculatePrice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pickup_lat, pickup_lng, dropoff_lat, dropoff_lng]
+              properties:
+                pickup_lat:
+                  type: number
+                pickup_lng:
+                  type: number
+                dropoff_lat:
+                  type: number
+                dropoff_lng:
+                  type: number
+                weight_kg:
+                  type: number
+                  default: 0
+      responses:
+        "200":
+          description: Расчёт цены
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  distance_km:
+                    type: number
+                  price:
+                    type: number
+                  currency:
+                    type: string
+                  eta_min:
+                    type: integer
+
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Delivery API Key формата dk_xxxxxxxx
+
+  schemas:
+    DeliveryStatus:
+      type: string
+      enum: [pending, searching, assigned, picked_up, delivered, cancelled]
+
+    Coordinates:
+      type: object
+      required: [lat, lng]
+      properties:
+        lat:
+          type: number
+          example: 38.545
+        lng:
+          type: number
+          example: 68.779
+
+    AddressPoint:
+      allOf:
+        - $ref: "#/components/schemas/Coordinates"
+      properties:
+        address:
+          type: string
+          example: Магазин
+
+    OrderItem:
+      type: object
+      required: [name, qty]
+      properties:
+        name:
+          type: string
+          example: Пицца
+        qty:
+          type: integer
+          example: 2
+        price:
+          type: number
+          example: 90
+        weight_kg:
+          type: number
+          example: 0.5
+
+    Customer:
+      type: object
+      required: [name, phone]
+      properties:
+        name:
+          type: string
+          example: Иван
+        phone:
+          type: string
+          example: "+992900000000"
+
+    CreateOrderRequest:
+      type: object
+      required: [customer, pickup, dropoff, items]
+      properties:
+        external_id:
+          type: string
+          description: ID заказа в системе магазина
+        customer:
+          $ref: "#/components/schemas/Customer"
+        pickup:
+          $ref: "#/components/schemas/AddressPoint"
+        dropoff:
+          $ref: "#/components/schemas/AddressPoint"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+        notes:
+          type: string
+        payment_method:
+          type: string
+          enum: [cash, card, wallet]
+          default: cash
+
+    CreateOrderResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        order:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            order_number:
+              type: integer
+            price:
+              type: number
+            total:
+              type: number
+            distance_km:
+              type: number
+            eta_min:
+              type: integer
+            status:
+              $ref: "#/components/schemas/DeliveryStatus"
+            created_at:
+              type: string
+              format: date-time
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        order_number:
+          type: integer
+        status:
+          $ref: "#/components/schemas/DeliveryStatus"
+        price:
+          type: number
+        total:
+          type: number
+        pickup_address:
+          type: string
+        dropoff_address:
+          type: string
+        recipient_name:
+          type: string
+        eta_min:
+          type: integer
+        payment_status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    OrderFull:
+      allOf:
+        - $ref: "#/components/schemas/Order"
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+        tracking:
+          type: array
+          items:
+            type: object
+            properties:
+              status:
+                $ref: "#/components/schemas/DeliveryStatus"
+              lat:
+                type: number
+              lng:
+                type: number
+              note:
+                type: string
+              created_at:
+                type: string
+                format: date-time

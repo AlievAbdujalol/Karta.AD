@@ -1,0 +1,131 @@
+{
+  "info": {
+    "name": "Karta-AD Delivery API",
+    "_postman_id": "karta-ad-delivery",
+    "description": "REST API для интеграции интернет-магазинов с доставкой Karta-AD. Авторизация: заголовок X-API-Key.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{BASE_URL}}/health",
+          "host": ["{{BASE_URL}}"],
+          "path": ["health"]
+        }
+      }
+    },
+    {
+      "name": "Создать заказ",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "X-API-Key", "value": "{{API_KEY}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"external_id\": \"order-12345\",\n  \"customer\": {\n    \"name\": \"Иван\",\n    \"phone\": \"+992900000000\"\n  },\n  \"pickup\": {\n    \"lat\": 38.545,\n    \"lng\": 68.779,\n    \"address\": \"Магазин\"\n  },\n  \"dropoff\": {\n    \"lat\": 38.555,\n    \"lng\": 68.789,\n    \"address\": \"Клиент\"\n  },\n  \"items\": [\n    { \"name\": \"Пицца\", \"qty\": 2, \"price\": 90 }\n  ],\n  \"notes\": \"Позвонить за 5 минут\",\n  \"payment_method\": \"cash\"\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/v1/orders",
+          "host": ["{{BASE_URL}}"],
+          "path": ["api", "v1", "orders"]
+        }
+      }
+    },
+    {
+      "name": "Список заказов",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-API-Key", "value": "{{API_KEY}}" }],
+        "url": {
+          "raw": "{{BASE_URL}}/api/v1/orders",
+          "host": ["{{BASE_URL}}"],
+          "path": ["api", "v1", "orders"]
+        }
+      }
+    },
+    {
+      "name": "Получить заказ",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-API-Key", "value": "{{API_KEY}}" }],
+        "url": {
+          "raw": "{{BASE_URL}}/api/v1/orders/:id",
+          "host": ["{{BASE_URL}}"],
+          "path": ["api", "v1", "orders", ":id"],
+          "variable": [{ "key": "id", "value": "{{ORDER_ID}}" }]
+        }
+      }
+    },
+    {
+      "name": "Статус заказа",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-API-Key", "value": "{{API_KEY}}" }],
+        "url": {
+          "raw": "{{BASE_URL}}/api/v1/status/:id",
+          "host": ["{{BASE_URL}}"],
+          "path": ["api", "v1", "status", ":id"],
+          "variable": [{ "key": "id", "value": "{{ORDER_ID}}" }]
+        }
+      }
+    },
+    {
+      "name": "Отменить заказ",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "X-API-Key", "value": "{{API_KEY}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"order_id\": \"{{ORDER_ID}}\",\n  \"reason\": \"Клиент передумал\"\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/v1/cancel",
+          "host": ["{{BASE_URL}}"],
+          "path": ["api", "v1", "cancel"]
+        }
+      }
+    },
+    {
+      "name": "Рассчитать цену",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "X-API-Key", "value": "{{API_KEY}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"pickup_lat\": 38.545,\n  \"pickup_lng\": 68.779,\n  \"dropoff_lat\": 38.555,\n  \"dropoff_lng\": 68.789,\n  \"weight_kg\": 0.5\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/v1/calculate-price",
+          "host": ["{{BASE_URL}}"],
+          "path": ["api", "v1", "calculate-price"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "https://eotkmnwneivithfkweds.supabase.co/functions/v1/delivery-api"
+    },
+    {
+      "key": "API_KEY",
+      "value": "dk_ВАШ_КЛЮЧ"
+    },
+    {
+      "key": "ORDER_ID",
+      "value": ""
+    }
+  ]
+}
