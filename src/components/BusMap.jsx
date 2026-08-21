@@ -222,7 +222,7 @@ function createBusIcon(routeNumber, type, t) {
 }
 
 function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
-  const { user, refetch } = useCurrentUser();
+  const { user, refreshUser } = useCurrentUser();
   const { t } = useLanguage();
   const [pos, setPos] = useState([vehicle.lat, vehicle.lng]);
   const [paying, setPaying] = useState(false);
@@ -299,7 +299,7 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
           }).then(({ error }) => {
             if (error) console.error('[TripLog] insert failed:', error);
           }).catch(() => {});
-          refetch();
+          refreshUser();
         }
       } catch (err) {
         toast.error(err.message || t('busmap.paymentError'));
@@ -455,7 +455,7 @@ function NavigationCamera({ followUser, userPosition, reroute, routeData }) {
   return null;
 }
 
-export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute, panelVisible }) {
+export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute, panelVisible, onLocate }) {
   const [tileIndex, setTileIndex] = useState(0);
   const [showLabels, setShowLabels] = useState(true);
   const [routingOpen, setRoutingOpen] = useState(false);
@@ -769,7 +769,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       <MapController center={center} mapRef={mapRef} />
       <FlyToHandler flyTo={flyTo} onDone={onFlyDone} />
       <ScaleControl position="bottomleft" imperial={false} metric={true} />
-      {!mapPickTarget && <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={routingOpen} onFinderToggle={handleFinderToggle} onShareTrip={onShareTrip} rightOffset={routingOpen ? 400 : panelVisible ? 360 : 0} isNavigating={nav.isActive} />}
+      {!mapPickTarget && <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={routingOpen} onFinderToggle={handleFinderToggle} onShareTrip={onShareTrip} rightOffset={routingOpen ? 400 : panelVisible ? 360 : 0} isNavigating={nav.isActive} onLocate={onLocate} />}
 
       {showLabels && (
         <TileLayer

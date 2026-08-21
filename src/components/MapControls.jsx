@@ -16,20 +16,26 @@ const TILE_LAYERS = [
 
 const LABEL_OVERLAY_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/light_only_labels/{z}/{x}/{y}{r}.png';
 
-export default function MapControls({ tileIndex, setTileIndex, finderActive, onFinderToggle, onShareTrip, rightOffset, isNavigating }) {
+export default function MapControls({ tileIndex, setTileIndex, finderActive, onFinderToggle, onShareTrip, rightOffset, isNavigating, onLocate }) {
   const map = useMap();
   const { t } = useLanguage();
 
   const locate = () => {
-    toast.info(t('mapControls.myLocation'));
+    if (onLocate) { onLocate(); return; }
+    toast.loading(t('mapControls.myLocation') || 'Определяем местоположение…', { id: 'locate' });
     navigator.geolocation?.getCurrentPosition(
-      (pos) => map.setView([pos.coords.latitude, pos.coords.longitude], 16),
+      (pos) => {
+        toast.dismiss('locate');
+        toast.success('Вы на карте');
+        map.flyTo([pos.coords.latitude, pos.coords.longitude], 16, { animate: true, duration: 0.8 });
+      },
       (err) => {
+        toast.dismiss('locate');
         if (err.code === 1) toast.error('\u0420\u0430\u0437\u0440\u0435\u0448\u0438\u0442\u0435 \u0434\u043E\u0441\u0442\u0443\u043F \u043A \u0433\u0435\u043E\u043B\u043E\u043A\u0430\u0446\u0438\u0438 \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435');
         else if (err.code === 2) toast.error('\u0413\u0435\u043E\u043B\u043E\u043A\u0430\u0446\u0438\u044F \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430');
         else toast.error('\u0413\u0435\u043E\u043B\u043E\u043A\u0430\u0446\u0438\u044F \u0438\u0441\u0442\u0435\u043A\u043B\u0430');
       },
-      { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
     );
   };
 

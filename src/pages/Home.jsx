@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { City, Vehicle, FavoriteRoute, TripLog } from '@/api/entities';
+import { City, FavoriteRoute, TripLog } from '@/api/entities';
 import { supabase } from '@/api/supabase';
 import { useLanguage, LANG_KEY } from '@/lib/useLanguage';
 import { toast } from 'sonner';
@@ -216,11 +216,12 @@ export default function Home() {
 
     const fetchVehicles = async () => {
       if (!selectedCity) { setVehicles([]); return; }
-      const query = selectedRoute
-        ? { route_id: selectedRoute.id, is_active: true }
-        : { is_active: true };
       try {
-        const all = await Vehicle.filter(query);
+        let q = supabase.from('vehicles').select('*').eq('is_active', true);
+        if (selectedRoute) q = q.eq('route_id', selectedRoute.id);
+        const { data, error } = await q;
+        if (error) throw error;
+        const all = data || [];
         const result = selectedRoute ? all : all.filter(v => new Set(routes.map(r => r.id)).has(v.route_id));
         setVehicles(result);
         setIsOffline(false);
@@ -241,11 +242,42 @@ export default function Home() {
     ? [selectedCity.lat, selectedCity.lng]
     : [38.559, 68.773];
 
+  const handleLocateUser = useCallback(() => {
+    if (!navigator.geolocation) { toast.error('Геолокация не поддерживается'); return; }
+    toast.loading('Ищем вас на карте…', { id: 'locate-home' });
+    navigator.geolocation.getCurrentPosition((pos) => {
+      const { latitude, longitude } = pos.coords;
+      toast.dismiss('locate-home');
+      setFlyTo({ lat: latitude, lng: longitude, zoom: 16 });
+      // найти ближайший маршрут по остановкам
+      let bestRoute = null; let bestDist = Infinity;
+      routes.forEach(r => {
+        (r.stops || []).forEach(s => {
+          if (!s.lat || !s.lng) return;
+          const d = Math.hypot(s.lat - latitude, s.lng - longitude) * 111320;
+          if (d < bestDist) { bestDist = d; bestRoute = r; }
+        });
+      });
+      if (bestRoute && bestDist < 3000) {
+        setSelectedRoute(bestRoute);
+        toast.success(`Вы рядом с маршрутом #${bestRoute.number} — ${Math.round(bestDist)} м`, { duration: 3500 });
+      } else {
+        toast.success('Вы на карте — синяя точка', { duration: 2500 });
+      }
+      setActiveTab('stops');
+      setSheetState('half');
+    }, (err) => {
+      toast.dismiss('locate-home');
+      if (err.code === 1) toast.error('Разрешите доступ к геолокации в настройках браузера');
+      else toast.error('Не удалось определить местоположение');
+    }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
+  }, [routes]);
+
   return (
     <div className="relative w-full h-full bg-slate-50 dark:bg-slate-950 overflow-hidden select-none">
       <div className="absolute inset-0 w-full h-full z-0">
         <ErrorBoundary fallback={(error) => <BusMapErrorFallback error={error} />}>
-          <BusMap vehicles={vehicles} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} flyTo={flyTo} onFlyDone={() => setFlyTo(null)} routes={routes} onRoutingOpen={() => setSheetState('collapsed')} onRoutingStateChange={setRoutingOpen} contactLocations={contactLocations} groupRouteMembers={onlineMembers} onShareTrip={handleShareTrip} groupRoute={groupRoute} panelVisible={panelVisible} />
+          <BusMap vehicles={vehicles} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} flyTo={flyTo} onFlyDone={() => setFlyTo(null)} routes={routes} onRoutingOpen={() => setSheetState('collapsed')} onRoutingStateChange={setRoutingOpen} contactLocations={contactLocations} groupRouteMembers={onlineMembers} onShareTrip={handleShareTrip} groupRoute={groupRoute} panelVisible={panelVisible} onLocate={handleLocateUser} />
         </ErrorBoundary>
       </div>
 

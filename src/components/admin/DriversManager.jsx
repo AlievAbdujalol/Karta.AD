@@ -40,17 +40,33 @@ export default function DriversManager() {
 
   const updateStatus = async (id, status) => {
     setLoading(prev => ({ ...prev, [id]: status }));
-    const payload = { driver_status: status };
-    if (status === 'approved') payload.role = 'driver';
-    const { error } = await supabase.from('profiles').update(payload).eq('id', id);
-    setLoading(prev => { const n = { ...prev }; delete n[id]; return n; });
-    if (error) {
-      console.error('[DriversManager] update error:', error.message);
-      toast.error(t('error') + ': ' + (error.message || t('unknownError')));
-      return;
+    try {
+      const payload = { driver_status: status };
+      if (status === 'approved') {
+        const target = drivers.find(d => d.id === id);
+        if (target && target.role !== 'admin') {
+          payload.role = 'driver';
+        }
+      }
+      const { data, error } = await supabase.from('profiles').update(payload).eq('id', id).select('id');
+      if (error) {
+        console.error('[DriversManager] update error:', error.message);
+        toast.error(t('error') + ': ' + (error.message || t('unknownError')));
+        return;
+      }
+      if (!data || data.length === 0) {
+        console.error('[DriversManager] update returned 0 rows — RLS may be blocking');
+        toast.error(t('error') + ': No rows updated');
+        return;
+      }
+      load();
+      toast.success(status === 'approved' ? t('approved') : t('blocked'));
+    } catch (err) {
+      console.error('[DriversManager] update exception:', err);
+      toast.error(t('error') + ': ' + (err.message || t('unknownError')));
+    } finally {
+      setLoading(prev => { const n = { ...prev }; delete n[id]; return n; });
     }
-    load();
-    toast.success(status === 'approved' ? t('approved') : t('blocked'));
   };
 
   const statusConfig = {

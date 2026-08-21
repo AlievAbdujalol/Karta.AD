@@ -57,6 +57,7 @@ export function useCurrentUser() {
     user,
     loading,
     refetch,
+    refreshUser,
     update,
     patchUser,
   };

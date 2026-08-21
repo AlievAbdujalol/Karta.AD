@@ -103,7 +103,7 @@ function CountryCodePicker({ value, onChange, t }) {
 export default function Profile() {
   const { t, lang, setLang } = useLanguage();
   const navigate = useNavigate();
-  const { user, refetch, update } = useCurrentUser();
+  const { user, refreshUser, update } = useCurrentUser();
   const { logout } = useAuth();
   const [cities, setCities] = useState([]);
   const [vehicles, setVehicles] = useState([]);
@@ -131,7 +131,7 @@ export default function Profile() {
   const CAR_TYPES = ['Седан', 'Хэтчбек', 'Универсал', 'Минивэн', 'Внедорожник', 'Купе', 'Пикап', 'Электромобиль'];
 
   useEffect(() => {
-    if (user?.id) refetch();
+    if (user?.id) refreshUser();
   }, []);
 
   useEffect(() => {
@@ -223,7 +223,7 @@ export default function Profile() {
         .getPublicUrl(fileName);
 
       await update({ photo_url: publicUrlData.publicUrl });
-      if (refetch) await refetch();
+      if (refreshUser) await refreshUser();
       toast.success(t('profile.avatarUpdated'));
     } catch (err) {
       console.error('[Profile] photo upload error:', err);
@@ -496,7 +496,7 @@ export default function Profile() {
                     const { data, error } = await supabase.rpc('mock_top_up', { amount: Number(amount) });
                     if (error) throw new Error(error.message);
                     toast.success(`${t('profile.walletTopupSuccess')} ${amount} TJS!`);
-                    await refetch();
+                    await refreshUser();
                     const { data: txs } = await supabase
                       .from('transactions')
                       .select('*')
