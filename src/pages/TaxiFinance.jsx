@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, DollarSign, TrendingUp, Wallet, Download, Car, Landmark } from 'lucide-react';
+import { ArrowLeft, TrendingUp, Wallet, Download, Car, Landmark, Zap } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { supabase } from '@/api/supabase';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { formatTJS, TAXI_COMMISSION } from '@/lib/taxi';
+
+const CHARGE_RATE = 0.08; // электромобиль тратит ~8% на заряд vs 20% на топливо
 
 const PERIODS = [
   { id: 'today', label: 'Сегодня' },
@@ -48,20 +50,23 @@ export default function TaxiFinance() {
   const [data, setData] = useState({ total: 0, rides: 0, avg: 0, commission: 0, net: 0 });
   const [chart, setChart] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [isElectric, setIsElectric] = useState(false);
 
   useEffect(() => {
     if (!user?.id) return;
     const fetchFinance = async () => {
       const from = periodStart(period);
-      const { data: orders } = await supabase.from('taxi_orders')
-        .select('id, price, created_at')
-        .eq('driver_id', user.id)
-        .eq('status', 'completed')
-        .gte('created_at', from.toISOString());
+      const [{ data: orders }, { data: vehRows }] = await Promise.all([
+        supabase.from('taxi_orders').select('id, price, created_at').eq('driver_id', user.id).eq('status', 'completed').gte('created_at', from.toISOString()),
+        supabase.from('taxi_vehicles').select('category, body_type').eq('driver_id', user.id),
+      ]);
+      const electric = (vehRows || []).some(v => v.category === 'electric' || v.body_type === 'Электромобиль');
+      setIsElectric(electric);
+      const rate = electric ? CHARGE_RATE : TAXI_COMMISSION;
 
       const total = (orders || []).reduce((s, o) => s + (parseFloat(o.price) || 0), 0);
       const rides = (orders || []).length;
-      const commission = Math.round(total * TAXI_COMMISSION * 100) / 100;
+      const commission = Math.round(total * rate * 100) / 100;
       setData({ total, rides, avg: rides ? total / rides : 0, commission, net: total - commission });
       setChart(buildChartData(orders, period));
 
@@ -72,6 +77,17 @@ export default function TaxiFinance() {
     };
     fetchFinance();
   }, [user?.id, period]);
+
+  // live-обновление при смене категории авто
+  useEffect(() => {
+    if (!user?.id) return;
+    const ch = supabase.channel('veh-cat-' + user.id)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'taxi_vehicles', filter: `driver_id=eq.${user.id}` }, payload => {
+        const cat = payload.new?.category ?? payload.old?.category;
+        if (cat) setIsElectric(cat === 'electric');
+      }).subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [user?.id]);
 
   const balance = useMemo(() =>
     transactions.filter(t => t.type !== 'withdrawal').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0)
@@ -86,7 +102,7 @@ export default function TaxiFinance() {
         <button onClick={() => navigate(-1)} className="text-slate-500"><ArrowLeft size={20} /></button>
         <div className="flex-1">
           <h1 className="text-sm font-bold">Финансы</h1>
-          <p className="text-[10px] text-slate-400">Доход, комиссия, вывод средств</p>
+          <p className="text-[10px] text-slate-400">{isElectric ? 'Доход, заряд, вывод средств' : 'Доход, топливо, вывод средств'}</p>
         </div>
       </div>
 
@@ -110,9 +126,17 @@ export default function TaxiFinance() {
         {/* Stats grid */}
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-gray-100 dark:border-slate-800">
-            <DollarSign size={16} className="text-slate-400 mb-2" />
+            {isElectric ? (
+              <div className="w-7 h-7 rounded-lg bg-lime-100 dark:bg-lime-900/30 flex items-center justify-center mb-2">
+                <Zap size={14} className="text-lime-600" />
+              </div>
+            ) : (
+              <div className="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mb-2">
+                <span className="text-[11px] font-black text-amber-600">с</span>
+              </div>
+            )}
             <p className="text-lg font-black text-slate-800 dark:text-slate-100">{formatTJS(data.commission)} TJS</p>
-            <p className="text-[10px] text-slate-400">Комиссия ({(TAXI_COMMISSION * 100).toFixed(0)}%)</p>
+            <p className="text-[10px] text-slate-400">{isElectric ? 'Заряд' : 'Топливо'}</p>
           </div>
           <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-gray-100 dark:border-slate-800">
             <TrendingUp size={16} className="text-emerald-500 mb-2" />

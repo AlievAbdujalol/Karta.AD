@@ -21,17 +21,21 @@ export default function Layout() {
     }
   }, [user?.id]);
 
+  const isTaxiDriver = user?.role === 'taxi_driver';
+
   const navLinks = [
     { to: '/', icon: Map, label: t('nav.map') },
-    ...(isDriver ? [
+    ...(isDriver && !isTaxiDriver ? [
       { to: '/driver', icon: Bus, label: t('nav.myTrip') },
       { to: '/driver-schedule', icon: CalendarDays, label: t('nav.schedule') },
     ] : []),
     ...(isAdmin ? [
       { to: '/admin', icon: ShieldCheck, label: t('nav.admin') },
     ] : []),
-    { to: user?.role === 'taxi_driver' ? '/taxi/driver' : '/taxi', icon: Car, label: 'Такси' },
-    { to: '/reviews', icon: MessageSquare, label: t('nav.reviews') },
+    { to: isTaxiDriver ? '/taxi/driver' : '/taxi', icon: Car, label: 'Такси' },
+    ...(!isTaxiDriver ? [
+      { to: '/reviews', icon: MessageSquare, label: t('nav.reviews') },
+    ] : []),
     { to: '/profile', icon: User, label: t('nav.profile') },
   ];
 
@@ -77,7 +81,11 @@ export default function Layout() {
         }}
       >
         {navLinks.map(({ to, icon: Icon, label }) => {
-          const active = location.pathname === to;
+          const active = to === '/taxi'
+            ? location.pathname === '/taxi'
+            : to === '/taxi/driver'
+              ? location.pathname.startsWith('/taxi/driver') || location.pathname.startsWith('/taxi/history') || location.pathname.startsWith('/taxi/finance')
+              : location.pathname === to;
 
           return (
             <Link

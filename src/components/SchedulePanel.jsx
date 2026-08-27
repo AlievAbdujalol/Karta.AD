@@ -32,6 +32,7 @@ export default function SchedulePanel({ route, hidden }) {
   }, [route?.id]);
 
   if (hidden) return null;
+  if (!route) return null;
   if (!schedule || !schedule.stops_schedule?.length) return null;
   const stopsWithTimes = schedule.stops_schedule.filter(s => s.times?.length > 0);
   if (!stopsWithTimes.length) return null;

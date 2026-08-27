@@ -97,16 +97,24 @@ export function NavigationProvider({ children }) {
     const start = Math.max(stepIndexRef.current - 1, 0);
     for (let i = start; i < steps.length; i++) {
       const s = steps[i];
-      const loc = Array.isArray(s.start) ? s.start : [0, 0];
-      const d = Math.hypot(lat - loc[1], lng - loc[0]);
+      const loc = s.start || [0, 0];
+      if (!loc[0] && !loc[1]) continue;
+      const d = Math.hypot(lat - loc[0], lng - loc[1]);
       if (d < bestDist) { bestDist = d; bestIdx = i; }
     }
-    if (bestIdx < steps.length - 1) {
-      const next = steps[bestIdx + 1];
-      const nloc = Array.isArray(next.start) ? next.start : [0, 0];
-      if (Math.hypot(lat - nloc[1], lng - nloc[0]) < bestDist) bestIdx++;
-    }
     return bestIdx;
+  }, []);
+
+  const ensureStepStarts = useCallback((steps) => {
+    if (!steps || steps.length === 0) return steps;
+    let last = null;
+    for (let i = 0; i < steps.length; i++) {
+      if (!steps[i].start || (steps[i].start[0] === 0 && steps[i].start[1] === 0)) {
+        steps[i].start = last ? [...last] : [0, 0];
+      }
+      last = steps[i].start;
+    }
+    return steps;
   }, []);
 
   const processPosition = useCallback((lat, lng, heading, speed) => {
@@ -135,13 +143,13 @@ export function NavigationProvider({ children }) {
     const route = routeRef.current;
     if (!route || !route.steps || route.steps.length === 0) return;
 
-    const steps = route.steps;
+    const steps = ensureStepStarts(route.steps);
     const stepIdx = findClosestStep(lat, lng, steps);
     stepIndexRef.current = stepIdx;
 
     const step = steps[stepIdx];
-    const loc = Array.isArray(step.start) ? step.start : [0, 0];
-    const distToStep = Math.hypot(lat - loc[1], lng - loc[0]) * 111320;
+    const loc = step.start || [0, 0];
+    const distToStep = Math.hypot(lat - loc[0], lng - loc[1]) * 111320;
 
     setNextInstruction({
       text: getManeuverText(step.instruction, step.modifier, step.distance),
@@ -161,6 +169,7 @@ export function NavigationProvider({ children }) {
       lastAnnounceRef.current = now;
     }
 
+    // осталось до конца маршрута (сумма оставшихся шагов)
     let totalRemaining = 0;
     for (let i = stepIdx; i < steps.length; i++) {
       totalRemaining += steps[i].distance || 0;
@@ -173,7 +182,7 @@ export function NavigationProvider({ children }) {
     setEta(new Date(Date.now() + etaSec * 1000));
     setRemainingDuration(Math.round(etaSec));
     setTripStats({ distance: traveledRef.current, duration: elapsed, avgSpeed: avgSpd * 3.6 });
-  }, [findClosestStep, getManeuverText, speak]);
+  }, [findClosestStep, ensureStepStarts, getManeuverText, speak]);
 
   const processPositionRef = useRef(processPosition);
   useEffect(() => { processPositionRef.current = processPosition; }, [processPosition]);
@@ -265,34 +274,47 @@ export function NavigationProvider({ children }) {
   const toggleVoice = useCallback(() => setVoiceEnabled(v => !v), []);
   const toggleFollow = useCallback(() => setFollowUser(f => !f), []);
 
-  const reroute = useCallback(async (from, to, profile = 'driving') => {
+  const OSRM_ENDPOINTS = {
+  driving: 'https://router.project-osrm.org/route/v1/driving',
+  walking: 'https://routing.openstreetmap.de/routed-foot/route/v1/foot',
+  cycling: 'https://routing.openstreetmap.de/routed-bike/route/v1/bike',
+};
+
+const reroute = useCallback(async (from, to, profile = 'driving') => {
     if (!from || !to) return null;
     const rd = routeRef.current;
     try {
       const wps = (rd?.waypoints || []).filter(Boolean);
       const coords = [from, ...wps, to].map(p => `${p.lng},${p.lat}`).join(';');
+      const endpoint = OSRM_ENDPOINTS[profile] || OSRM_ENDPOINTS.driving;
       const resp = await fetch(
-        `https://router.project-osrm.org/route/v1/${profile}/${coords}?overview=full&geometries=geojson&steps=true&annotations=true`,
+        `${endpoint}/${coords}?overview=full&geometries=geojson&steps=true&annotations=true`,
         { signal: AbortSignal.timeout(10000) }
       );
       if (!resp.ok) return null;
       const data = await resp.json();
       if (!data.routes?.length) return null;
       const r = data.routes[0];
+      const geom = r.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
       const steps = [];
+      let cursor = 0;
       if (r.legs) r.legs.forEach(leg => {
-        if (leg.steps) leg.steps.forEach(step => steps.push({
-          instruction: step.maneuver?.type || '',
-          modifier: step.maneuver?.modifier || '',
-          name: step.name || '',
-          distance: step.distance || 0,
-          duration: step.duration || 0,
-          start: step.maneuver?.location || [0, 0],
-        }));
+        if (leg.steps) leg.steps.forEach(step => {
+          const start = geom[cursor] || [0, 0];
+          cursor = Math.min(cursor + 1, geom.length - 1);
+          steps.push({
+            instruction: step.maneuver?.type || '',
+            modifier: step.maneuver?.modifier || '',
+            name: step.name || '',
+            distance: step.distance || 0,
+            duration: step.duration || 0,
+            start,
+          });
+        });
       });
       const newRoute = {
         distance: r.distance, duration: r.duration,
-        geometry: r.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
+        geometry: geom,
         steps, mode: rd?.mode || profile,
       };
       routeRef.current = newRoute;

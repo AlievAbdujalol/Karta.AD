@@ -2,14 +2,13 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
-import { Car, History, DollarSign, Star, Clock, ChevronUp, FileCheck2 } from 'lucide-react';
+import { Car, History, DollarSign, ChevronRight, FileCheck2 } from 'lucide-react';
 import { supabase } from '@/api/supabase';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useNotificationCount } from '@/lib/NotificationContext';
 import TaxiTopBar from '@/components/taxi/TaxiTopBar';
-import TaxiStatsBar from '@/components/taxi/TaxiStatsBar';
 import TaxiNewOrderCard from '@/components/taxi/TaxiNewOrderCard';
 import TaxiOrderCard from '@/components/taxi/TaxiOrderCard';
 import TaxiBottomSheet from '@/components/taxi/TaxiBottomSheet';
@@ -539,20 +538,12 @@ export default function TaxiDriverDashboard() {
         </MapContainer>
       </div>
 
-      {/* Top bar - glassmorphism */}
       <TaxiTopBar
         isOnline={isOnline}
         onToggle={handleToggleOnline}
         userName={user?.full_name}
         userPhoto={user?.photo_url}
       />
-
-      {/* Stats bar - below top bar */}
-      {isOnline && !currentOrder && (
-        <div className="absolute top-[120px] left-0 right-0 z-30">
-          <TaxiStatsBar stats={stats} />
-        </div>
-      )}
 
       {/* New order card with timer */}
       {showNewOrder && incomingOrder && (
@@ -592,101 +583,61 @@ export default function TaxiDriverDashboard() {
       {/* Bottom sheet - only when online and no active order */}
       {isOnline && !currentOrder && !showNewOrder && (
         <TaxiBottomSheet driverStats={peekStats} isOnline={isOnline}>
-          <div className="space-y-4">
-            {/* Today's earnings */}
-            <div>
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Сегодня</h3>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl p-4 text-center">
-                  <DollarSign size={18} className="text-emerald-500 mx-auto mb-1" />
-                  <p className="text-xl font-black text-emerald-600">{formatTJS(stats.today)}</p>
-                  <p className="text-[10px] text-emerald-500 font-medium">TJS доход</p>
-                </div>
-                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl p-4 text-center">
-                  <Car size={18} className="text-blue-500 mx-auto mb-1" />
-                  <p className="text-xl font-black text-blue-600">{stats.rides || 0}</p>
-                  <p className="text-[10px] text-blue-500 font-medium">поездок</p>
-                </div>
-                <div className="bg-amber-50 dark:bg-amber-900/20 rounded-2xl p-4 text-center">
-                  <Clock size={18} className="text-amber-500 mx-auto mb-1" />
-                  <p className="text-xl font-black text-amber-600">{formatTJS(stats.week)}</p>
-                  <p className="text-[10px] text-amber-500 font-medium">TJS неделя</p>
-                </div>
+          <div className="space-y-3">
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-2xl bg-slate-50 px-2 py-3 text-center dark:bg-slate-800/70">
+                <p className="text-lg font-black text-emerald-600">{formatTJS(stats.today)}</p>
+                <p className="text-[10px] text-slate-400">сегодня</p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 px-2 py-3 text-center dark:bg-slate-800/70">
+                <p className="text-lg font-black">{stats.rides || 0}</p>
+                <p className="text-[10px] text-slate-400">поездок</p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 px-2 py-3 text-center dark:bg-slate-800/70">
+                <p className="text-lg font-black">{formatTJS(stats.week)}</p>
+                <p className="text-[10px] text-slate-400">неделя</p>
               </div>
             </div>
-
-            {/* Quick actions */}
-            <div className="space-y-2">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Быстрые действия</h3>
-              <button
-                onClick={() => navigate('/taxi/history')}
-                className="w-full flex items-center gap-3 p-4 rounded-2xl bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-white/40 dark:border-slate-700/30 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all active:scale-[0.98]"
-              >
-                <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                  <History size={18} className="text-blue-600" />
-                </div>
-                <div className="text-left flex-1">
-                  <p className="text-sm font-bold text-slate-800 dark:text-slate-100">История поездок</p>
-                  <p className="text-[10px] text-slate-400">Все ваши поездки</p>
-                </div>
-                <ChevronUp size={16} className="text-slate-400 rotate-90" />
-              </button>
-              <button
-                onClick={() => navigate('/taxi/finance')}
-                className="w-full flex items-center gap-3 p-4 rounded-2xl bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-white/40 dark:border-slate-700/30 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all active:scale-[0.98]"
-              >
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-                  <DollarSign size={18} className="text-emerald-600" />
-                </div>
-                <div className="text-left flex-1">
-                  <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Финансы</p>
-                  <p className="text-[10px] text-slate-400">Доход, комиссия, вывод</p>
-                </div>
-                <ChevronUp size={16} className="text-slate-400 rotate-90" />
-              </button>
-              <button
-                onClick={() => navigate('/profile')}
-                className="w-full flex items-center gap-3 p-4 rounded-2xl bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-white/40 dark:border-slate-700/30 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all active:scale-[0.98]"
-              >
-                <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                  <Star size={18} className="text-purple-600" />
-                </div>
-                <div className="text-left flex-1">
-                  <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Профиль</p>
-                  <p className="text-[10px] text-slate-400">Данные, документы, авто</p>
-                </div>
-                <ChevronUp size={16} className="text-slate-400 rotate-90" />
-              </button>
-            </div>
-
-            {/* GPS status */}
+            <button
+              type="button"
+              onClick={() => navigate('/taxi/history')}
+              className="flex h-12 w-full items-center gap-3 rounded-2xl bg-slate-50 px-3 dark:bg-slate-800/70"
+            >
+              <History size={16} className="text-blue-600" />
+              <span className="flex-1 text-left text-sm font-semibold">История</span>
+              <ChevronRight size={16} className="text-slate-400" />
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/taxi/finance')}
+              className="flex h-12 w-full items-center gap-3 rounded-2xl bg-slate-50 px-3 dark:bg-slate-800/70"
+            >
+              <DollarSign size={16} className="text-emerald-600" />
+              <span className="flex-1 text-left text-sm font-semibold">Финансы</span>
+              <ChevronRight size={16} className="text-slate-400" />
+            </button>
             {driverPosition && (
-              <div className="bg-blue-50/80 dark:bg-blue-900/20 rounded-2xl p-3 flex items-center gap-2.5">
-                <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                <p className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
-                  GPS активен · {driverPosition[0].toFixed(4)}, {driverPosition[1].toFixed(4)}
-                </p>
-              </div>
+              <p className="flex items-center gap-2 px-1 text-[11px] text-slate-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                GPS · {driverPosition[0].toFixed(4)}, {driverPosition[1].toFixed(4)}
+              </p>
             )}
           </div>
         </TaxiBottomSheet>
       )}
 
-      {/* Offline overlay */}
       {!isOnline && !currentOrder && (
-        <div className="absolute bottom-16 left-0 right-0 z-40 px-4 pb-4">
-          <div className="bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl rounded-3xl shadow-2xl p-6 text-center space-y-3">
-            <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto">
-              {isVerified ? <Car size={28} className="text-slate-400" /> : <FileCheck2 size={28} className="text-amber-500" />}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 px-3 pb-2 md:mx-auto md:max-w-md">
+          <div className="pointer-events-auto flex items-center gap-3 rounded-[28px] border border-slate-200/70 bg-white/94 px-4 py-3 shadow-xl backdrop-blur-xl dark:border-slate-700/60 dark:bg-slate-950/94">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+              {isVerified ? <Car size={18} className="text-slate-400" /> : <FileCheck2 size={18} className="text-amber-500" />}
             </div>
-            <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
-              {isVerified ? 'Вы оффлайн' : 'Документы на проверке'}
-            </p>
-            <p className="text-xs text-slate-400">
-              {isVerified
-                ? 'Нажмите кнопку выше чтобы начать принимать заказы'
-                : 'После одобрения администратором вы сможете выходить на линию'}
-            </p>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold">{isVerified ? 'Офлайн' : 'Документы на проверке'}</p>
+              <p className="truncate text-[11px] text-slate-400">
+                {isVerified ? 'Нажмите «На линию», чтобы принимать заказы' : 'После одобрения можно выходить на линию'}
+              </p>
+            </div>
           </div>
         </div>
       )}

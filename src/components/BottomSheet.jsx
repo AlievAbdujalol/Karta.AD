@@ -27,6 +27,7 @@ export default function BottomSheet({
   activeTab,
   setActiveTab,
   onSelectFavDriver,
+  onFlyTo,
 }) {
   const [tripHistory, setTripHistory] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -124,6 +125,7 @@ export default function BottomSheet({
   };
   const handleSelectStop = (stop) => {
     setWatchedStop(stop);
+    if (onFlyTo && stop.lat && stop.lng) onFlyTo({ lat: stop.lat, lng: stop.lng, zoom: 16 });
     if (window.innerWidth < 768) setSheetState('collapsed');
   };
 
@@ -298,6 +300,8 @@ export default function BottomSheet({
             onRemoveFavDriver={(id) => setFavDrivers((prev) => prev.filter((x) => x.id !== id))}
             onSelectFavDriver={onSelectFavDriver}
             hasCity={hasCity}
+            routes={routes}
+            setSelectedRoute={setSelectedRoute}
           />
         </div>
       </div>
@@ -364,9 +368,15 @@ export default function BottomSheet({
                 onRemoveFavDriver={(id) => setFavDrivers((prev) => prev.filter((x) => x.id !== id))}
                 onSelectFavDriver={onSelectFavDriver}
                 hasCity={hasCity}
+                routes={routes}
+                setSelectedRoute={setSelectedRoute}
               />
             </div>
           </div>
+        )}
+
+        {isOpen && (
+          <div className="md:hidden fixed inset-0 bg-black/20 z-[490] backdrop-blur-sm" onClick={() => setSheetState('collapsed')} />
         )}
       </div>
 
@@ -399,6 +409,7 @@ function TabContent({
   filteredRoutesList, favoriteRoutes, tripHistory, selectedRoute,
   handleSelectRoute, handleSelectStop, toggleFavorite, favorites, watchedStop,
   favDrivers = [], favSubTab, setFavSubTab, onRemoveFavDriver, onSelectFavDriver, hasCity,
+  routes = [], setSelectedRoute,
 }) {
   const { t } = useLanguage();
 
@@ -504,6 +515,14 @@ function TabContent({
     }
     return (
       <div className="space-y-2.5">
+        {selectedRoute && (
+          <button
+            onClick={() => setSelectedRoute(null)}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold shadow-md shadow-blue-500/20 hover:bg-blue-700 active:scale-[0.98] transition-all"
+          >
+            <Eye size={14} /> Показать все маршруты · {routes.length}
+          </button>
+        )}
         {filteredRoutesList.map((route) => {
           const isSelected = selectedRoute?.id === route.id;
           const isFav = favorites.includes(route.id);

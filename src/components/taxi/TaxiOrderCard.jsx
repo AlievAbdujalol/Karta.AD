@@ -1,21 +1,23 @@
 import { useState } from 'react';
-import { Phone, MessageCircle, Navigation, AlertTriangle, CheckCircle, MapPin, Banknote, CreditCard, QrCode, Star, Wallet } from 'lucide-react';
+import { Phone, MessageCircle, Navigation, AlertTriangle, CheckCircle, Share2, Banknote, CreditCard, QrCode, Star, Wallet } from 'lucide-react';
 import { formatTJS, TAXI_COMMISSION, tariffById } from '@/lib/taxi';
 
 const STATUS_CONFIG = {
-  found: { label: 'Едем к пассажиру', color: 'from-blue-500 to-blue-600', ringColor: 'ring-blue-200 dark:ring-blue-900', emoji: '🟡' },
-  arrived: { label: 'Вы прибыли', color: 'from-amber-500 to-amber-600', ringColor: 'ring-amber-200 dark:ring-amber-900', emoji: '🔵' },
-  riding: { label: 'Клиент в машине', color: 'from-indigo-500 to-indigo-600', ringColor: 'ring-indigo-200 dark:ring-indigo-900', emoji: '🟣' },
+  found: { label: 'К пассажиру', tone: 'text-blue-600 dark:text-blue-400' },
+  arrived: { label: 'На месте', tone: 'text-amber-600 dark:text-amber-400' },
+  riding: { label: 'В поездке', tone: 'text-indigo-600 dark:text-indigo-400' },
 };
 
 const PAYMENT_METHODS = [
-  { id: 'cash', label: 'Наличные', icon: Banknote },
+  { id: 'cash', label: 'Нал.', icon: Banknote },
   { id: 'card', label: 'Карта', icon: CreditCard },
   { id: 'qr', label: 'QR', icon: QrCode },
   { id: 'wallet', label: 'Кошелёк', icon: Wallet },
 ];
 
-export default function TaxiOrderCard({ order, passengerInfo, phase = 'active', onAction, onPaid, onRated, onSos, onChat, onShare, unread = 0 }) {
+export default function TaxiOrderCard({
+  order, passengerInfo, phase = 'active', onAction, onPaid, onRated, onSos, onChat, onShare, unread = 0,
+}) {
   const [method, setMethod] = useState('cash');
   const [clientStars, setClientStars] = useState(0);
 
@@ -27,149 +29,131 @@ export default function TaxiOrderCard({ order, passengerInfo, phase = 'active', 
   const earnings = Math.round((amount - commission) * 100) / 100;
 
   return (
-    <div className="absolute bottom-16 left-0 right-0 z-40 animate-slide-up">
-      <div className="bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl rounded-t-3xl shadow-2xl border-t border-slate-200/60 dark:border-slate-700/60 max-h-[60vh] overflow-y-auto custom-scrollbar">
-        <div className="px-5 pt-4 pb-5 space-y-4">
-          {/* Status banner */}
-          <div className={`bg-gradient-to-r ${config.color} rounded-2xl p-4 flex items-center justify-between`}>
-            <div className="flex items-center gap-3">
-              <div className={`w-12 h-12 rounded-full bg-white/20 ring-2 ${config.ringColor} flex items-center justify-center overflow-hidden`}>
-                {passengerInfo?.photo_url ? (
-                  <img src={passengerInfo.photo_url} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-white font-bold text-lg">{passengerInfo?.full_name?.[0] || '?'}</span>
-                )}
-              </div>
-              <div>
-                <p className="text-white font-bold text-sm">{passengerInfo?.full_name || 'Пассажир'}</p>
-                <p className="text-white/70 text-[10px]">{config.emoji} {config.label}</p>
-              </div>
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 px-3 pb-2 md:mx-auto md:max-w-md">
+      <div className="pointer-events-auto animate-slide-up max-h-[52vh] overflow-y-auto rounded-[28px] border border-slate-200/70 bg-white/95 shadow-[0_8px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl custom-scrollbar dark:border-slate-700/60 dark:bg-slate-950/95">
+        <div className="space-y-3 px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-200 text-sm font-bold dark:bg-slate-700">
+              {passengerInfo?.photo_url ? (
+                <img src={passengerInfo.photo_url} alt="" className="h-full w-full object-cover" />
+              ) : (
+                passengerInfo?.full_name?.[0] || '?'
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[14px] font-semibold text-slate-900 dark:text-white">
+                {passengerInfo?.full_name || 'Пассажир'}
+              </p>
+              <p className={`text-[11px] font-medium ${config.tone}`}>{config.label} · {tariff.short}</p>
             </div>
             <div className="text-right">
-              <p className="text-white font-black text-lg">{formatTJS(order.price)}</p>
-              <p className="text-white/60 text-[10px]">TJS · {tariff.short}</p>
+              <p className="text-lg font-black leading-none">{formatTJS(order.price)}</p>
+              <p className="text-[10px] text-slate-400">TJS</p>
             </div>
           </div>
 
-          {/* Route */}
-          <div className="space-y-2">
-            <div className="flex items-start gap-3">
-              <div className="flex flex-col items-center gap-0.5 pt-1">
-                <div className="w-2 h-2 rounded-full bg-green-500" />
-                <div className="w-0.5 h-6 bg-slate-200 dark:bg-slate-700 rounded-full" />
-                <div className="w-2 h-2 rounded-full bg-red-500" />
-              </div>
-              <div className="flex-1 space-y-2">
-                <div>
-                  <p className="text-[10px] text-slate-400 uppercase font-medium">Подача</p>
-                  <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">{order.pickup_address || 'Не указан'}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-400 uppercase font-medium">Назначение</p>
-                  <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">{order.dropoff_address || 'Не указан'}</p>
-                </div>
-              </div>
-              <div className="text-right text-[10px] text-slate-400 shrink-0">
-                {order.distance_km != null && <p>{Number(order.distance_km).toFixed(1)} км</p>}
-                {order.duration_min != null && <p>~{order.duration_min} мин</p>}
-              </div>
+          <div className="flex gap-3">
+            <div className="flex flex-col items-center pt-1">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              <span className="my-0.5 h-6 w-px bg-slate-200 dark:bg-slate-700" />
+              <span className="h-2 w-2 rounded-full bg-red-500" />
             </div>
+            <div className="min-w-0 flex-1 space-y-2">
+              <p className="truncate text-xs font-medium text-slate-800 dark:text-slate-100">{order.pickup_address || 'Подача'}</p>
+              <p className="truncate text-xs font-medium text-slate-800 dark:text-slate-100">{order.dropoff_address || 'Назначение'}</p>
+            </div>
+            {(order.distance_km != null || order.duration_min != null) && (
+              <p className="shrink-0 text-[10px] text-slate-400">
+                {order.distance_km != null ? `${Number(order.distance_km).toFixed(1)} км` : ''}
+                {order.duration_min != null ? ` · ${order.duration_min} мин` : ''}
+              </p>
+            )}
           </div>
 
-          {/* PAYMENT PHASE */}
           {phase === 'payment' && (
-            <div className="space-y-3">
-              <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl p-4 space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500 text-xs">Стоимость поездки</span>
-                  <span className="font-black text-lg text-emerald-600">{formatTJS(amount)} TJS</span>
-                </div>
-                <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span>Комиссия сервиса ({(TAXI_COMMISSION * 100).toFixed(0)}%)</span>
-                  <span>-{formatTJS(commission)} TJS</span>
-                </div>
-                <div className="flex items-center justify-between text-xs font-bold">
-                  <span>К выплате водителю</span>
-                  <span className="text-emerald-600">{formatTJS(earnings)} TJS</span>
-                </div>
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-2.5 dark:bg-slate-800/70">
+                <span className="text-[11px] text-slate-500">К выплате</span>
+                <span className="text-base font-black text-emerald-600">{formatTJS(earnings)} TJS</span>
               </div>
-              <div className="flex gap-2">
-                {PAYMENT_METHODS.map(m => {
+              <div className="grid grid-cols-4 gap-1.5">
+                {PAYMENT_METHODS.map((m) => {
                   const Icon = m.icon;
                   return (
                     <button
                       key={m.id}
+                      type="button"
                       onClick={() => setMethod(m.id)}
-                      className={`flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl border-2 text-[11px] font-bold transition-all ${
+                      className={`flex flex-col items-center gap-1 rounded-xl border py-2 text-[10px] font-bold ${
                         method === m.id
-                          ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600'
-                          : 'border-slate-200 dark:border-slate-700 text-slate-500'
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20'
+                          : 'border-slate-200 text-slate-500 dark:border-slate-700'
                       }`}
                     >
-                      <Icon size={16} /> {m.label}
+                      <Icon size={14} /> {m.label}
                     </button>
                   );
                 })}
               </div>
               <button
+                type="button"
                 onClick={() => onPaid(method)}
-                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-black text-sm shadow-lg shadow-emerald-500/25 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                className="flex h-12 w-full items-center justify-center rounded-2xl bg-emerald-500 text-sm font-bold text-white"
               >
-                <Wallet size={16} />
-                Получить оплату · {formatTJS(earnings)} TJS
+                Получить · {formatTJS(earnings)} TJS
               </button>
             </div>
           )}
 
-          {/* RATE CLIENT PHASE */}
           {phase === 'rate' && (
             <div className="space-y-3 text-center">
-              <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mx-auto">
-                <CheckCircle size={28} className="text-amber-500" />
-              </div>
-              <div>
-                <p className="text-sm font-bold">Оплата получена!</p>
-                <p className="text-xs text-slate-400 mt-0.5">Оцените клиента</p>
-              </div>
+              <CheckCircle size={28} className="mx-auto text-emerald-500" />
+              <p className="text-sm font-semibold">Оцените пассажира</p>
               <div className="flex justify-center gap-1">
-                {[1,2,3,4,5].map(s => (
-                  <button key={s} onClick={() => setClientStars(s)} className={`w-11 h-11 rounded-full flex items-center justify-center transition-all ${clientStars >= s ? 'bg-amber-100 text-amber-500 scale-110' : 'bg-slate-100 dark:bg-slate-800 hover:bg-amber-100 hover:text-amber-500'}`}>
-                    <Star size={20} fill={clientStars >= s ? 'currentColor' : 'none'} />
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setClientStars(s)}
+                    className={`flex h-10 w-10 items-center justify-center rounded-full ${clientStars >= s ? 'text-amber-500' : 'text-slate-300'}`}
+                  >
+                    <Star size={22} fill={clientStars >= s ? 'currentColor' : 'none'} />
                   </button>
                 ))}
               </div>
               <button
+                type="button"
                 onClick={() => onRated(clientStars)}
                 disabled={!clientStars}
-                className={`w-full py-3.5 rounded-2xl font-bold text-sm transition-all ${
-                  clientStars ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-500/25 active:scale-[0.98]' : 'bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
+                className={`h-12 w-full rounded-2xl text-sm font-bold ${
+                  clientStars ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-400 dark:bg-slate-800'
                 }`}
               >
-                Завершить поездку
+                Готово
               </button>
             </div>
           )}
 
-          {/* ACTIVE PHASE */}
           {phase === 'active' && (
             <>
-              {/* Contact buttons */}
               {order.status !== 'riding' && (
                 <div className="flex gap-2">
                   {passengerInfo?.phone && (
                     <a
                       href={`tel:${passengerInfo.phone}`}
-                      className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-200 transition-colors"
+                      className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-2xl bg-slate-100 text-xs font-bold dark:bg-slate-800"
                     >
-                      <Phone size={14} />
-                      Позвонить
+                      <Phone size={14} /> Звонок
                     </a>
                   )}
-                  <button onClick={onChat} className={`${passengerInfo?.phone ? 'flex-1' : 'w-full'} py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-200 transition-colors relative`}>
-                    <MessageCircle size={14} />
-                    Чат
+                  <button
+                    type="button"
+                    onClick={onChat}
+                    className={`relative flex h-11 items-center justify-center gap-1.5 rounded-2xl bg-slate-100 text-xs font-bold dark:bg-slate-800 ${passengerInfo?.phone ? 'flex-1' : 'w-full'}`}
+                  >
+                    <MessageCircle size={14} /> Чат
                     {unread > 0 && (
-                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-black flex items-center justify-center shadow">
+                      <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
                         {unread > 9 ? '9+' : unread}
                       </span>
                     )}
@@ -178,27 +162,30 @@ export default function TaxiOrderCard({ order, passengerInfo, phase = 'active', 
               )}
 
               {order.status === 'found' && (
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <button
+                    type="button"
                     onClick={() => onAction('arrived')}
-                    className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-bold text-sm shadow-lg shadow-emerald-500/25 active:scale-[0.98] transition-all"
+                    className="flex h-12 w-full items-center justify-center rounded-2xl bg-emerald-500 text-sm font-bold text-white"
                   >
-                    Прибыл к пассажиру
+                    Я на месте
                   </button>
-                  <button onClick={() => onAction('cancelled')} className="w-full py-2 text-red-500 text-xs font-bold">Отменить</button>
+                  <button type="button" onClick={() => onAction('cancelled')} className="w-full py-1.5 text-xs font-semibold text-red-500">
+                    Отменить
+                  </button>
                 </div>
               )}
 
               {order.status === 'arrived' && (
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <button
+                    type="button"
                     onClick={() => onAction('riding')}
-                    className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold text-sm shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                    className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 text-sm font-bold text-white"
                   >
-                    <Navigation size={16} />
-                    Начать поездку
+                    <Navigation size={16} /> Начать поездку
                   </button>
-                  <button onClick={() => onAction('cancelled')} className="w-full py-2 text-red-500 text-xs font-bold hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors">
+                  <button type="button" onClick={() => onAction('cancelled')} className="w-full py-1.5 text-xs font-semibold text-red-500">
                     Отменить
                   </button>
                 </div>
@@ -207,27 +194,38 @@ export default function TaxiOrderCard({ order, passengerInfo, phase = 'active', 
               {order.status === 'riding' && (
                 <div className="space-y-2">
                   <button
+                    type="button"
                     onClick={() => onAction('completed')}
-                    className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-bold text-sm shadow-lg shadow-emerald-500/25 active:scale-[0.98] transition-all"
+                    className="flex h-12 w-full items-center justify-center rounded-2xl bg-emerald-500 text-sm font-bold text-white"
                   >
-                    Завершить поездку
+                    Завершить
                   </button>
-                  <div className="flex gap-2">
-                    <button onClick={onSos} className="flex-1 py-2.5 rounded-xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center gap-1.5 text-xs font-bold text-red-500 hover:bg-red-100 transition-colors">
-                      <AlertTriangle size={14} />
-                      SOS
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={onSos}
+                      className="flex h-10 items-center justify-center gap-1 rounded-xl bg-red-50 text-[11px] font-bold text-red-600 dark:bg-red-900/20"
+                    >
+                      <AlertTriangle size={14} /> SOS
                     </button>
                     <button
+                      type="button"
                       onClick={onShare}
-                      className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 transition-colors"
+                      className="flex h-10 items-center justify-center gap-1 rounded-xl bg-slate-100 text-[11px] font-bold dark:bg-slate-800"
                     >
-                      <MapPin size={14} />
-                      Поделиться
+                      <Share2 size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onChat}
+                      className="relative flex h-10 items-center justify-center gap-1 rounded-xl bg-slate-100 text-[11px] font-bold dark:bg-slate-800"
+                    >
+                      <MessageCircle size={14} />
+                      {unread > 0 && (
+                        <span className="absolute -right-1 -top-1 h-4 min-w-4 rounded-full bg-red-500 text-[9px] text-white">{unread}</span>
+                      )}
                     </button>
                   </div>
-                  <button onClick={() => onAction('cancelled')} className="w-full py-2 text-red-500 text-xs font-bold hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors">
-                    Отменить поездку
-                  </button>
                 </div>
               )}
             </>

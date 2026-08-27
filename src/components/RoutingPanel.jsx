@@ -3,11 +3,12 @@ import {
   Navigation, MapPin, Plus, X, RotateCw, Route, AlertCircle, Loader2, Crosshair,
   ChevronUp, ChevronDown, Play, Car, Bike, PersonStanding, Search, Clock3,
   Sparkles, ArrowLeftRight, Trash2, LocateFixed, Share2, Copy, Check, GripVertical,
-  Bus, Truck, Volume2, VolumeX, Timer, Flag, ChevronRight
+  Bus, Truck, Volume2, VolumeX, Timer, Flag, ChevronRight, Globe
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/lib/useLanguage';
 import { useNavigation } from '@/lib/NavigationContext';
+import { supabase } from '@/api/supabase';
 import { toast } from 'sonner';
 
 const TRANSPORT_MODES = [
@@ -46,28 +47,41 @@ async function searchAddress(query, limit = 5) {
   }
 }
 
+// Публичный OSRM demo поддерживает только driving; пешком/вело — серверы FOSSGIS
+const OSRM_ENDPOINTS = {
+  driving: 'https://router.project-osrm.org/route/v1/driving',
+  walking: 'https://routing.openstreetmap.de/routed-foot/route/v1/foot',
+  cycling: 'https://routing.openstreetmap.de/routed-bike/route/v1/bike',
+};
+
 async function buildRoute(from, to, profile = 'driving', waypoints = []) {
+  const endpoint = OSRM_ENDPOINTS[profile] || OSRM_ENDPOINTS.driving;
   const coords = [from, ...waypoints, to].map(p => `${p.lng},${p.lat}`).join(';');
   try {
     const resp = await fetch(
-      `https://router.project-osrm.org/route/v1/${profile}/${coords}?overview=full&geometries=geojson&steps=true&annotations=true`,
+      `${endpoint}/${coords}?overview=full&geometries=geojson&steps=true&annotations=true`,
       { signal: AbortSignal.timeout(10000) }
     );
     if (!resp.ok) throw new Error(`OSRM error: ${resp.status}`);
     const data = await resp.json();
     if (!data.routes || data.routes.length === 0) return null;
     const route = data.routes[0];
+    const geom = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
     const steps = [];
+    let cursor = 0;
     if (route.legs) {
       route.legs.forEach((leg) => {
         if (leg.steps) {
           leg.steps.forEach(step => {
+            const start = geom[cursor] || [0, 0];
+            cursor = Math.min(cursor + 1, geom.length - 1);
             steps.push({
               instruction: step.maneuver?.type || '',
               modifier: step.maneuver?.modifier || '',
               name: step.name || '',
               distance: step.distance || 0,
               duration: step.duration || 0,
+              start,
             });
           });
         }
@@ -76,7 +90,7 @@ async function buildRoute(from, to, profile = 'driving', waypoints = []) {
     return {
       distance: route.distance,
       duration: route.duration,
-      geometry: route.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
+      geometry: geom,
       steps,
       legs: route.legs,
     };
@@ -206,7 +220,7 @@ function PlaceField({ value, onChangeText, onPickPlace, placeholder, icon: Icon,
 }
 
 /* ---------- main panel ---------- */
-export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation, mapCenter, user, onRequestMapPick, onLocateAndPick, onLocateMe, mapPickResult, mapPickTarget }) {
+export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation, mapCenter, user, onRequestMapPick, onLocateAndPick, onLocateMe, mapPickResult, mapPickTarget, routes = [] }) {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const [from, setFrom] = useState(null);
@@ -222,6 +236,8 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
   const [minimized, setMinimized] = useState(false);
   const [copied, setCopied] = useState(false);
   const navCtl = useNavigation();
+  const [schedulesByRoute, setSchedulesByRoute] = useState({});
+  const [stopsPrice, setStopsPrice] = useState(null);
 
   // map pick -> fill fields
   useEffect(() => {
@@ -294,6 +310,67 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
     }, () => {}, { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 });
   }, [from, fromText]);
 
+  // --- цена по остановкам (для автобуса/маршрутки): от Больницы до Базара = сумма сегментов ---
+  useEffect(() => {
+    if (!routes?.length) return;
+    if (transportMode !== 'bus' && transportMode !== 'minibus') { setStopsPrice(null); return; }
+    // fetch schedules for bus routes lazily
+    const need = routes.filter(r => (r.type === 'bus' || r.type === 'minibus') && !schedulesByRoute[r.id]);
+    if (need.length) {
+      need.forEach(r => {
+        supabase.from('schedules').select('*').eq('route_id', r.id).maybeSingle().then(({ data }) => {
+          if (data) setSchedulesByRoute(prev => ({ ...prev, [r.id]: data }));
+        }).catch(() => {});
+      });
+    }
+  }, [routes, transportMode]);
+
+  useEffect(() => {
+    if ((transportMode !== 'bus' && transportMode !== 'minibus') || !from || !to || !routes?.length) { setStopsPrice(null); return; }
+    // найти маршрут где обе точки близко к остановкам
+    let best = null; let bestScore = Infinity;
+    routes.forEach(r => {
+      if (!r.stops?.length) return;
+      if (r.type !== transportMode) return;
+      let fromIdx = -1, toIdx = -1, fromDist = Infinity, toDist = Infinity;
+      r.stops.forEach((s, i) => {
+        if (!s.lat || !s.lng) return;
+        const df = Math.hypot(s.lat - from.lat, s.lng - from.lng) * 111320;
+        const dt = Math.hypot(s.lat - to.lat, s.lng - to.lng) * 111320;
+        if (df < fromDist) { fromDist = df; fromIdx = i; }
+        if (dt < toDist) { toDist = dt; toIdx = i; }
+      });
+      if (fromIdx === -1 || toIdx === -1) return;
+      if (fromDist > 1200 || toDist > 1200) return; // далеко от остановок
+      if (fromIdx === toIdx) return;
+      const score = fromDist + toDist;
+      if (score < bestScore) best = { route: r, fromIdx, toIdx, fromDist, toDist, schedule: schedulesByRoute[r.id] };
+      if (score === bestScore && best) { /* tie */ }
+      bestScore = score;
+    });
+    if (!best) { setStopsPrice(null); return; }
+    const { route, fromIdx, toIdx, schedule } = best;
+    if (!schedule?.stops_schedule?.length) { setStopsPrice(null); return; }
+    const lo = Math.min(fromIdx, toIdx); const hi = Math.max(fromIdx, toIdx);
+    let price = 0; let hasPrice = false;
+    // Маршрутка — фикс 5 сомони (плоский тариф), автобус — сумма по сегментам
+    if (route.type === 'minibus') {
+      const flat = route.fare_minibus != null ? Number(route.fare_minibus) : (route.price != null ? Number(route.price) : NaN);
+      price = Number.isFinite(flat) && flat > 0 ? flat : 5;
+      hasPrice = true;
+    } else {
+      for (let i = lo + 1; i <= hi; i++) {
+        const seg = schedule.stops_schedule.find(s => s.stop_index === i);
+        const p = seg?.price_from_prev != null ? parseFloat(seg.price_from_prev) : 0;
+        if (!isNaN(p) && p > 0) { price += p; hasPrice = true; }
+      }
+      if (!hasPrice) { setStopsPrice(null); return; }
+    }
+    const fromName = route.stops[fromIdx]?.name || schedule.stops_schedule.find(s => s.stop_index === fromIdx)?.stop_name || `Ост. ${fromIdx + 1}`;
+    const toName = route.stops[toIdx]?.name || schedule.stops_schedule.find(s => s.stop_index === toIdx)?.stop_name || `Ост. ${toIdx + 1}`;
+    setStopsPrice({ price, fromStopName: fromName, toStopName: toName, routeNumber: route.number, segments: Math.abs(hi - lo), routeId: route.id });
+  }, [from, to, routes, transportMode, schedulesByRoute]);
+
   const fillWithMyLocation = useCallback(async (target) => {
     if (!navigator.geolocation) { toast.error('Геолокация не поддерживается'); return; }
     const toastId = toast.loading('Определяем местоположение…');
@@ -348,7 +425,7 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
     const validWaypoints = waypoints.filter(Boolean);
     const result = await buildRoute(from, to, mode.osrmProfile, validWaypoints);
     if (result) {
-      const enriched = { ...result, mode: transportMode };
+      const enriched = { ...result, mode: transportMode, waypoints: validWaypoints, fromText, toText };
       setRouteData(enriched);
       if (onRouteBuilt) onRouteBuilt({ ...enriched, from, to, waypoints: validWaypoints, fromText, toText });
     } else {
@@ -409,6 +486,14 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
     if (mode === 'bus' || mode === 'minibus') return 5;
     return 0;
   };
+
+  const isIntercity = useMemo(() => {
+    if (!from || !to) return false;
+    if (from.city && to.city && String(from.city).toLowerCase() !== String(to.city).toLowerCase()) return true;
+    // fallback: точки в разных городах (Nominatim не всегда даёт city) — по расстоянию
+    const d = Math.hypot(to.lat - from.lat, to.lng - from.lng) * 111320;
+    return d > 50000;
+  }, [from, to]);
 
   const canBuild = from && to && !loading;
   const activeMode = useMemo(() => TRANSPORT_MODES.find(m => m.id === transportMode), [transportMode]);
@@ -615,6 +700,11 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
           <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2">
             <div className="flex items-center justify-between">
               <span className="inline-flex items-center gap-1.5 text-[11px] font-black tracking-widest uppercase text-slate-500"><Sparkles size={12} className="text-blue-600" /> Маршрут готов</span>
+              {isIntercity && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                  <Globe size={10} /> Межгород
+                </span>
+              )}
               <button
                 onClick={async () => {
                   const url = `${window.location.origin}${window.location.pathname}#route=${encodeURIComponent(JSON.stringify({ from: { lat: from.lat, lng: from.lng, name: fromText }, to: { lat: to.lat, lng: to.lng, name: toText } }))}`;
@@ -630,16 +720,50 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
               {[
                 { label: 'Расстояние', value: formatDistance(routeData.distance), sub: activeMode?.label, icon: Route },
                 { label: 'Время', value: formatDuration(routeData.duration), sub: 'без пробок', icon: Clock3 },
-                { label: 'Стоимость', value: estimateCost(routeData.distance, routeData.mode) > 0 ? `${estimateCost(routeData.distance, routeData.mode)} TJS` : 'Бесплатно', sub: routeData.mode === 'taxi' ? 'такси' : routeData.mode === 'walking' || routeData.mode === 'cycling' ? '0 сом' : 'топливо', icon: Copy },
+                stopsPrice ? { label: 'Стоимость', value: `${stopsPrice.price.toFixed(0)} TJS`, sub: `${stopsPrice.fromStopName} → ${stopsPrice.toStopName}`, icon: Copy } : (transportMode === 'bus' || transportMode === 'minibus') ? { label: 'Стоимость', value: '—', sub: 'Стоимость пока не назначена', icon: Copy } : { label: 'Стоимость', value: estimateCost(routeData.distance, routeData.mode) > 0 ? `${estimateCost(routeData.distance, routeData.mode)} TJS` : 'Бесплатно', sub: routeData.mode === 'taxi' ? 'такси' : routeData.mode === 'walking' || routeData.mode === 'cycling' ? '0 сом' : 'по расстоянию', icon: Copy },
               ].map(card => (
-                <div key={card.label} className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-center">
-                  <card.icon size={14} className="mx-auto text-slate-400 mb-1" />
+                <div key={card.label} className={`p-3 rounded-2xl border text-center ${card.label === 'Стоимость' && stopsPrice ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'}`}>
+                  <card.icon size={14} className={`mx-auto mb-1 ${card.label === 'Стоимость' && stopsPrice ? 'text-emerald-600' : 'text-slate-400'}`} />
                   <p className="text-[10px] font-bold tracking-widest uppercase text-slate-400">{card.label}</p>
-                  <p className="text-[13px] font-black text-slate-900 dark:text-white mt-1 leading-none">{card.value}</p>
-                  <p className="text-[10px] font-medium text-slate-500 mt-0.5">{card.sub}</p>
+                  <p className={`text-[13px] font-black mt-1 leading-none ${card.label === 'Стоимость' && stopsPrice ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-900 dark:text-white'}`}>{card.value}</p>
+                  <p className="text-[9px] font-medium text-slate-500 mt-0.5 truncate px-1" title={card.sub}>{card.sub}</p>
                 </div>
               ))}
             </div>
+            {isIntercity && (
+              <div className="rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 p-2.5 flex items-center gap-2.5">
+                <span className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center flex-shrink-0">
+                  <Globe size={16} />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[12px] font-bold text-amber-900 dark:text-amber-300">Междугородний маршрут</p>
+                  <p className="text-[10px] text-amber-700/70 dark:text-amber-400/70">Точки находятся в разных городах — проверьте, что выбраны правильно</p>
+                </div>
+              </div>
+            )}
+            {stopsPrice && (
+              <div className="rounded-xl bg-emerald-500 text-white p-3 flex items-center gap-2.5 shadow-md">
+                <span className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0">💰</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-black leading-none">Маршрут #{stopsPrice.routeNumber}: {stopsPrice.fromStopName} → {stopsPrice.toStopName}</p>
+                  <p className="text-[11px] font-medium opacity-90 mt-1">{stopsPrice.segments} {stopsPrice.segments === 1 ? 'остановка' : 'остановки'} · цена по остановкам · на карте</p>
+                </div>
+                <span className="text-sm font-black bg-white text-emerald-600 px-2.5 py-1 rounded-full flex-shrink-0">{stopsPrice.price.toFixed(0)} TJS</span>
+              </div>
+            )}
+
+            {/* Taxi CTA — наверху панели, чтобы не терялся внизу */}
+            {routeData.mode === 'taxi' && (
+              <button
+                onClick={() => {
+                  navigate('/taxi', { state: { trip: { from: { name: fromText, lat: from?.lat, lng: from?.lng }, to: { name: toText, lat: to?.lat, lng: to?.lng } } } });
+                  onClose?.();
+                }}
+                className="w-full py-3.5 rounded-2xl font-black text-sm bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/20 active:scale-[0.98] flex items-center justify-center gap-2"
+              >
+                🚕 Заказать такси — {estimateCost(routeData.distance, 'taxi')} TJS · {formatDuration(routeData.duration)}
+              </button>
+            )}
 
             {/* Route preview A→B */}
             <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3.5">
@@ -672,11 +796,13 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
               </div>
             </div>
 
+            {/* Способ оплаты — транспорт */}
             {/* CTA */}
-            {routeData.mode !== 'taxi' ? (
+            {routeData.mode !== 'taxi' && (
                 <div className="space-y-2">
                   <button
                     onClick={() => {
+                      if ((transportMode === 'bus' || transportMode === 'minibus') && !stopsPrice) { toast.error('Стоимость поездки пока не назначена.'); return; }
                       const navRoute = {
                         ...routeData,
                         from: { lat: from.lat, lng: from.lng, shortName: fromText },
@@ -686,7 +812,8 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
                       onStartNavigation?.(navRoute);
                       onClose?.();
                     }}
-                    className="w-full relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-xl shadow-emerald-500/25 active:scale-[0.98] transition-all p-1"
+                    disabled={(transportMode === 'bus' || transportMode === 'minibus') && !stopsPrice}
+                    className={`w-full relative overflow-hidden rounded-2xl text-white shadow-xl active:scale-[0.98] transition-all p-1 ${((transportMode === 'bus' || transportMode === 'minibus') && !stopsPrice) ? 'bg-slate-300 cursor-not-allowed' : 'bg-gradient-to-br from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-emerald-500/25'}`}
                   >
                     <span className="flex items-center gap-3 bg-gradient-to-br from-white/0 to-black/0 px-4 py-3">
                       <span className="w-11 h-11 rounded-xl bg-white text-emerald-600 flex items-center justify-center shadow flex-shrink-0">
@@ -694,7 +821,7 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
                       </span>
                       <span className="flex-1 text-left">
                         <span className="block text-[15px] font-black leading-none">Поехать</span>
-                        <span className="block text-[11px] font-bold opacity-90 mt-0.5">{activeMode?.label} · {formatDuration(routeData.duration)} · {formatDistance(routeData.distance)}</span>
+                        <span className="block text-[11px] font-bold opacity-90 mt-0.5">{activeMode?.label} · {formatDuration(routeData.duration)} · {formatDistance(routeData.distance)} · {stopsPrice ? `${stopsPrice.price.toFixed(2)} TJS` : (transportMode === 'bus' || transportMode === 'minibus') ? 'цена не назначена' : `${estimateCost(routeData.distance, routeData.mode).toFixed(2)} TJS`}</span>
                       </span>
                       <span className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
                         <ChevronRight size={16} className="text-white" />
@@ -710,16 +837,6 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
                     </button>
                   </div>
                 </div>
-              ) : (
-              <button
-                onClick={() => {
-                  navigate('/taxi', { state: { trip: { from: { name: fromText, lat: from?.lat, lng: from?.lng }, to: { name: toText, lat: to?.lat, lng: to?.lng } } } });
-                  onClose?.();
-                }}
-                className="w-full py-3.5 rounded-2xl font-black text-sm bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/20 active:scale-[0.98] flex items-center justify-center gap-2"
-              >
-                🚕 Заказать такси — {estimateCost(routeData.distance, 'taxi')} TJS · {formatDuration(routeData.duration)}
-              </button>
             )}
 
             {/* Steps */}

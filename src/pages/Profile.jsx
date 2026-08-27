@@ -405,6 +405,7 @@ export default function Profile() {
         body_type: taxiVehicle.body_type,
         seats: parseInt(taxiVehicle.seats) || 4,
         category: taxiVehicle.category,
+        photo_url: taxiVehicle.photo_url || null,
       }).eq('id', taxiVehicle.id);
       if (error) throw new Error(error.message);
       toast.success('Данные автомобиля обновлены');
@@ -412,6 +413,22 @@ export default function Profile() {
       toast.error(err.message || 'Ошибка сохранения');
     }
     setTaxiSaving(false);
+  };
+
+  const handleVehiclePhotoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !taxiVehicle?.id) return;
+    try {
+      const ext = file.name.split('.').pop();
+      const path = `cars/${taxiVehicle.id}-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('taxi_docs').upload(path, file, { upsert: true });
+      if (upErr) throw upErr;
+      const { data } = supabase.storage.from('taxi_docs').getPublicUrl(path);
+      setTaxiVehicle(prev => ({ ...prev, photo_url: data.publicUrl }));
+      toast.success('Фото загружено — нажмите Сохранить');
+    } catch (err) {
+      toast.error('Ошибка загрузки фото');
+    }
   };
 
   const statusInfo = {
@@ -457,7 +474,7 @@ export default function Profile() {
           )}
         </div>
 
-        <div className="flex bg-white dark:bg-gray-800 rounded-2xl p-1 shadow-sm border border-gray-100 dark:border-gray-700">
+        <div className="flex bg-white dark:bg-gray-800 rounded-2xl p-1 shadow-sm border border-gray-100 dark:border-gray-700 overflow-x-auto">
           {[
             { id: 'settings', label: t('profile.tabSettings'), icon: User },
             { id: 'favorites', label: t('profile.tabFavorites'), icon: Heart },
@@ -478,7 +495,7 @@ export default function Profile() {
         </div>
 
         {profileTab === 'favorites' && <FavoriteRoutes />}
-        
+
         {profileTab === 'wallet' && (
           <div className="space-y-4">
             <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 flex items-center justify-between">
@@ -489,85 +506,11 @@ export default function Profile() {
                 </p>
               </div>
               <button
-                onClick={async () => {
-                  const amount = window.prompt(t('profile.walletTopupPrompt'), "50");
-                  if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) return;
-                  try {
-                    const { data, error } = await supabase.rpc('mock_top_up', { amount: Number(amount) });
-                    if (error) throw new Error(error.message);
-                    toast.success(`${t('profile.walletTopupSuccess')} ${amount} TJS!`);
-                    await refreshUser();
-                    const { data: txs } = await supabase
-                      .from('transactions')
-                      .select('*')
-                      .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
-                      .order('created_at', { ascending: false });
-                    setTransactions(txs || []);
-                  } catch (err) {
-                    toast.error(err.message || t('profile.walletTopupError'));
-                  }
-                }}
-                className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer transition-all active:scale-95 shadow-md shadow-green-500/20"
+                onClick={() => toast.info('Пополнение кошелька временно недоступно. Платежная система еще не подключена.')}
+                className="bg-slate-300 text-slate-500 text-xs font-bold px-4 py-2.5 rounded-xl cursor-not-allowed"
               >
-                {t('profile.walletTopupButton')}
+                Пополнение недоступно
               </button>
-            </div>
-
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
-              <h3 className="font-bold text-sm text-gray-800 dark:text-gray-200 mb-3">{t('profile.transactionHistory')}</h3>
-              {transactions.length === 0 ? (
-                <div className="text-center py-6 text-gray-400 text-xs">{t('profile.noTransactions')}</div>
-              ) : (
-                <div className="space-y-3">
-                  {transactions.map((tx) => {
-                    const isSender = tx.sender_id === user.id;
-                    const isTopUp = tx.recipient_id === null;
-                    const amountFormatted = `${isSender && !isTopUp ? '-' : '+'}${Number(tx.amount).toFixed(2)} TJS`;
-                    
-                    let title = '';
-                    let desc = '';
-                    let colorClass = '';
-
-                    if (isTopUp) {
-                      title = t('profile.transactionTopup');
-                      desc = t('profile.transactionTopupDesc');
-                      colorClass = 'text-green-600 dark:text-green-400 font-bold';
-                    } else if (isSender) {
-                      title = t('profile.transactionPayment');
-                      desc = `${t('profile.transactionToDriver')} ${tx.recipient || '...'}`;
-                      colorClass = 'text-red-500 dark:text-red-400 font-semibold';
-                    } else {
-                      title = t('profile.transactionReceived');
-                      desc = `${t('profile.transactionFromPassenger')} ${tx.sender || '...'}`;
-                      colorClass = 'text-green-600 dark:text-green-400 font-bold';
-                    }
-
-                    return (
-                      <div key={tx.id} className="flex justify-between items-start border-b border-gray-50 dark:border-gray-700/50 pb-2.5 last:border-0 last:pb-0">
-                        <div>
-                          <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">{title}</p>
-                          <p className="text-[10px] text-gray-400 mt-0.5">{desc}</p>
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full mt-1 inline-block ${
-                            tx.status === 'completed' 
-                              ? 'bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400' 
-                              : tx.status === 'pending'
-                                ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400'
-                                : 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400'
-                          }`}>
-                            {tx.status === 'completed' ? t('profile.transactionStatusCompleted') : tx.status === 'pending' ? t('profile.transactionStatusPending') : t('profile.transactionStatusRejected')}
-                          </span>
-                        </div>
-                        <div className="text-right">
-                          <p className={`text-xs ${colorClass}`}>{amountFormatted}</p>
-                          <p className="text-[9px] text-gray-400 mt-1">
-                            {new Date(tx.created_at).toLocaleString(lang === 'tg' ? 'tg-TJ' : lang, { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -820,7 +763,27 @@ export default function Profile() {
                   )}
 
                   {taxiTab === 'car' && taxiVehicle && (
-                    <div className="space-y-3">
+                    <div className="space-y-4">
+                      {/* Фото авто */}
+                      <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                        {taxiVehicle.photo_url ? (
+                          <img src={taxiVehicle.photo_url} alt="Авто" className="w-full h-40 object-cover" />
+                        ) : (
+                          <div className="w-full h-32 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 flex flex-col items-center justify-center gap-2">
+                            <Car size={32} className="text-slate-400" />
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Фото не загружено</span>
+                          </div>
+                        )}
+                        <label className="flex items-center justify-center gap-2 w-full py-2.5 bg-slate-900 dark:bg-slate-700 text-white text-xs font-bold cursor-pointer hover:bg-black transition-colors">
+                          <input type="file" accept="image/*" className="hidden" onChange={handleVehiclePhotoUpload} />
+                          📷 {taxiVehicle.photo_url ? 'Сменить фото' : 'Загрузить фото авто'}
+                        </label>
+                      </div>
+                      {taxiVehicle.body_type === 'Электромобиль' && taxiVehicle.category !== 'electric' && (
+                        <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300 flex items-center gap-2">
+                          ⚡ У вас электромобиль — выберите категорию «Электро» ниже, чтобы в финансах считался заряд, а не топливо.
+                        </div>
+                      )}
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="text-[10px] font-bold text-gray-400 uppercase">Марка</label>
@@ -864,16 +827,20 @@ export default function Profile() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase">Категория</label>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          {Object.entries(TAXI_CATEGORIES).map(([key, label]) => (
-                            <button key={key} onClick={() => setTaxiVehicle({ ...taxiVehicle, category: key })}
-                              className={`px-2 py-1.5 rounded-lg border text-[10px] font-medium transition-all ${
-                                taxiVehicle.category === key ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700' : 'border-gray-200 dark:border-gray-700 text-gray-500'
-                              }`}
-                            >{label}</button>
-                          ))}
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">Категория — тариф</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {Object.entries(TAXI_CATEGORIES).map(([key, label]) => {
+                            const emojis = { economy:'🚕', comfort:'✨', comfort_plus:'💎', business:'👑', minivan:'🚐', electric:'⚡', women:'👩', cargo:'📦', delivery:'📮', courier:'🚴', intercity:'🛣️' };
+                            const isSel = taxiVehicle.category === key;
+                            return (
+                              <button key={key} onClick={() => setTaxiVehicle({ ...taxiVehicle, category: key })}
+                                className={`px-2.5 py-2.5 rounded-2xl border-2 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all ${isSel ? 'border-emerald-500 bg-emerald-500 text-white shadow-md shadow-emerald-500/20' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:border-emerald-200'}`}>
+                                <span>{emojis[key] || '•'}</span> {label}
+                              </button>
+                            );
+                          })}
                         </div>
+                        <p className="text-[10px] text-slate-400 mt-1">Категория определяет тариф пассажира и расчёт в «Финансах»</p>
                       </div>
                       <button onClick={handleTaxiVehicleSave} disabled={taxiSaving}
                         className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all disabled:opacity-60">

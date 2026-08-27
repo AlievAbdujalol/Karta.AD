@@ -108,9 +108,9 @@ export default function NotificationPanel({ notifications, onClear }) {
       <button
         ref={btnRef}
         onClick={handleOpen}
-        className="relative w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-colors bg-white/15 dark:bg-white/10 border border-white/20 dark:border-white/15"
+        className="relative w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer transition-all duration-200 bg-slate-100/80 dark:bg-slate-800/80 hover:bg-emerald-50 dark:hover:bg-slate-700/80 border border-slate-200/50 dark:border-slate-700/50 text-slate-700 dark:text-slate-200 active:scale-95 shadow-sm"
       >
-        <Bell size={18} className="text-white" />
+        <Bell size={16} />
         {unread > 0 && (
           <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 rounded-full text-white text-[9px] font-bold flex items-center justify-center">
             {unread > 9 ? '9+' : unread}

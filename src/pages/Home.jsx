@@ -61,6 +61,10 @@ export default function Home() {
     }
   }, [location.search]);
 
+  useEffect(() => {
+    if (selectedRoute) setRoutingOpen(false);
+  }, [selectedRoute?.id]);
+
   const autoDetectCity = useCallback((citiesList) => {
     if (!citiesList?.length) return;
     if (!navigator.geolocation) return;
@@ -349,6 +353,7 @@ export default function Home() {
         setSheetState={setSheetState}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
+        onFlyTo={(p) => setFlyTo(p)}
         onSelectFavDriver={async (driverId) => {
           const { data } = await supabase.from('vehicles').select('*').eq('driver_id', driverId).eq('is_active', true).maybeSingle();
           if (data) {

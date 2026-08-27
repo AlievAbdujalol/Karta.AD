@@ -126,41 +126,58 @@ export default function RoutesManager() {
       )}
 
       <div className="space-y-2">
-        {routes.map(route => (
-          <div key={route.id} className="bg-white rounded-xl p-4 flex items-center justify-between shadow-sm border border-gray-100">
+        {routes.map(route => {
+          const isOwner = route.created_by_id === user?.id;
+          // Строго владелец — только он может менять/удалять; передача — через Super Admin
+          const canManage = isOwner || (!route.created_by_id && isSuperAdmin);
+          return (
+          <div key={route.id} className={`bg-white rounded-xl p-4 flex items-center justify-between shadow-sm border ${canManage ? 'border-gray-100' : 'border-gray-100 opacity-60'}`}>
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shadow"
                 style={{ background: route.color || '#1565C0' }}>
                 {route.number}
               </div>
               <div>
-                <p className="font-medium text-sm text-gray-900">#{route.number} {route.name || ''}</p>
-                <p className="text-xs text-gray-500">{getCityName(route.city_id)} · {route.type === 'bus' ? t('bus') : t('minibus')}</p>
+                <p className="font-medium text-sm text-gray-900">#{route.number} {route.name || ''} {!canManage && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 ml-1">чужой</span>}</p>
+                <p className="text-xs text-gray-500">{getCityName(route.city_id)} · {route.type === 'bus' ? t('bus') : t('minibus')} {route.created_by_id && !isOwner && <span className="text-[10px]">· владелец: {admins.find(a => a.id === route.created_by_id)?.full_name || route.created_by_id.slice(0, 6)}</span>}</p>
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <button onClick={() => setSchedulingRoute(route)} className="text-blue-400 hover:text-blue-600 transition-colors p-1" title={t('admin.routes.scheduleTooltip')}>
-                <Clock size={16} />
-              </button>
+              {canManage ? (
+                <button onClick={() => setSchedulingRoute(route)} className="text-blue-400 hover:text-blue-600 transition-colors p-1" title={t('admin.routes.scheduleTooltip')}>
+                  <Clock size={16} />
+                </button>
+              ) : (
+                <span className="text-gray-300 p-1" title="Только владелец может изменять">
+                  <Clock size={16} />
+                </span>
+              )}
               {isSuperAdmin && (
                 <button onClick={() => { setTransferRoute(route); loadAdmins(); setSelectedAdminId(''); }}
                   className="text-amber-500 hover:text-amber-700 transition-colors p-1" title={t('admin.routes.transferTooltip')}>
                   <ArrowLeftRight size={16} />
                 </button>
               )}
-              <button onClick={() => handleDelete(route.id)} className="text-red-400 hover:text-red-600 transition-colors p-1">
-                <Trash2 size={16} />
-              </button>
+              {canManage ? (
+                <button onClick={() => handleDelete(route.id)} className="text-red-400 hover:text-red-600 transition-colors p-1">
+                  <Trash2 size={16} />
+                </button>
+              ) : (
+                <span className="text-gray-300 p-1" title="Только владелец может удалять">
+                  <Trash2 size={16} />
+                </span>
+              )}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {transferRoute && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setTransferRoute(null)}>
           <div className="bg-white rounded-2xl p-5 max-w-sm w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
             <h4 className="font-bold text-sm mb-1">{t('admin.routes.transferModalTitle')}</h4>
-            <p className="text-xs text-gray-500 mb-3">{t('admin.routes.transferModalDesc', { number: transferRoute.number })}</p>
+            <p className="text-xs text-gray-500 mb-3">Маршрут #{transferRoute.number} будет передан другому администратору</p>
             <select value={selectedAdminId} onChange={e => setSelectedAdminId(e.target.value)}
               className="w-full border rounded-xl px-3 py-2.5 text-sm mb-4">
               <option value="">{t('admin.routes.selectAdminPlaceholder')}</option>
@@ -168,6 +185,9 @@ export default function RoutesManager() {
                 <option key={a.id} value={a.id}>{a.full_name || a.email}</option>
               ))}
             </select>
+            {admins.filter(a => a.id !== user?.id).length === 0 && (
+              <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2 mb-3">Нет других администраторов для передачи маршрута</p>
+            )}
             <div className="flex gap-2">
               <button onClick={handleTransfer} disabled={!selectedAdminId}
                 className="flex-1 bg-amber-600 text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50">
@@ -175,7 +195,7 @@ export default function RoutesManager() {
               </button>
               <button onClick={() => setTransferRoute(null)}
                 className="flex-1 border text-gray-600 py-2.5 rounded-xl text-sm">
-                {t('admin.routes.cancelButton')}
+                {t('cancel')}
               </button>
             </div>
           </div>

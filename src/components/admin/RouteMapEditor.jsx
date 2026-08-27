@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline, useMapEvents, Popup, CircleMarker } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, useMapEvents, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import { Route, City } from '@/api/entities';
-import { Save, Trash2, MapPin, Plus, X } from 'lucide-react';
+import { Save, Trash2, MapPin, Plus, X, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '@/lib/useLanguage';
 import 'leaflet/dist/leaflet.css';
@@ -13,6 +13,22 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
+
+function makeStopIcon(index, color, isActive) {
+  const bg = color || '#1565C0';
+  const border = isActive ? '#f59e0b' : '#fff';
+  const scale = isActive ? 'scale(1.2)' : 'scale(1)';
+  return L.divIcon({
+    className: '',
+    html: `<div style="transform:${scale};transition:transform 0.15s;position:relative;">
+      <div style="width:30px;height:30px;border-radius:50%;background:${bg};color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;box-shadow:0 2px 8px rgba(0,0,0,0.3);border:3px solid ${border};font-family:system-ui;">${index + 1}</div>
+      ${index === 0 ? '<div style="position:absolute;top:-8px;right:-8px;width:14px;height:14px;background:#22c55e;border-radius:50%;border:2px solid #fff;font-size:7px;color:#fff;display:flex;align-items:center;justify-content:center;">A</div>' : ''}
+    </div>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+    popupAnchor: [0, -18],
+  });
+}
 
 function ClickHandler({ onMapClick, active }) {
   useMapEvents({
@@ -35,6 +51,9 @@ export default function RouteMapEditor() {
   const [pendingStop, setPendingStop] = useState(null);
   const [routeGeometry, setRouteGeometry] = useState([]);
   const [satellite, setSatellite] = useState(false);
+  const [editingStopIdx, setEditingStopIdx] = useState(null);
+  const [editStopName, setEditStopName] = useState('');
+  const [activeStopIdx, setActiveStopIdx] = useState(null);
 
   useEffect(() => {
     if (stops.length < 2) { setRouteGeometry([]); return; }
@@ -77,6 +96,15 @@ export default function RouteMapEditor() {
 
   const removeStop = (idx) => {
     setStops(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const renameStop = (idx, newName) => {
+    setStops(prev => prev.map((s, i) => i === idx ? { ...s, name: newName } : s));
+    setEditingStopIdx(null);
+  };
+
+  const moveStop = (idx, newLat, newLng) => {
+    setStops(prev => prev.map((s, i) => i === idx ? { ...s, lat: newLat, lng: newLng } : s));
   };
 
   const handleSave = async () => {
@@ -190,6 +218,7 @@ export default function RouteMapEditor() {
             zoom={13}
             style={{ height: '100%', width: '100%' }}
             className={addMode ? 'cursor-crosshair' : ''}
+            attributionControl={false}
           >
             <TileLayer
               url={satellite ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'}
@@ -223,30 +252,60 @@ export default function RouteMapEditor() {
             )}
 
             {stops.map((stop, i) => (
-              <CircleMarker
-                key={i}
-                center={[stop.lat, stop.lng]}
-                radius={10}
-                pathOptions={{
-                  fillColor: selectedRoute.color || '#1565C0',
-                  fillOpacity: 1,
-                  color: '#fff',
-                  weight: 2,
+              <Marker
+                key={`stop-${i}-${stop.lat}-${stop.lng}`}
+                position={[stop.lat, stop.lng]}
+                icon={makeStopIcon(i, selectedRoute?.color, activeStopIdx === i)}
+                draggable={!addMode}
+                eventHandlers={{
+                  dragstart: () => setActiveStopIdx(i),
+                  dragend: (e) => {
+                    const pos = e.target.getLatLng();
+                    moveStop(i, pos.lat, pos.lng);
+                    setActiveStopIdx(null);
+                  },
+                  click: () => setActiveStopIdx(i),
                 }}
               >
-                <Popup>
-                  <div className="text-sm space-y-1">
-                    <p className="font-semibold">{stop.name || `${t('admin.mapEditor.stopDefaultName')} ${i + 1}`}</p>
-                    <p className="text-gray-500 text-xs">#{i + 1} · {stop.lat.toFixed(5)}, {stop.lng.toFixed(5)}</p>
+                <Popup closeButton={false} className="stop-popup">
+                  <div style={{ minWidth: 160, fontFamily: 'system-ui' }}>
+                    {editingStopIdx === i ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          autoFocus
+                          value={editStopName}
+                          onChange={(e) => setEditStopName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') renameStop(i, editStopName); if (e.key === 'Escape') setEditingStopIdx(null); }}
+                          style={{ fontSize: 13, padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 8, flex: 1, outline: 'none' }}
+                        />
+                        <button onClick={() => renameStop(i, editStopName)} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, padding: '4px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>OK</button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between mb-1">
+                        <p style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>{stop.name || `Остановка ${i + 1}`}</p>
+                        <button
+                          onClick={() => { setEditingStopIdx(i); setEditStopName(stop.name || `Остановка ${i + 1}`); }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', padding: 2 }}
+                        >
+                          <Pencil size={12} />
+                        </button>
+                      </div>
+                    )}
+                    <p style={{ fontSize: 11, color: '#9ca3af', margin: '2px 0 0' }}>
+                      #{i + 1} · {stop.lat.toFixed(5)}, {stop.lng.toFixed(5)}
+                    </p>
+                    <p style={{ fontSize: 10, color: '#9ca3af', margin: '2px 0 0' }}>
+                      Перетащите для перемещения
+                    </p>
                     <button
                       onClick={() => removeStop(i)}
-                      className="flex items-center gap-1 text-red-500 text-xs font-medium hover:text-red-700"
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#ef4444', fontSize: 12, fontWeight: 600, marginTop: 6, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                     >
-                      <Trash2 size={11} /> {t('admin.mapEditor.deleteButton')}
+                      <Trash2 size={11} /> Удалить
                     </button>
                   </div>
                 </Popup>
-              </CircleMarker>
+              </Marker>
             ))}
 
             {pendingStop && (
@@ -268,7 +327,29 @@ export default function RouteMapEditor() {
                 >
                   {i + 1}
                 </div>
-                <span className="flex-1 text-xs text-gray-700">{stop.name || `${t('admin.mapEditor.stopDefaultName')} ${i + 1}`}</span>
+                {editingStopIdx === `list-${i}` ? (
+                  <input
+                    autoFocus
+                    value={editStopName}
+                    onChange={(e) => setEditStopName(e.target.value)}
+                    onBlur={() => renameStop(i, editStopName)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') renameStop(i, editStopName); if (e.key === 'Escape') setEditingStopIdx(null); }}
+                    className="flex-1 text-xs border border-blue-300 rounded-lg px-2 py-1 outline-none"
+                  />
+                ) : (
+                  <span
+                    className="flex-1 text-xs text-gray-700 cursor-text hover:text-blue-600"
+                    onClick={() => { setEditingStopIdx(`list-${i}`); setEditStopName(stop.name || `Остановка ${i + 1}`); }}
+                  >
+                    {stop.name || `Остановка ${i + 1}`}
+                  </span>
+                )}
+                <button
+                  onClick={() => { setEditingStopIdx(`list-${i}`); setEditStopName(stop.name || `Остановка ${i + 1}`); }}
+                  className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-500 transition-all"
+                >
+                  <Pencil size={12} />
+                </button>
                 <button
                   onClick={() => removeStop(i)}
                   className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all"

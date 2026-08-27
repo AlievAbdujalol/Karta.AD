@@ -2,9 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import { ChevronUp } from 'lucide-react';
 
 export default function TaxiBottomSheet({ children, driverStats, isOnline }) {
-  const [peek, setPeek] = useState(true);
   const [expanded, setExpanded] = useState(false);
-  const sheetRef = useRef(null);
   const startY = useRef(0);
 
   const handleTouchStart = useCallback((e) => {
@@ -13,53 +11,52 @@ export default function TaxiBottomSheet({ children, driverStats, isOnline }) {
 
   const handleTouchEnd = useCallback((e) => {
     const diff = startY.current - e.changedTouches[0].clientY;
-    if (diff > 50 && peek) { setPeek(false); setExpanded(true); }
-    else if (diff < -50 && expanded) { setExpanded(false); setPeek(true); }
-  }, [peek, expanded]);
+    if (diff > 40) setExpanded(true);
+    else if (diff < -40) setExpanded(false);
+  }, []);
 
   if (!isOnline) return null;
 
   return (
     <div
-      ref={sheetRef}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
-      className={`absolute bottom-16 left-0 right-0 z-40 transition-all duration-500 ease-out ${
-        expanded
-          ? 'max-h-[70vh]'
-          : 'max-h-[220px]'
-      }`}
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-40 px-3 pb-2 md:mx-auto md:max-w-md"
     >
-      <div className="bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl rounded-t-3xl shadow-[0_-8px_30px_rgba(0,0,0,0.12)] border-t border-slate-200/60 dark:border-slate-700/60 overflow-hidden h-full flex flex-col">
-        {/* Drag handle */}
-        <div
-          className="flex justify-center py-2 cursor-pointer flex-shrink-0"
-          onClick={() => { setExpanded(!expanded); setPeek(expanded); }}
+      <div className="pointer-events-auto overflow-hidden rounded-[28px] border border-slate-200/70 bg-white/92 shadow-[0_8px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-slate-700/60 dark:bg-slate-950/92">
+        <button
+          type="button"
+          className="flex w-full flex-col items-center pt-2"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
         >
-          <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full" />
-        </div>
+          <span className="h-1 w-10 rounded-full bg-slate-300 dark:bg-slate-600" />
+        </button>
 
-        {/* Peek stats row */}
-        {peek && driverStats && (
-          <div className="px-5 pb-4 flex-shrink-0">
-            <div className="grid grid-cols-3 gap-3">
-              {driverStats.map((s, i) => (
-                <div key={i} className="text-center">
-                  <p className="text-lg font-black text-slate-800 dark:text-slate-100">{s.value}</p>
-                  <p className="text-[10px] text-slate-400 font-medium">{s.label}</p>
-                </div>
-              ))}
-            </div>
-            <div className="flex items-center justify-center gap-1 mt-3 text-slate-400">
-              <ChevronUp size={14} />
-              <span className="text-[10px] font-medium">Проведите вверх для подробностей</span>
-            </div>
+        {!expanded && driverStats && (
+          <div className="grid grid-cols-3 gap-1 px-4 pb-3 pt-2">
+            {driverStats.map((s) => (
+              <div key={s.label} className="min-w-0 text-center">
+                <p className="truncate text-[15px] font-bold tracking-tight text-slate-900 dark:text-white">{s.value}</p>
+                <p className="text-[10px] font-medium text-slate-400">{s.label}</p>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Expanded content */}
+        {!expanded && (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="flex w-full items-center justify-center gap-1 pb-3 text-[11px] font-medium text-slate-400"
+          >
+            <ChevronUp size={14} />
+            Подробнее
+          </button>
+        )}
+
         {expanded && (
-          <div className="flex-1 overflow-y-auto px-5 pb-4 custom-scrollbar">
+          <div className="custom-scrollbar max-h-[46vh] overflow-y-auto px-4 pb-4 pt-1">
             {children}
           </div>
         )}

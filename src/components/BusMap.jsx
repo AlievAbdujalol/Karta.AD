@@ -1,10 +1,12 @@
-import 'leaflet/dist/leaflet.css';
+﻿import 'leaflet/dist/leaflet.css';
 import { getNextStopEta } from '@/utils/eta';
 import L from 'leaflet';
 import { useEffect, useMemo, useRef, useState, useCallback, Fragment } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, Circle, ScaleControl, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, ScaleControl, useMap, useMapEvents } from 'react-leaflet';
 import MapControls, { TILE_LAYERS, LABEL_OVERLAY_URL } from './MapControls';
 import RoutingPanel from './RoutingPanel';
+import StopInfoPopup, { collectUniqueStops } from './StopInfoPopup';
+import { useOverpassStops } from '@/hooks/useOverpassStops';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useNavigation } from '@/lib/NavigationContext';
 import { supabase } from '@/api/supabase';
@@ -47,6 +49,32 @@ style.textContent = `
   }
   .leaflet-tooltip::before {
     border-top-color: transparent !important;
+  }
+  .stop-info-popup .leaflet-popup-content-wrapper {
+    border-radius: 16px !important;
+    padding: 0 !important;
+    background: #11162a !important;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.5) !important;
+    border: 1px solid #1e2a44 !important;
+  }
+  .stop-info-popup .leaflet-popup-content {
+    margin: 0 !important;
+    font-family: Inter, sans-serif !important;
+    color: #fff !important;
+    line-height: 1 !important;
+  }
+  .stop-info-popup .leaflet-popup-tip {
+    background: #11162a !important;
+    border: 1px solid #1e2a44 !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+  }
+  .stop-info-popup .leaflet-popup-close-button {
+    color: #6b7a8d !important;
+    font-size: 18px !important;
+    padding: 4px 8px !important;
+  }
+  .stop-info-popup .leaflet-popup-close-button:hover {
+    color: #fff !important;
   }
 `;
 document.head.appendChild(style);
@@ -114,11 +142,6 @@ function UserLocationMarker() {
 
   return (
     <>
-      <Circle
-        center={pos}
-        radius={accuracy}
-        pathOptions={{ color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.08, weight: 1 }}
-      />
       <Marker position={pos} icon={userIcon} zIndexOffset={1000}>
         <Popup>
           <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, textAlign: 'center' }}>
@@ -279,28 +302,22 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
     if (window.confirm(`${t('busmap.paymentConfirmTitle')} #${vehicle.route_number} ${t('schedulePanel.somoni')} ${fare} TJS?`)) {
       setPaying(true);
       try {
-        const { data, error } = await supabase.rpc('create_payment', {
-          driver_id: vehicle.driver_id,
-          amount: fare
-        });
-        if (error) throw new Error(error.message);
-        if (data?.error) throw new Error(data.error);
-        if (data?.success) {
-          toast.success(t('busmap.paymentSent'));
-          // Логируем поездку
-          TripLog.create({
-            user_id: user.id,
-            route_id: vehicle.route_id || null,
-            route_number: vehicle.route_number,
-            route_name: vehicle.route_name || '',
-            route_type: vehicle.type,
-            route_color: vehicle.route_color || '#1565C0',
-            city_name: vehicle.city_name || '',
-          }).then(({ error }) => {
-            if (error) console.error('[TripLog] insert failed:', error);
-          }).catch(() => {});
-          refreshUser();
-        }
+        const newBalance = Math.max(0, userBalance - fare);
+        const { error: balErr } = await supabase.from('profiles').update({ balance: newBalance }).eq('id', user.id);
+        if (balErr) throw new Error(balErr.message);
+        toast.success(t('busmap.paymentSent'));
+        TripLog.create({
+          user_id: user.id,
+          route_id: vehicle.route_id || null,
+          route_number: vehicle.route_number,
+          route_name: vehicle.route_name || '',
+          route_type: vehicle.type,
+          route_color: vehicle.route_color || '#1565C0',
+          city_name: vehicle.city_name || '',
+        }).then(({ error }) => {
+          if (error) console.error('[TripLog] insert failed:', error);
+        }).catch(() => {});
+        refreshUser();
       } catch (err) {
         toast.error(err.message || t('busmap.paymentError'));
       } finally {
@@ -455,8 +472,66 @@ function NavigationCamera({ followUser, userPosition, reroute, routeData }) {
   return null;
 }
 
+const OsmStopIcon = L.divIcon({
+  html: `<div style="width:18px;height:18px;border-radius:50%;background:#fff;color:#1565C0;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.25);border:2px solid #1565C0;">
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#1565C0" stroke-width="2.5"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 18v2"/><path d="M17 18v2"/></svg>
+  </div>`,
+  className: '',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+});
+
+function distM2(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function OsmStopMarkers({ routes, routeGeometries, routingOpen, onPickResult }) {
+  const osmStops = useOverpassStops();
+  const map = useMap();
+  const [zoom, setZoom] = useState(map.getZoom());
+  useEffect(() => {
+    const upd = () => setZoom(map.getZoom());
+    map.on('zoomend', upd);
+    map.on('moveend', upd);
+    return () => { map.off('zoomend', upd); map.off('moveend', upd); };
+  }, [map]);
+  if (zoom < 13) return null;
+  // skip OSM stops that are very close to an existing route stop (avoid duplicate icons)
+  const routePts = (routes || []).flatMap(r => r.stops || []).filter(s => s.lat && s.lng);
+  const filtered = osmStops.filter(os => !routePts.some(rs => distM2(os.lat, os.lng, rs.lat, rs.lng) < 35));
+  return filtered.map(s => (
+    <Marker key={`osm-${s.id}`} position={[s.lat, s.lng]} icon={OsmStopIcon}>
+      <Popup maxWidth={300} className="stop-info-popup">
+        <StopInfoPopup
+          stop={{ lat: s.lat, lng: s.lng, name: s.name }}
+          routes={routes}
+          routeGeometries={routeGeometries}
+          routingOpen={routingOpen}
+          onPickFrom={(st) => onPickResult({ lat: st.lat, lng: st.lng, name: st.name, shortName: st.name, display_name: st.name, city: '', country: '', target: 'from' })}
+          onPickTo={(st) => onPickResult({ lat: st.lat, lng: st.lng, name: st.name, shortName: st.name, display_name: st.name, city: '', country: '', target: 'to' })}
+        />
+      </Popup>
+    </Marker>
+  ));
+}
+
+const TILE_KEY = 'karta_tile_index';
+
 export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute, panelVisible, onLocate }) {
-  const [tileIndex, setTileIndex] = useState(0);
+  const [tileIndex, setTileIndex] = useState(() => {
+    try {
+      const v = localStorage.getItem(TILE_KEY);
+      if (v != null) {
+        const n = parseInt(v, 10);
+        if (!isNaN(n) && n >= 0 && n < TILE_LAYERS.length) return n;
+      }
+    } catch {}
+    return 2;
+  });
   const [showLabels, setShowLabels] = useState(true);
   const [routingOpen, setRoutingOpen] = useState(false);
   const [routingRoute, setRoutingRoute] = useState(null);
@@ -468,6 +543,28 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
   const { user } = useCurrentUser();
   const mapRef = useRef(null);
   const nav = useNavigation();
+
+  useEffect(() => {
+    try { localStorage.setItem(TILE_KEY, String(tileIndex)); } catch {}
+  }, [tileIndex]);
+
+  const handleStopPickResult = useCallback((data) => {
+    setMapPickResult(data);
+    setRoutingOpen(prev => {
+      if (!prev && onRoutingOpen) onRoutingOpen();
+      return true;
+    });
+    if (onRoutingStateChange) onRoutingStateChange(true);
+    if (mapRef.current) mapRef.current.closePopup();
+  }, [onRoutingOpen, onRoutingStateChange]);
+
+  // Когда выбран конкретный маршрут транспорта, скрываем личную поездку (синяя OSRM-линия) — это разные сущности
+  useEffect(() => {
+    if (route) {
+      setRoutingRoute(null);
+      setRoutingOpen(false);
+    }
+  }, [route?.id]);
 
   const handleMapPick = useCallback(async (data) => {
     let name = `${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}`;
@@ -779,11 +876,11 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         />
       )}
 
-      {/* All routes as polylines */}
-      {(routes || []).map(r => {
+      {/* All routes as polylines — when a route is selected, show only it */}
+      {(route ? (routes || []).filter(r => r.id === route.id) : (routes || [])).map(r => {
         const pts = r.stops?.filter(s => s.lat && s.lng);
         if (!pts || pts.length < 2) return null;
-        const isSelected = route && r.id === route.id;
+        const isSelected = !!route;
         const geoPositions = routeGeometries[r.id];
         const positions = geoPositions || pts.map(s => [s.lat, s.lng]);
         return (
@@ -804,78 +901,50 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         );
       })}
 
-      {route?.stops?.map((stop, index) => {
-        if (!stop.lat || !stop.lng) return null;
-        const total = route.stops.length;
-        const remaining = total - 1 - index;
-        const isFirst = index === 0;
-        const isLast = index === total - 1;
-        const isWatched = watchedStop &&
-          Math.abs(stop.lat - watchedStop.lat) < 0.0001 &&
-          Math.abs(stop.lng - watchedStop.lng) < 0.0001;
-
-        const dotColor = isWatched ? '#FF6D00' : isFirst ? '#2e7d32' : isLast ? '#c62828' : '#1565C0';
-        const dotSize = isWatched ? 24 : (isFirst || isLast) ? 18 : 14;
-        const stopName = stop.name || `${t('busmap.stopDefaultName')} ${index + 1}`;
-
-        const icon = L.divIcon({
-          html: `<div style="position:relative;display:flex;flex-direction:column;align-items:center;">
-            <div style="
-              width:${dotSize}px;height:${dotSize}px;
-              border-radius:${isWatched ? '6px' : '50%'};
-              background:${dotColor};
-              border:2.5px solid #fff;
-              box-shadow:0 2px 8px rgba(0,0,0,0.25);
-              display:flex;align-items:center;justify-content:center;
-              ${isWatched ? 'outline: 3px solid rgba(255,109,0,0.35);' : ''}
-            ">
-              ${isFirst || isLast || isWatched ? '<svg width="' + (dotSize * 0.5) + '" height="' + (dotSize * 0.5) + '" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M16 6v6"/><path d="M2 12h20"/><path d="M18 18H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2Z"/></svg>' : ''}
-            </div>
-          </div>`,
-          className: '',
-          iconSize: [dotSize, dotSize],
-          iconAnchor: [dotSize / 2, dotSize / 2],
-        });
-
-        return (
-          <Marker key={`stop-${index}`} position={[stop.lat, stop.lng]} icon={icon}>
-            <Tooltip
-              direction="top"
-              offset={[0, -dotSize / 2 - 4]}
-              opacity={0.95}
-              permanent={isWatched || isFirst || isLast}
-            >
-              <div style={{
-                fontFamily: 'Inter, sans-serif',
-                fontSize: 10,
-                fontWeight: 700,
-                color: '#fff',
-                background: dotColor,
-                borderRadius: 6,
-                padding: '2px 6px',
-                whiteSpace: 'nowrap',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
-                border: '1.5px solid rgba(255,255,255,0.8)',
-              }}>
-                {stopName}
-              </div>
-            </Tooltip>
-            <Popup>
-              <div style={{ fontFamily: 'Inter, sans-serif', minWidth: 140 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>{stopName}</div>
-                <div style={{ fontSize: 11, color: '#888' }}>{`${t('busmap.stopLabel')} ${index + 1} ${t('busmap.of')} ${total}`}</div>
-                <div style={{ marginTop: 6, fontSize: 11, padding: '3px 8px', borderRadius: 6, display: 'inline-block',
-                  background: remaining > 0 ? '#e3f2fd' : '#e8f5e9',
-                  color: remaining > 0 ? '#1565c0' : '#2e7d32',
-                  fontWeight: 600,
-                }}>
-                  {remaining > 0 ? `${t('busmap.remainingStops')} ${remaining}` : t('busmap.lastStop')}
+      {(() => {
+        const sourceRoutes = route ? [route] : routes;
+        const allStops = collectUniqueStops(sourceRoutes);
+        return allStops.map((stop, idx) => {
+          const isWatched = watchedStop && Math.abs(stop.lat - watchedStop.lat) < 0.00012 && Math.abs(stop.lng - watchedStop.lng) < 0.00012;
+          const icon = L.divIcon({
+            html: isWatched
+              ? `<div style="position:relative;width:30px;height:30px;">
+                  <div style="position:absolute;inset:0;border-radius:50%;background:rgba(245,158,11,0.35);animation: k-ping 1.4s cubic-bezier(0,0,0.2,1) infinite;"></div>
+                  <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;background:#f59e0b;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(245,158,11,0.5);border:3px solid #fff;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 18v2"/><path d="M17 18v2"/></svg>
+                  </div>
                 </div>
-              </div>
-            </Popup>
-          </Marker>
-        );
-      })}
+                <style>@keyframes k-ping{75%,100%{transform:scale(1.6);opacity:0}}</style>`
+              : `<div style="width:22px;height:22px;border-radius:50%;background:#1565C0;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.3);border:2.5px solid #fff;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 18v2"/><path d="M17 18v2"/></svg>
+            </div>`,
+            className: '',
+            iconSize: isWatched ? [30, 30] : [22, 22],
+            iconAnchor: isWatched ? [15, 15] : [11, 11],
+          });
+          return (
+            <Marker key={`stop-all-${idx}`} position={[stop.lat, stop.lng]} icon={icon} zIndexOffset={isWatched ? 1000 : 0}>
+              <Popup maxWidth={300} className="stop-info-popup">
+                <StopInfoPopup
+                  stop={stop}
+                  routes={routes}
+                  routeGeometries={routeGeometries}
+                  routingOpen={routingOpen}
+                  onPickFrom={(s) => handleStopPickResult({ lat: s.lat, lng: s.lng, name: s.name, shortName: s.name, display_name: s.name, city: '', country: '', target: 'from' })}
+                  onPickTo={(s) => handleStopPickResult({ lat: s.lat, lng: s.lng, name: s.name, shortName: s.name, display_name: s.name, city: '', country: '', target: 'to' })}
+                />
+              </Popup>
+            </Marker>
+          );
+        });
+      })()}
+
+      <OsmStopMarkers
+        routes={routes}
+        routeGeometries={routeGeometries}
+        routingOpen={routingOpen}
+        onPickResult={handleStopPickResult}
+      />
 
       {vehicles.filter(v => v.lat && v.lng).map(v => (
         <AnimatedVehicleMarker key={v.id} vehicle={v} route={route} getEtaLabel={getEtaLabel} />
@@ -884,30 +953,36 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
 
 
       {/* Built route polyline + markers */}
-      {routingRoute && routingRoute.geometry && (
-        <>
-          <Polyline
-            positions={routingRoute.geometry}
-            color={routingRoute.mode === 'walking' ? '#7C3AED' : routingRoute.mode === 'cycling' ? '#059669' : '#2563EB'}
-            weight={6}
-            opacity={0.8}
-          />
-          {routingRoute.from && (
-            <Marker position={[routingRoute.from.lat, routingRoute.from.lng]} icon={routingFromIcon}>
-              <Popup><div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>📍 {routingRoute.from.shortName || 'Откуда'}</div></Popup>
-            </Marker>
-          )}
-          {routingRoute.to && (
-            <Marker position={[routingRoute.to.lat, routingRoute.to.lng]} icon={routingToIcon}>
-              <Popup><div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>🏁 {routingRoute.to.shortName || 'Куда'}</div></Popup>
-            </Marker>
-          )}
-          {routingRoute.waypoints && routingRoute.waypoints.filter(Boolean).map((wp, i) => (
-            <Marker key={`wp-${i}`} position={[wp.lat, wp.lng]} icon={routingIcon}>
-              <Popup><div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>➕ {wp.shortName || `Точка ${i + 1}`}</div></Popup>
-            </Marker>
-          ))}
-        </>
+      {((routingRoute && routingRoute.geometry) || (nav.isActive && nav.routeData && nav.routeData.geometry)) && (
+        (() => {
+          const navRoute = nav.isActive && nav.routeData ? nav.routeData : routingRoute;
+          const positions = navRoute.geometry;
+          return (
+            <>
+              <Polyline
+                positions={positions}
+                color={navRoute.mode === 'walking' ? '#7C3AED' : navRoute.mode === 'cycling' ? '#059669' : '#2563EB'}
+                weight={6}
+                opacity={0.8}
+              />
+              {navRoute.from && (
+                <Marker position={[navRoute.from.lat, navRoute.from.lng]} icon={routingFromIcon}>
+                  <Popup><div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>📍 {navRoute.from.shortName || navRoute.fromText || 'Откуда'}</div></Popup>
+                </Marker>
+              )}
+              {navRoute.to && (
+                <Marker position={[navRoute.to.lat, navRoute.to.lng]} icon={routingToIcon}>
+                  <Popup><div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>🏁 {navRoute.to.shortName || navRoute.toText || 'Куда'}</div></Popup>
+                </Marker>
+              )}
+              {navRoute.waypoints && navRoute.waypoints.filter(Boolean).map((wp, i) => (
+                <Marker key={`wp-${i}`} position={[wp.lat, wp.lng]} icon={routingIcon}>
+                  <Popup><div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>➕ {wp.shortName || `Точка ${i + 1}`}</div></Popup>
+                </Marker>
+              ))}
+            </>
+          );
+        })()
       )}
 
       {mapPickTarget && (
@@ -1004,6 +1079,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
           onLocateMe={handleLocateMe}
           mapPickTarget={mapPickTarget}
           mapPickResult={mapPickResult}
+          routes={routes}
         />
       )}
 

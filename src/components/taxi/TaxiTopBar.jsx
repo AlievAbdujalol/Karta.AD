@@ -1,123 +1,108 @@
 import { useState } from 'react';
-import { Bell, Settings, X, Check } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Bell, X, Check } from 'lucide-react';
 import { useNotificationCount } from '@/lib/NotificationContext';
 
 export default function TaxiTopBar({ isOnline, onToggle, userName, userPhoto }) {
-  const navigate = useNavigate();
   const { count, notifications, clear, markAsRead } = useNotificationCount();
   const [showPanel, setShowPanel] = useState(false);
 
   return (
-    <div className="absolute top-0 left-0 right-0 z-40 px-4 pt-3 pb-2" style={{ paddingTop: 'max(env(safe-area-inset-top, 12px), 12px)' }}>
-      <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl shadow-lg border border-white/20 dark:border-slate-700/30 px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center overflow-hidden ${isOnline ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
-                {userPhoto ? (
-                  <img src={userPhoto} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-white font-bold text-sm">{userName?.[0] || '?'}</span>
-                )}
-              </div>
-              <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white dark:border-slate-900 ${isOnline ? 'bg-emerald-400' : 'bg-slate-400'}`} />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-slate-800 dark:text-slate-100 leading-tight">{userName || 'Водитель'}</p>
-              <p className={`text-[10px] font-semibold ${isOnline ? 'text-emerald-500' : 'text-slate-400'}`}>
-                {isOnline ? 'На линии' : 'Оффлайн'}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setShowPanel(!showPanel)}
-              className="w-9 h-9 rounded-xl bg-slate-100/80 dark:bg-slate-800/80 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors relative"
-            >
-              <Bell size={16} />
-              {count > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 rounded-full border border-white dark:border-slate-900 flex items-center justify-center">
-                  <span className="text-[8px] text-white font-bold">{count > 9 ? '9+' : count}</span>
-                </span>
+    <div
+      className="pointer-events-none absolute inset-x-0 top-0 z-40 px-3"
+      style={{ paddingTop: 'max(env(safe-area-inset-top, 10px), 10px)' }}
+    >
+      <div className="pointer-events-auto mx-auto flex max-w-lg items-center gap-2">
+        <div className="glass-pill flex min-w-0 flex-1 items-center gap-2.5 rounded-full px-2 py-1.5">
+          <div className="relative shrink-0">
+            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-slate-200 text-sm font-bold text-slate-600 dark:bg-slate-700 dark:text-slate-200">
+              {userPhoto ? (
+                <img src={userPhoto} alt="" className="h-full w-full object-cover" />
+              ) : (
+                userName?.[0] || '?'
               )}
-            </button>
-            <button
-              onClick={() => navigate('/profile')}
-              className="w-9 h-9 rounded-xl bg-slate-100/80 dark:bg-slate-800/80 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-            >
-              <Settings size={16} />
-            </button>
+            </div>
+            <span
+              className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-slate-900 ${isOnline ? 'bg-emerald-500' : 'bg-slate-400'}`}
+            />
           </div>
-        </div>
-
-        <div className="mt-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[13px] font-semibold leading-tight text-slate-900 dark:text-white">
+              {userName || 'Водитель'}
+            </p>
+            <p className={`text-[11px] font-medium ${isOnline ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
+              {isOnline ? 'На линии' : 'Офлайн'}
+            </p>
+          </div>
           <button
+            type="button"
             onClick={onToggle}
-            className={`w-full py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+            className={`shrink-0 rounded-full px-3.5 py-2 text-[12px] font-bold transition-all active:scale-[0.97] ${
               isOnline
-                ? 'bg-gradient-to-r from-red-500 to-red-600 text-white shadow-lg shadow-red-500/25'
-                : 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/25'
+                ? 'bg-red-500 text-white shadow-sm shadow-red-500/25'
+                : 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/25'
             }`}
           >
-            <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-white animate-pulse' : 'bg-white/60'}`} />
-            {isOnline ? 'Выйти с линии' : 'Войти на линию'}
+            {isOnline ? 'Офлайн' : 'На линию'}
           </button>
         </div>
+
+        <button
+          type="button"
+          onClick={() => setShowPanel(true)}
+          className="glass-pill relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-600 dark:text-slate-300"
+          aria-label="Уведомления"
+        >
+          <Bell size={18} />
+          {count > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+              {count > 9 ? '9+' : count}
+            </span>
+          )}
+        </button>
       </div>
 
-      {/* Notification Panel */}
       {showPanel && (
-        <div className="fixed inset-0 z-50" onClick={() => setShowPanel(false)}>
-          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+        <div className="pointer-events-auto fixed inset-0 z-50" onClick={() => setShowPanel(false)}>
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" />
           <div
-            className="absolute top-20 left-4 right-4 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 max-h-[60vh] overflow-hidden animate-slide-up"
-            onClick={e => e.stopPropagation()}
+            className="absolute left-3 right-3 top-16 mx-auto max-h-[60vh] max-w-lg overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <Bell size={16} className="text-blue-500" />
-                <h3 className="text-sm font-bold">Уведомления</h3>
-                {count > 0 && <span className="px-1.5 py-0.5 bg-red-500 text-white text-[9px] font-bold rounded-full">{count}</span>}
-              </div>
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+              <h3 className="text-sm font-bold">Уведомления</h3>
               <div className="flex items-center gap-1">
                 {count > 0 && (
-                  <button onClick={clear} className="text-[10px] text-blue-500 font-bold px-2 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20">
-                    Очистить все
+                  <button type="button" onClick={clear} className="rounded-lg px-2 py-1 text-[11px] font-bold text-blue-600">
+                    Очистить
                   </button>
                 )}
-                <button onClick={() => setShowPanel(false)} className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
-                  <X size={14} />
+                <button
+                  type="button"
+                  onClick={() => setShowPanel(false)}
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400"
+                  aria-label="Закрыть"
+                >
+                  <X size={16} />
                 </button>
               </div>
             </div>
-
-            <div className="overflow-y-auto max-h-[50vh] custom-scrollbar">
+            <div className="custom-scrollbar max-h-[50vh] overflow-y-auto">
               {notifications.length === 0 ? (
-                <div className="text-center py-8">
-                  <Bell size={24} className="text-slate-300 dark:text-slate-600 mx-auto mb-2" />
-                  <p className="text-xs text-slate-400">Нет уведомлений</p>
-                </div>
+                <p className="py-10 text-center text-xs text-slate-400">Нет уведомлений</p>
               ) : (
-                notifications.map(n => (
-                  <div
+                notifications.map((n) => (
+                  <button
                     key={n.id}
+                    type="button"
                     onClick={() => markAsRead(n.id)}
-                    className="flex items-start gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 border-b border-slate-50 dark:border-slate-800/50 transition-colors cursor-pointer"
+                    className="flex w-full items-start gap-3 border-b border-slate-50 px-4 py-3 text-left dark:border-slate-800/60"
                   >
-                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <Bell size={12} className="text-blue-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{n.title || 'Уведомление'}</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5 truncate">{n.body || ''}</p>
-                      <p className="text-[9px] text-slate-300 dark:text-slate-600 mt-1">
-                        {new Date(n.created_at).toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
-                      </p>
+                      <p className="mt-0.5 truncate text-[11px] text-slate-400">{n.body || ''}</p>
                     </div>
-                    <Check size={12} className="text-slate-300 flex-shrink-0 mt-1" />
-                  </div>
+                    <Check size={12} className="mt-1 shrink-0 text-slate-300" />
+                  </button>
                 ))
               )}
             </div>
