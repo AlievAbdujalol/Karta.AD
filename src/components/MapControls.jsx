@@ -4,7 +4,7 @@ import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
 
 const TILE_LAYERS = [
-  { labelKey: 'mapControls.layerStandard', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', isHybrid: false },
+  { labelKey: 'mapControls.layerStandard', url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', isHybrid: false },
   { labelKey: 'mapControls.layerHybrid', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', isHybrid: true },
   { labelKey: 'mapControls.layerOsm', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', isHybrid: false },
   { labelKey: 'mapControls.layerEsriStreet', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', isHybrid: false },

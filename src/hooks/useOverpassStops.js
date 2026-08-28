@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMap } from 'react-leaflet';
 
 const OVERPASS_URLS = [
-  'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
   'https://overpass.openstreetmap.ru/api/interpreter',
 ];
 const LS_KEY = 'osm_stops_cache_v1';
@@ -66,17 +66,16 @@ export function useOverpassStops() {
       let lastStatus = 0;
       for (const url of OVERPASS_URLS) {
         try {
-          const resp = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-            body: `data=${encodeURIComponent(query)}`,
+          const resp = await fetch(`${url}?data=${encodeURIComponent(query)}`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
             signal: AbortSignal.timeout(15000),
           });
           lastStatus = resp.status;
-          if (resp.status === 429) {
+          if (resp.status === 429 || resp.status === 406) {
             cooldownUntilRef.current = Date.now() + 60000;
             fetchedKeys.current.add(key);
-            console.warn('[OSM] 429 — пауза 60с');
+            if (resp.status === 429) console.warn('[OSM] 429 — пауза 60с');
             fetchingRef.current = false;
             return;
           }
@@ -88,7 +87,6 @@ export function useOverpassStops() {
         }
       }
       if (!data) {
-        if (lastStatus === 429) console.warn('[OSM] 429 — попробуйте позже');
         return;
       }
       const stops = (data.elements || [])
