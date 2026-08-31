@@ -40,7 +40,7 @@ function MapPicker({ stops, onSelect, onClose, color, selectedIndex, onAddNew })
       const map = L.default.map(mapRef.current, { zoomControl: false, attributionControl: false }).setView(center, 13);
       mapInstanceRef.current = map;
 
-      L.default.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+      L.default.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_2m2c_1_fd237f9c15572ee356a4aa42', { subdomains: 'abcd' }).addTo(map);
 
       // Click on map to add new stop
       map.on('click', (e) => {

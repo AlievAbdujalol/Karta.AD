@@ -79,7 +79,7 @@ export default function TaxiDriverDashboard() {
   useEffect(() => { currentOrderRef.current = currentOrder; }, [currentOrder]);
   useEffect(() => { driverPosRef.current = driverPosition; }, [driverPosition]);
 
-  const TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+  const TILE_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_2m2c_1_fd237f9c15572ee356a4aa42';
   const ATTR = '&copy; OpenStreetMap contributors';
 
   const loadStats = useCallback(async () => {

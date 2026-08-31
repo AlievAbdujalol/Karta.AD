@@ -1,0 +1,153 @@
+
+  // Fill with geolocation
+  const fillWithMyLocation = useCallback(async (target) => {
+    if (!navigator.geolocation) { toast.error('Геолокация не поддерживается'); return; }
+    const tid = toast.loading('Определяем местоположение…');
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const { latitude: lat, longitude: lng } = pos.coords;
+      let shortName = lat.toFixed(5) + ', ' + lng.toFixed(5);
+      try {
+        const r = await fetch(
+          'https://nominatim.openstreetmap.org/reverse?format=json&accept-language=ru&lat=' + lat + '&lon=' + lng,
+          { headers: { 'User-Agent': 'KartaAD/1.0' }, signal: AbortSignal.timeout(4000) },
+        );
+        if (r.ok) { const d = await r.json(); if (d.display_name) shortName = d.display_name.split(',').slice(0, 2).join(', '); }
+      } catch {}
+      const place = { lat, lng, name: shortName, shortName };
+      if (target === 'from') { setFrom(place); setFromText(shortName); }
+      else { setTo(place); setToText(shortName); }
+      pushRecent(place); toast.dismiss(tid); toast.success('Местоположение установлено');
+    }, (err) => {
+      toast.dismiss(tid);
+      toast.error(err.code === 1 ? 'Разрешите доступ к геолокации' : 'Не удалось получить местоположение');
+    }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
+  }, []);
+
+  // Build route
+  const buildRoute = useCallback(async () => {
+    if (!from || !to) return;
+    setLoading(true); setError(null); setOsrmRoute(null); setTransitResults(null);
+    setFallbackWalk(null); setSelectedTransitIdx(0); setShowSteps(false);
+
+    const isTransit = transportMode === 'bus' || transportMode === 'minibus';
+
+    if (isTransit) {
+      let result;
+      try { result = await findTransitRoutes(from, to, routes, transportMode); }
+      catch { result = { direct: [], transfers: [], best: null }; }
+
+      if (result.best) {
+        setTransitResults(result);
+        const option = result.best;
+        onRouteBuilt?.({
+          mode: transportMode, transitOption: option, segments: option.segments,
+          geometry: option.segments.flatMap((s) => s.geometry || []),
+          distance: option.totalDistance, duration: option.totalDuration,
+          from, to, fromText, toText, steps: [],
+        });
+      } else {
+        const walk = await buildOsrmRoute(from, to, 'walking');
+        if (walk) {
+          setFallbackWalk(walk);
+          toast.info('Маршрут транспортом не найден — показан пешеходный');
+          onRouteBuilt?.({ ...walk, mode: 'walking', from, to, fromText, toText, segments: null });
+        } else {
+          setError('Маршрут не найден. Проверьте точки и попробуйте снова.');
+        }
+      }
+    } else {
+      const mode = TRANSPORT_MODES.find((m) => m.id === transportMode);
+      const result = await buildOsrmRoute(from, to, mode?.osrmProfile || 'driving');
+      if (result) {
+        setOsrmRoute(result);
+        onRouteBuilt?.({ ...result, mode: transportMode, from, to, fromText, toText, segments: null });
+      } else {
+        setError('Маршрут не найден. Проверьте точки или смените режим.');
+      }
+    }
+    setLoading(false);
+  }, [from, to, transportMode, routes, fromText, toText, onRouteBuilt]);
+
+  useEffect(() => {
+    const prev = prevRef.current;
+    const changed = prev.from !== from || prev.to !== to || prev.mode !== transportMode;
+    prevRef.current = { from, to, mode: transportMode };
+    if (from && to && changed) buildRoute();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, to, transportMode]);
+
+  // Swap
+  const handleSwap = useCallback(() => {
+    setFrom(to); setTo(from); setFromText(toText); setToText(fromText);
+  }, [from, to, fromText, toText]);
+
+  // Transit option selection
+  const allTransitOptions = useMemo(() => {
+    if (!transitResults) return [];
+    return [...(transitResults.direct || []), ...(transitResults.transfers || [])];
+  }, [transitResults]);
+
+  const selectedTransitOption = allTransitOptions[selectedTransitIdx] ?? null;
+
+  const handleSelectTransit = useCallback((idx) => {
+    setSelectedTransitIdx(idx);
+    const option = allTransitOptions[idx];
+    if (!option) return;
+    onRouteBuilt?.({
+      mode: transportMode, transitOption: option, segments: option.segments,
+      geometry: option.segments.flatMap((s) => s.geometry || []),
+      distance: option.totalDistance, duration: option.totalDuration,
+      from, to, fromText, toText, steps: [],
+    });
+  }, [allTransitOptions, from, to, fromText, toText, transportMode, onRouteBuilt]);
+
+  // Navigation launch
+  const handleStartNavigation = useCallback(() => {
+    const isTransit = transportMode === 'bus' || transportMode === 'minibus';
+    if (isTransit && selectedTransitOption) {
+      const opt = selectedTransitOption;
+      const navRoute = {
+        mode: transportMode, transitOption: opt, segments: opt.segments,
+        geometry: opt.segments.flatMap((s) => s.geometry || []),
+        distance: opt.totalDistance, duration: opt.totalDuration, steps: [],
+        from: { lat: from.lat, lng: from.lng, shortName: fromText },
+        to:   { lat: to.lat,   lng: to.lng,   shortName: toText },
+      };
+      if (onStartNavigation) onStartNavigation(navRoute);
+      else navCtl?.startNavigation?.(navRoute);
+      onClose?.(); return;
+    }
+    const routeSource = isTransit ? fallbackWalk : osrmRoute;
+    if (!routeSource) return;
+    const navRoute = {
+      ...routeSource,
+      mode: isTransit ? 'walking' : transportMode,
+      from: { lat: from.lat, lng: from.lng, shortName: fromText },
+      to:   { lat: to.lat,   lng: to.lng,   shortName: toText },
+    };
+    if (onStartNavigation) onStartNavigation(navRoute);
+    else navCtl?.startNavigation?.(navRoute);
+    onClose?.();
+  }, [transportMode, selectedTransitOption, osrmRoute, fallbackWalk, from, to, fromText, toText, onStartNavigation, navCtl, onClose]);
+
+  // Share
+  const handleShare = useCallback(async () => {
+    if (!from || !to) return;
+    const url = window.location.origin + window.location.pathname + '#route=' + encodeURIComponent(JSON.stringify({
+      from: { lat: from.lat, lng: from.lng, name: fromText },
+      to:   { lat: to.lat,   lng: to.lng,   name: toText },
+    }));
+    try { await navigator.clipboard.writeText(url); setCopied(true); toast.success('Ссылка скопирована'); setTimeout(() => setCopied(false), 2500); }
+    catch { toast.info(url); }
+  }, [from, to, fromText, toText]);
+
+  // Derived
+  const isTransit = transportMode === 'bus' || transportMode === 'minibus';
+  const hasResult = !!osrmRoute || (transitResults && allTransitOptions.length > 0) || !!fallbackWalk;
+  const boardStopForEta = selectedTransitOption?.boardStop ?? null;
+  const etaInfo = boardStopForEta && selectedTransitOption?.route
+    ? etaToStop(vehicles, selectedTransitOption.route.id, boardStopForEta) : null;
+  const dur = selectedTransitOption?.totalDuration || osrmRoute?.duration || fallbackWalk?.duration || 0;
+  const arrivalTime = new Date(Date.now() + dur * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  const nowTime = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  const picking = !!mapPickTarget;

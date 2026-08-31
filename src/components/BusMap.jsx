@@ -2,7 +2,10 @@
 import { getNextStopEta } from '@/utils/eta';
 import L from 'leaflet';
 import { useEffect, useMemo, useRef, useState, useCallback, Fragment } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, ScaleControl, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, ScaleControl, useMap, useMapEvents } from 'react-leaflet';
+import MarkerClusterGroup from 'react-leaflet-cluster';
+import 'react-leaflet-cluster/lib/assets/MarkerCluster.css';
+import 'react-leaflet-cluster/lib/assets/MarkerCluster.Default.css';
 import MapControls, { TILE_LAYERS, LABEL_OVERLAY_URL } from './MapControls';
 import RoutingPanel from './RoutingPanel';
 import StopInfoPopup, { collectUniqueStops } from './StopInfoPopup';
@@ -142,6 +145,7 @@ function UserLocationMarker() {
 
   return (
     <>
+      <Circle center={pos} radius={Math.min(accuracy || 0, 80)} pathOptions={{ color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.12, weight: 1.2 }} />
       <Marker position={pos} icon={userIcon} zIndexOffset={1000}>
         <Popup>
           <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, textAlign: 'center' }}>
@@ -473,8 +477,8 @@ function NavigationCamera({ followUser, userPosition, reroute, routeData }) {
 }
 
 const OsmStopIcon = L.divIcon({
-  html: `<div style="width:18px;height:18px;border-radius:50%;background:#fff;color:#1565C0;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.25);border:2px solid #1565C0;">
-    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#1565C0" stroke-width="2.5"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 18v2"/><path d="M17 18v2"/></svg>
+  html: `<div style="width:18px;height:18px;border-radius:50%;background:#e2e8f0;color:#94a3b8;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.15);border:2px solid #94a3b8;opacity:0.75;">
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 18v2"/><path d="M17 18v2"/></svg>
   </div>`,
   className: '',
   iconSize: [18, 18],
@@ -503,20 +507,28 @@ function OsmStopMarkers({ routes, routeGeometries, routingOpen, onPickResult }) 
   // skip OSM stops that are very close to an existing route stop (avoid duplicate icons)
   const routePts = (routes || []).flatMap(r => r.stops || []).filter(s => s.lat && s.lng);
   const filtered = osmStops.filter(os => !routePts.some(rs => distM2(os.lat, os.lng, rs.lat, rs.lng) < 35));
-  return filtered.map(s => (
-    <Marker key={`osm-${s.id}`} position={[s.lat, s.lng]} icon={OsmStopIcon}>
-      <Popup maxWidth={300} className="stop-info-popup">
-        <StopInfoPopup
-          stop={{ lat: s.lat, lng: s.lng, name: s.name }}
-          routes={routes}
-          routeGeometries={routeGeometries}
-          routingOpen={routingOpen}
-          onPickFrom={(st) => onPickResult({ lat: st.lat, lng: st.lng, name: st.name, shortName: st.name, display_name: st.name, city: '', country: '', target: 'from' })}
-          onPickTo={(st) => onPickResult({ lat: st.lat, lng: st.lng, name: st.name, shortName: st.name, display_name: st.name, city: '', country: '', target: 'to' })}
-        />
-      </Popup>
-    </Marker>
-  ));
+  // viewport + кластеризация — не рендерить сотни вне экрана
+  const bounds = map.getBounds();
+  const inView = filtered.filter(s => bounds.contains([s.lat, s.lng]));
+  const limited = inView.slice(0, 90);
+  return (
+    <MarkerClusterGroup chunkedLoading maxClusterRadius={42} spiderfyOnMaxZoom showCoverageOnHover={false} zoomToBoundsOnClick>
+      {limited.map(s => (
+        <Marker key={`osm-${s.id}`} position={[s.lat, s.lng]} icon={OsmStopIcon}>
+          <Popup maxWidth={300} className="stop-info-popup">
+            <StopInfoPopup
+              stop={{ lat: s.lat, lng: s.lng, name: s.name }}
+              routes={routes}
+              routeGeometries={routeGeometries}
+              routingOpen={routingOpen}
+              onPickFrom={(st) => onPickResult({ lat: st.lat, lng: st.lng, name: st.name, shortName: st.name, display_name: st.name, city: '', country: '', target: 'from' })}
+              onPickTo={(st) => onPickResult({ lat: st.lat, lng: st.lng, name: st.name, shortName: st.name, display_name: st.name, city: '', country: '', target: 'to' })}
+            />
+          </Popup>
+        </Marker>
+      ))}
+    </MarkerClusterGroup>
+  );
 }
 
 const TILE_KEY = 'karta_tile_index';
@@ -885,17 +897,14 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         const positions = geoPositions || pts.map(s => [s.lat, s.lng]);
         return (
           <Fragment key={r.id}>
-            <Polyline
-              positions={positions}
-              color={r.color || '#1565C0'}
-              weight={isSelected ? 6 : 3}
-              opacity={isSelected ? 0.9 : 0.4}
-            />
+            {/* Белая обводка + яркая линия — главный визуальный элемент */}
+            <Polyline positions={positions} color="white" weight={isSelected ? 9 : 6} opacity={isSelected ? 0.95 : 0.6} lineCap="round" lineJoin="round" />
+            <Polyline positions={positions} color={r.color || '#2563EB'} weight={isSelected ? 6 : 3.5} opacity={isSelected ? 1 : 0.7} lineCap="round" lineJoin="round" />
             <RouteNumberLabel
               positions={positions}
               routeNumber={r.number}
               routeName={r.name}
-              color={r.color || '#1565C0'}
+              color={r.color || '#2563EB'}
             />
           </Fragment>
         );
@@ -904,7 +913,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       {(() => {
         const sourceRoutes = route ? [route] : routes;
         const allStops = collectUniqueStops(sourceRoutes);
-        return allStops.map((stop, idx) => {
+        const markers = allStops.map((stop, idx) => {
           const isWatched = watchedStop && Math.abs(stop.lat - watchedStop.lat) < 0.00012 && Math.abs(stop.lng - watchedStop.lng) < 0.00012;
           const icon = L.divIcon({
             html: isWatched
@@ -937,6 +946,10 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
             </Marker>
           );
         });
+        if (!route && allStops.length > 55) {
+          return <MarkerClusterGroup chunkedLoading maxClusterRadius={38} spiderfyOnMaxZoom showCoverageOnHover={false}>{markers}</MarkerClusterGroup>;
+        }
+        return markers;
       })()}
 
       <OsmStopMarkers
@@ -959,11 +972,14 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
           const positions = navRoute.geometry;
           return (
             <>
+              <Polyline positions={positions} color="white" weight={10} opacity={0.95} lineCap="round" lineJoin="round" />
               <Polyline
                 positions={positions}
                 color={navRoute.mode === 'walking' ? '#7C3AED' : navRoute.mode === 'cycling' ? '#059669' : '#2563EB'}
                 weight={6}
-                opacity={0.8}
+                opacity={1}
+                lineCap="round"
+                lineJoin="round"
               />
               {navRoute.from && (
                 <Marker position={[navRoute.from.lat, navRoute.from.lng]} icon={routingFromIcon}>
@@ -1002,28 +1018,78 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       {/* Navigation camera follow + arrow */}
       {nav.isActive && <NavigationCamera followUser={nav.followUser} userPosition={nav.userPosition} reroute={nav.reroute} routeData={nav.routeData} />}
 
-      {/* Group route members */}
+      {/* Group route members — улучшенные маркеры с статусом и направлением */}
       {groupRouteMembers.filter(m => m.lat && m.lng).map((member) => {
         const isCreator = member.role === 'creator';
-        const color = isCreator ? '#3b82f6' : '#ef4444';
-        const icon = L.divIcon({
-          className: '',
-          html: `<div style="position:relative;width:40px;height:40px;">
-            <div style="width:40px;height:40px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);">
-              <span style="color:white;font-size:13px;font-weight:700;">${(member.full_name || member.user_id || '?')[0]}</span>
+        const status = member.status || 'online';
+        const isMoving = status === 'moving';
+        const isOffline = status === 'offline';
+
+        // Цвет по роли
+        const color = isCreator ? '#3b82f6' : '#8b5cf6';
+        const dotColor = isOffline ? '#64748b' : isMoving ? '#60a5fa' : '#22c55e';
+        const borderColor = isOffline ? '#475569' : isCreator ? '#60a5fa' : '#a78bfa';
+
+        // Стрелка направления
+        const headingArrow = (member.heading != null && isMoving)
+          ? `<div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%) rotate(${member.heading}deg);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:10px solid ${color};opacity:0.9;"></div>`
+          : '';
+
+        // Пульсирующее кольцо если движется
+        const pulse = isMoving
+          ? `<div style="position:absolute;inset:-6px;border-radius:50%;border:2px solid ${color};opacity:0.4;animation:k-ping 1.4s cubic-bezier(0,0,0.2,1) infinite;"></div>`
+          : '';
+
+        const html = `
+          <div style="position:relative;width:44px;height:44px;">
+            ${pulse}
+            ${headingArrow}
+            <div style="width:44px;height:44px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;border:3px solid ${borderColor};box-shadow:0 2px 10px rgba(0,0,0,0.35);opacity:${isOffline ? 0.55 : 1};">
+              <span style="color:white;font-size:14px;font-weight:800;">${(member.full_name || member.user_id || '?')[0].toUpperCase()}</span>
             </div>
-            <div style="position:absolute;bottom:-3px;right:-3px;width:14px;height:14px;background:#22c55e;border-radius:50%;border:2px solid white;"></div>
-          </div>`,
-          iconSize: [40, 40],
-          iconAnchor: [20, 20],
-        });
+            <div style="position:absolute;bottom:-2px;right:-2px;width:14px;height:14px;background:${dotColor};border-radius:50%;border:2.5px solid white;"></div>
+          </div>
+          <style>@keyframes k-ping{75%,100%{transform:scale(1.8);opacity:0}}</style>
+        `;
+
+        const icon = L.divIcon({ className: '', html, iconSize: [44, 44], iconAnchor: [22, 22] });
+
+        const distLabel = member.distFromMe != null
+          ? member.distFromMe >= 1000
+            ? `${(member.distFromMe / 1000).toFixed(1)} км`
+            : `${Math.round(member.distFromMe)} м`
+          : null;
+        const etaLabel = member.etaSec != null
+          ? Math.round(member.etaSec / 60) < 1 ? '< 1 мин' : `${Math.round(member.etaSec / 60)} мин`
+          : null;
+        const statusText = isOffline ? 'Оффлайн' : isMoving ? 'В движении' : 'Онлайн';
+
         return (
-          <Marker key={`group-member-${member.user_id}`} position={[member.lat, member.lng]} icon={icon}>
-            <Popup>
-              <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>
-                <div>{member.full_name || 'Участник'}</div>
-                <div style={{ fontSize: 10, color: isCreator ? '#3b82f6' : '#ef4444', marginTop: 2 }}>
-                  {isCreator ? 'Создатель' : 'Участник'}
+          <Marker key={`group-member-${member.user_id}`} position={[member.lat, member.lng]} icon={icon} zIndexOffset={isCreator ? 200 : 100}>
+            <Popup maxWidth={220} className="stop-info-popup">
+              <div style={{ fontFamily: 'Inter, system-ui, sans-serif', minWidth: 160 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: '50%', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <span style={{ color: 'white', fontSize: 13, fontWeight: 800 }}>{(member.full_name || '?')[0].toUpperCase()}</span>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{member.full_name || 'Участник'}</div>
+                    <div style={{ fontSize: 10, color: isOffline ? '#94a3b8' : isMoving ? '#3b82f6' : '#22c55e', marginTop: 1 }}>{statusText}</div>
+                  </div>
+                </div>
+                {(distLabel || etaLabel) && (
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 6, fontSize: 11, color: '#64748b' }}>
+                    {distLabel && <span>📍 {distLabel}</span>}
+                    {etaLabel && <span>⏱ {etaLabel} пешком</span>}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    onClick={() => { if (mapRef.current) mapRef.current.closePopup(); }}
+                    style={{ flex: 1, padding: '5px 0', borderRadius: 8, background: '#f1f5f9', border: 'none', fontSize: 11, fontWeight: 700, cursor: 'pointer', color: '#475569' }}
+                  >
+                    👁 На карте
+                  </button>
                 </div>
               </div>
             </Popup>
@@ -1031,26 +1097,45 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         );
       })}
 
-      {/* Contact locations */}
+      {/* Contact locations — фиолетовые маркеры друзей поделившихся геолокацией */}
       {contactLocations.filter(c => c.lat && c.lng).map((contact) => {
-        const icon = L.divIcon({
-          className: '',
-          html: `<div style="position:relative;width:36px;height:36px;">
-            <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);">
-              <span style="color:white;font-size:12px;font-weight:700;">${(contact.full_name || '?')[0]}</span>
+        const ago = contact.updated_at ? Date.now() - new Date(contact.updated_at).getTime() : Infinity;
+        const isStale = ago > 5 * 60 * 1000;
+        const isMoving = contact.speed && contact.speed > 1;
+
+        const headingArrow = (contact.heading != null && isMoving)
+          ? `<div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%) rotate(${contact.heading}deg);width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:9px solid #7c3aed;opacity:0.85;"></div>`
+          : '';
+
+        const html = `
+          <div style="position:relative;width:38px;height:38px;">
+            ${headingArrow}
+            <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;border:3px solid #a78bfa;box-shadow:0 2px 8px rgba(0,0,0,0.3);opacity:${isStale ? 0.5 : 1};">
+              <span style="color:white;font-size:12px;font-weight:800;">${(contact.full_name || '?')[0].toUpperCase()}</span>
             </div>
-            <div style="position:absolute;bottom:-2px;right:-2px;width:12px;height:12px;background:#22c55e;border-radius:50%;border:2px solid white;"></div>
-          </div>`,
-          iconSize: [36, 36],
-          iconAnchor: [18, 18],
-        });
+            <div style="position:absolute;bottom:-2px;right:-2px;width:12px;height:12px;background:${isStale ? '#64748b' : '#22c55e'};border-radius:50%;border:2px solid white;"></div>
+          </div>
+        `;
+        const icon = L.divIcon({ className: '', html, iconSize: [38, 38], iconAnchor: [19, 19] });
+
+        const timeLabel = contact.updated_at
+          ? new Date(contact.updated_at).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })
+          : '';
+
         return (
-          <Marker key={`contact-${contact.user_id}`} position={[contact.lat, contact.lng]} icon={icon}>
-            <Popup>
-              <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>
-                <div>{contact.full_name}</div>
-                <div style={{ fontSize: 10, color: '#666', marginTop: 2 }}>
-                  {contact.updated_at ? new Date(contact.updated_at).toLocaleTimeString('ru') : ''}
+          <Marker key={`contact-${contact.user_id}`} position={[contact.lat, contact.lng]} icon={icon} zIndexOffset={50}>
+            <Popup maxWidth={200} className="stop-info-popup">
+              <div style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <span style={{ color: 'white', fontSize: 12, fontWeight: 800 }}>{(contact.full_name || '?')[0].toUpperCase()}</span>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{contact.full_name}</div>
+                    <div style={{ fontSize: 10, color: isStale ? '#94a3b8' : '#22c55e' }}>
+                      {isStale ? 'Давно' : isMoving ? 'В движении' : 'Онлайн'}{timeLabel ? ` · ${timeLabel}` : ''}
+                    </div>
+                  </div>
                 </div>
               </div>
             </Popup>
@@ -1080,6 +1165,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
           mapPickTarget={mapPickTarget}
           mapPickResult={mapPickResult}
           routes={routes}
+          vehicles={vehicles}
         />
       )}
 

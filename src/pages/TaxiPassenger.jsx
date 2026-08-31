@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import { useLocation } from 'react-router-dom';
 import {
-  MapPin, Search, X, Loader2, ChevronRight, ChevronDown, Phone, Share2,
+  MapPin, Search, X, Loader2, Car, ChevronRight, ChevronDown, Phone, Share2,
   AlertTriangle, Star, Navigation, Banknote, CreditCard, QrCode, Heart,
   Home, Briefcase, GraduationCap, Mic, MessageCircle, Wallet, LocateFixed, SlidersHorizontal,
 } from 'lucide-react';
@@ -276,7 +276,7 @@ export default function TaxiPassenger() {
     if (trip.category) setCategory(trip.category);
   }, [location.state]);
 
-  const TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+  const TILE_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_2m2c_1_fd237f9c15572ee356a4aa42';
   const ATTR = '&copy; OpenStreetMap contributors';
 
   const routeInfo = useMemo(() => {

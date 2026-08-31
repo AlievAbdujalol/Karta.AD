@@ -34,7 +34,7 @@ export default function HomeHeader({
   const isDriver = user?.role === 'driver';
 
   return (
-    <div className="flex flex-col gap-1.5 w-[calc(100vw-16px)] sm:w-full sm:max-w-[680px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl rounded-2xl border border-slate-200/60 dark:border-slate-800/80 shadow-[0_8px_32px_rgba(15,23,42,0.1)] pointer-events-auto">
+    <div className="flex flex-col gap-1 w-[calc(100vw-16px)] sm:w-full sm:max-w-[640px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl rounded-[20px] border border-slate-200/60 dark:border-slate-800/80 shadow-[0_8px_32px_rgba(15,23,42,0.1)] pointer-events-auto">
       {/* Row 1: Logo + Search + Actions */}
       <div className="flex items-center gap-2 px-2.5 py-2 sm:px-3 sm:py-1.5">
         <div onClick={() => navigate('/')} className="flex-shrink-0 cursor-pointer group">

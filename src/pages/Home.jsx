@@ -27,7 +27,7 @@ export default function Home() {
   const { t, lang, setLang } = useLanguage();
   const { user: currentUser } = useCurrentUser();
   const { contactLocations, shareWith, unshareWith } = useLocationSharing(currentUser?.id);
-  const { groupRoute, members, onlineMembers, sharingEnabled: groupSharingEnabled, createGroup, joinGroup, leaveGroup, finishGroup, toggleSharing: toggleGroupSharing } = useGroupRoute(currentUser?.id);
+  const { groupRoute, members, onlineMembers, sharingEnabled: groupSharingEnabled, createGroup, joinGroup, leaveGroup, finishGroup, toggleSharing: toggleGroupSharing, myPosition, meetPoint } = useGroupRoute(currentUser?.id);
   const nav = useNavigation();
   const [cities, setCities] = useState([]);
   const [routes, setRoutes] = useState([]);
@@ -148,6 +148,20 @@ export default function Home() {
 
   const handleShareTrip = useCallback(() => {
     setPanelVisible(v => !v);
+  }, []);
+
+  // Открыть RoutingPanel с заданной точкой назначения (из GroupRoutePanel)
+  const handleNavigateTo = useCallback((place) => {
+    setPanelVisible(false);
+    // Сохраняем целевую точку в localStorage — RoutingPanel подхватит при открытии
+    try {
+      localStorage.setItem('karta_route_to', JSON.stringify({
+        lat: place.lat, lng: place.lng,
+        name: place.name || 'Точка', shortName: place.name || 'Точка',
+      }));
+    } catch {}
+    setSheetState('collapsed');
+    toast.info(`Откройте «Найти маршрут» — цель уже установлена: ${place.name || 'Точка'}`, { duration: 4000 });
   }, []);
 
   const handleSelectResult = useCallback((item) => {
@@ -327,6 +341,8 @@ export default function Home() {
           members={members}
           onlineMembers={onlineMembers}
           sharingEnabled={groupSharingEnabled}
+          myPosition={myPosition}
+          meetPoint={meetPoint}
           onLeave={leaveGroup}
           onFinish={finishGroup}
           onToggleSharing={toggleGroupSharing}
@@ -334,6 +350,9 @@ export default function Home() {
           onShareWith={shareWith}
           onUnshareWith={unshareWith}
           onClose={() => setPanelVisible(false)}
+          onNavigateTo={handleNavigateTo}
+          onFlyTo={(p) => setFlyTo({ lat: p.lat, lng: p.lng, zoom: 16 })}
+          userId={currentUser?.id}
         />
       )}
 

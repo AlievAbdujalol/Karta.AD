@@ -1,0 +1,138 @@
+/**
+ * RoutingPanel.jsx
+ * Full routing panel:
+ *   - Driving / Taxi / Walking / Cycling via OSRM
+ *   - Bus / Minibus via findTransitRoutes (walk -> bus -> walk segments)
+ *   - ETA to board stop, driver/vehicle status
+ *   - Nominatim autocomplete, geolocation auto-fill
+ *   - Navigation launch via useNavigation
+ *   Props: onClose, onRouteBuilt, onStartNavigation, onRequestMapPick,
+ *          mapPickResult, mapPickTarget, routes=[], vehicles=[]
+ */
+
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import {
+  Navigation, MapPin, X, RotateCw, Route, AlertCircle, Loader2, Crosshair,
+  ChevronDown, Play, Car, Bike, PersonStanding, Clock3, ArrowLeftRight,
+  LocateFixed, Share2, Copy, Check, Bus, Truck, Volume2, VolumeX, Timer,
+  ArrowRight, Footprints, CheckCircle2, CircleDot, Radio, WifiOff,
+} from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useNavigation } from '@/lib/NavigationContext';
+import {
+  findTransitRoutes, fmtDist, fmtDur, distanceM, buildSegmentPolylines,
+} from '@/lib/transitRouter';
+import { toast } from 'sonner';
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const TRANSPORT_MODES = [
+  { id: 'driving',  icon: Car,            label: '\u0410\u0432\u0442\u043e',      osrmProfile: 'driving',  color: '#2563EB' },
+  { id: 'taxi',     icon: Car,            label: '\u0422\u0430\u043a\u0441\u0438',     osrmProfile: 'driving',  color: '#F59E0B' },
+  { id: 'walking',  icon: PersonStanding, label: '\u041f\u0435\u0448\u043a\u043e\u043c',    osrmProfile: 'walking',  color: '#7C3AED' },
+  { id: 'cycling',  icon: Bike,           label: '\u0412\u0435\u043b\u043e',      osrmProfile: 'cycling',  color: '#059669' },
+  { id: 'bus',      icon: Bus,            label: '\u0410\u0432\u0442\u043e\u0431\u0443\u0441',   osrmProfile: null,       color: '#EA580C' },
+  { id: 'minibus',  icon: Truck,          label: '\u041c\u0430\u0440\u0448\u0440\u0443\u0442\u043a\u0430', osrmProfile: null,       color: '#DC2626' },
+];
+
+const OSRM_ENDPOINTS = {
+  driving: 'https://router.project-osrm.org/route/v1/driving',
+  walking: 'https://routing.openstreetmap.de/routed-foot/route/v1/foot',
+  cycling: 'https://routing.openstreetmap.de/routed-bike/route/v1/bike',
+};
+
+const RECENT_KEY = 'karta_route_recent_v2';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function getRecent() {
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch { return []; }
+}
+
+function pushRecent(place) {
+  try {
+    const cur = getRecent().filter(
+      (p) => !(Math.abs(p.lat - place.lat) < 0.0005 && Math.abs(p.lng - place.lng) < 0.0005),
+    );
+    cur.unshift({ shortName: place.shortName, lat: place.lat, lng: place.lng, name: place.name || place.shortName });
+    localStorage.setItem(RECENT_KEY, JSON.stringify(cur.slice(0, 6)));
+  } catch {}
+}
+
+async function searchAddress(query, limit = 5) {
+  if (!query || query.length < 2) return [];
+  try {
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&accept-language=ru&addressdetails=1'
+      + '&q=' + encodeURIComponent(query) + '&limit=' + limit;
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': 'KartaAD/1.0' },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return data.map((item) => ({
+      id: item.place_id,
+      name: item.display_name,
+      shortName: item.display_name.split(',').slice(0, 3).join(', '),
+      lat: parseFloat(item.lat),
+      lng: parseFloat(item.lon),
+      type: item.type,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function buildOsrmRoute(from, to, profile = 'driving') {
+  const endpoint = OSRM_ENDPOINTS[profile] || OSRM_ENDPOINTS.driving;
+  const coords = from.lng + ',' + from.lat + ';' + to.lng + ',' + to.lat;
+  try {
+    const resp = await fetch(
+      endpoint + '/' + coords + '?overview=full&geometries=geojson&steps=true',
+      { signal: AbortSignal.timeout(10000) },
+    );
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (!data.routes?.length) return null;
+    const r = data.routes[0];
+    const geometry = r.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+    const steps = [];
+    let cursor = 0;
+    (r.legs || []).forEach((leg) => {
+      (leg.steps || []).forEach((step) => {
+        steps.push({
+          instruction: step.maneuver?.type || '',
+          modifier:    step.maneuver?.modifier || '',
+          name:        step.name || '',
+          distance:    step.distance || 0,
+          duration:    step.duration || 0,
+          start:       geometry[cursor] || [0, 0],
+        });
+        cursor = Math.min(cursor + 1, geometry.length - 1);
+      });
+    });
+    return { distance: r.distance, duration: r.duration, geometry, steps };
+  } catch {
+    return null;
+  }
+}
+
+/** ETA of nearest active vehicle to a stop. Returns { sec, vehicle } or null. */
+function etaToStop(vehicles, routeId, stop) {
+  const active = (vehicles || []).filter(
+    (v) => v.route_id === routeId && v.is_active && v.lat && v.lng,
+  );
+  if (!active.length) return null;
+  let best = null;
+  for (const v of active) {
+    const d = distanceM(v.lat, v.lng, stop.lat, stop.lng);
+    const speed = (v.speed || 30) / 3.6;
+    const sec = d / speed;
+    if (!best || sec < best.sec) best = { sec, vehicle: v };
+  }
+  return best;
+}

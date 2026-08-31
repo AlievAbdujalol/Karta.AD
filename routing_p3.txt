@@ -1,0 +1,191 @@
+
+// ---------------------------------------------------------------------------
+// Sub-component: TransitCard
+// ---------------------------------------------------------------------------
+
+function TransitCard({ option, isSelected, onSelect, vehicles }) {
+  const isTransfer = option.type === 'transfer';
+  const routes = isTransfer ? (option.routes || []) : [option.route];
+  const boardStop = option.boardStop || null;
+  const alightStop = option.alightStop || null;
+  const firstRoute = routes[0] || null;
+  const eta = boardStop && firstRoute ? etaToStop(vehicles, firstRoute.id, boardStop) : null;
+  const totalWalk = (option.walkToBoardDistance || 0) + (option.walkFromAlightDistance || 0);
+
+  return (
+    <button
+      onClick={onSelect}
+      className={
+        'w-full text-left rounded-2xl border-2 p-3.5 transition-all ' +
+        (isSelected
+          ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/10 shadow-md shadow-blue-500/10'
+          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600')
+      }
+    >
+      <div className="flex items-center gap-2 flex-wrap mb-2.5">
+        {routes.map((r, i) => (
+          <span key={i} className="flex items-center gap-1">
+            {i > 0 && <span className="text-[10px] font-bold text-slate-400 mx-0.5">+\u043f\u0435\u0440\u0435\u0441\u0430\u0434\u043a\u0430</span>}
+            <span
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-white text-[11px] font-extrabold"
+              style={{ backgroundColor: r.color || '#1565C0' }}
+            >
+              {r.type === 'bus' ? <Bus size={11} /> : <Truck size={11} />}
+              #{r.number}
+            </span>
+          </span>
+        ))}
+        {isSelected && <span className="ml-auto"><CheckCircle2 size={16} className="text-blue-500" /></span>}
+      </div>
+
+      <div className="flex items-center gap-3 text-[11px] font-bold text-slate-600 dark:text-slate-300 flex-wrap">
+        <span className="flex items-center gap-1"><Timer size={11} className="text-slate-400" />{fmtDur(option.totalDuration)}</span>
+        <span className="text-slate-300 dark:text-slate-600">&middot;</span>
+        <span className="flex items-center gap-1"><Route size={11} className="text-slate-400" />{fmtDist(option.totalDistance)}</span>
+        {totalWalk > 0 && (
+          <>
+            <span className="text-slate-300 dark:text-slate-600">&middot;</span>
+            <span className="flex items-center gap-1"><Footprints size={11} className="text-violet-500" />\u041f\u0435\u0448\u043a\u043e\u043c {fmtDist(totalWalk)}</span>
+          </>
+        )}
+        {option.stopCount > 0 && (
+          <>
+            <span className="text-slate-300 dark:text-slate-600">&middot;</span>
+            <span className="text-slate-500">{option.stopCount} \u043e\u0441\u0442.</span>
+          </>
+        )}
+      </div>
+
+      {boardStop && alightStop && (
+        <div className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+          <CircleDot size={11} className="text-emerald-500 flex-shrink-0" />
+          <span className="truncate max-w-[100px]">{boardStop.name || '\u041e\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0430'}</span>
+          <ArrowRight size={10} className="flex-shrink-0 text-slate-400" />
+          <CircleDot size={11} className="text-red-500 flex-shrink-0" />
+          <span className="truncate max-w-[100px]">{alightStop.name || '\u041e\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0430'}</span>
+        </div>
+      )}
+
+      {eta && (
+        <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20">
+          <Radio size={10} className="text-emerald-600 animate-pulse" />
+          <span className="text-[11px] font-extrabold text-emerald-700 dark:text-emerald-400">
+            \u0422\u0440\u0430\u043d\u0441\u043f\u043e\u0440\u0442 \u0447\u0435\u0440\u0435\u0437 ~{fmtDur(eta.sec)}
+          </span>
+        </div>
+      )}
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sub-component: VehicleStatus
+// ---------------------------------------------------------------------------
+
+function VehicleStatus({ vehicles, routeId }) {
+  const active = useMemo(
+    () => (vehicles || []).filter((v) => v.route_id === routeId && v.is_active),
+    [vehicles, routeId],
+  );
+  if (!vehicles?.length) return null;
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+      {active.length > 0 ? (
+        <>
+          <Radio size={13} className="text-emerald-500 animate-pulse flex-shrink-0" />
+          <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+            {active.length} {active.length === 1 ? '\u0442\u0440\u0430\u043d\u0441\u043f\u043e\u0440\u0442 \u0430\u043a\u0442\u0438\u0432\u0435\u043d' : '\u0442\u0440\u0430\u043d\u0441\u043f\u043e\u0440\u0442\u0430 \u0430\u043a\u0442\u0438\u0432\u043d\u044b'}
+          </span>
+        </>
+      ) : (
+        <>
+          <WifiOff size={13} className="text-slate-400 flex-shrink-0" />
+          <span className="text-[11px] font-medium text-slate-500">\u041d\u0435\u0442 \u0434\u0430\u043d\u043d\u044b\u0445 \u043e \u0442\u0440\u0430\u043d\u0441\u043f\u043e\u0440\u0442\u0435</span>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sub-component: SegmentSteps (transit segment detail)
+// ---------------------------------------------------------------------------
+
+function SegmentSteps({ option }) {
+  if (!option?.segments?.length) return null;
+  return (
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+      <div className="px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+        <span className="text-[11px] font-black tracking-widest uppercase text-slate-600 dark:text-slate-300">
+          \u0414\u0435\u0442\u0430\u043b\u0438 \u043f\u0443\u0442\u0438
+        </span>
+      </div>
+      <div className="divide-y divide-slate-100 dark:divide-slate-800">
+        {option.segments.map((seg, i) => {
+          const isWalking = seg.type === 'walking';
+          const segColor = isWalking ? '#7C3AED' : (seg.routeColor || '#1565C0');
+          return (
+            <div key={i} className="flex items-start gap-3 px-3.5 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40">
+              <div
+                className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
+                style={{ backgroundColor: segColor + '18', color: segColor }}
+              >
+                {isWalking ? <Footprints size={14} /> : seg.type === 'bus' ? <Bus size={14} /> : <Truck size={14} />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-bold text-slate-800 dark:text-slate-200 leading-snug">{seg.label}</p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  {fmtDist(seg.distance)} &middot; {fmtDur(seg.duration)}
+                </p>
+                {!isWalking && seg.stopCount > 0 && (
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    {seg.stopCount} {seg.stopCount === 1 ? '\u043e\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0430' : '\u043e\u0441\u0442\u0430\u043d\u043e\u0432\u043e\u043a'}
+                  </p>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sub-component: OsrmStepsList
+// ---------------------------------------------------------------------------
+
+function OsrmStepsList({ steps }) {
+  if (!steps?.length) return null;
+  return (
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+      <div className="px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+        <span className="text-[11px] font-black tracking-widest uppercase text-slate-600 dark:text-slate-300">
+          \u041f\u043e\u0448\u0430\u0433\u043e\u0432\u043e
+        </span>
+      </div>
+      <div className="max-h-[200px] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+        {steps.slice(0, 30).map((step, i) => (
+          <div key={i} className="flex gap-3 px-3.5 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/40">
+            <span className={
+              'w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black flex-shrink-0 mt-0.5 ' +
+              (i === 0 ? 'bg-emerald-500 text-white' : i === steps.length - 1 ? 'bg-red-500 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600')
+            }>
+              {i === 0 ? 'A' : i === steps.length - 1 ? 'B' : i}
+            </span>
+            <div className="flex-1 min-w-0 py-0.5">
+              <p className="text-[12px] font-semibold text-slate-800 dark:text-slate-200 truncate">
+                {step.name || (
+                  step.instruction === 'depart' ? '\u041d\u0430\u0447\u0430\u043b\u043e \u0434\u0432\u0438\u0436\u0435\u043d\u0438\u044f'
+                  : step.instruction === 'arrive' ? '\u0412\u044b \u043f\u0440\u0438\u0431\u044b\u043b\u0438'
+                  : '\u0414\u0432\u0438\u0436\u0435\u043d\u0438\u0435'
+                )}
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{fmtDist(step.distance)} &middot; {fmtDur(step.duration)}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

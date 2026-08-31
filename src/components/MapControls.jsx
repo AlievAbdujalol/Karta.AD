@@ -4,7 +4,7 @@ import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
 
 const TILE_LAYERS = [
-  { labelKey: 'mapControls.layerStandard', url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', isHybrid: false },
+  { labelKey: 'mapControls.layerStandard', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_2m2c_1_fd237f9c15572ee356a4aa42', isHybrid: false },
   { labelKey: 'mapControls.layerHybrid', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', isHybrid: true },
   { labelKey: 'mapControls.layerOsm', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', isHybrid: false },
   { labelKey: 'mapControls.layerEsriStreet', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', isHybrid: false },
@@ -47,7 +47,7 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
     <>
       {/* ===== DESKTOP: Right side vertical ===== */}
       <div
-        className={`hidden md:flex absolute top-1/2 -translate-y-1/2 z-[999] flex-col gap-2.5 pointer-events-auto transition-all duration-300`}
+        className={`hidden md:flex absolute top-1/2 -translate-y-1/2 z-[999] flex-col gap-2 pointer-events-auto transition-all duration-300`}
         style={{ right: `${(rightOffset || 0) + 16}px` }}
         onMouseDown={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
@@ -79,7 +79,7 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
 
       {/* ===== MOBILE: Compact bottom-right cluster ===== */}
       <div
-        className="md:hidden absolute right-3 bottom-[90px] z-[999] flex flex-col gap-1.5 pointer-events-auto"
+        className="md:hidden absolute right-3 bottom-[90px] z-[999] flex flex-col gap-2 pointer-events-auto"
         onMouseDown={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
