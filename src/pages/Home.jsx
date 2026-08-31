@@ -353,6 +353,8 @@ export default function Home() {
           onNavigateTo={handleNavigateTo}
           onFlyTo={(p) => setFlyTo({ lat: p.lat, lng: p.lng, zoom: 16 })}
           userId={currentUser?.id}
+          onCreateGroup={createGroup}
+          selectedRoute={selectedRoute}
         />
       )}
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Share2, MapPin, LogOut, CheckCircle, Search, Check, ChevronDown,
-  Users, Link2, Radio, Navigation, Clock, Footprints,
+  Users, Radio, Navigation, Clock, Footprints,
   Eye, Target, UserPlus, Copy,
 } from 'lucide-react';
 import { supabase } from '@/api/supabase';
@@ -132,6 +132,8 @@ export default function GroupRoutePanel({
   onNavigateTo,
   onFlyTo,
   userId,
+  onCreateGroup,
+  selectedRoute,
 }) {
   const [contacts, setContacts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -156,6 +158,15 @@ export default function GroupRoutePanel({
       c.id !== userId &&
       (c.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) || c.phone?.includes(searchQuery))
     ), [contacts, searchQuery, userId]);
+
+  const handleCreateGroupClick = () => {
+    if (onCreateGroup) {
+      const data = selectedRoute ? { routeId: selectedRoute.id, fromName: selectedRoute.name, fromLat: selectedRoute.stops?.[0]?.lat, fromLng: selectedRoute.stops?.[0]?.lng, toName: selectedRoute.stops?.[selectedRoute.stops.length-1]?.name, toLat: selectedRoute.stops?.[selectedRoute.stops.length-1]?.lat, toLng: selectedRoute.stops?.[selectedRoute.stops.length-1]?.lng } : {};
+      onCreateGroup(data).then(g => { if (g) toast.success('Групповая поездка создана'); else toast.error('Не удалось создать'); });
+    } else {
+      toast.info('Постройте маршрут в «Найти маршрут» и нажмите «Поделиться поездкой»');
+    }
+  };
 
   const onlineCount = groupRoute ? onlineMembers.length : contactLocations.length;
   const inviteLink = groupRoute ? `${window.location.origin}/?group=${groupRoute.id}` : '';
@@ -399,7 +410,7 @@ export default function GroupRoutePanel({
           {/* Пригласить в группу */}
           {!groupRoute && (
             <button
-              onClick={() => toast.info('Постройте маршрут в «Найти маршрут» и нажмите «Поделиться поездкой»')}
+              onClick={handleCreateGroupClick}
               className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold flex items-center justify-center gap-2 transition-colors">
               <UserPlus size={13} /> Создать совместную поездку
             </button>

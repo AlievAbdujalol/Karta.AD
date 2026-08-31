@@ -20,7 +20,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useNavigation } from '@/lib/NavigationContext';
 import {
-  findTransitRoutes, fmtDist, fmtDur, distanceM, buildSegmentPolylines,
+  findTransitRoutes, fmtDist, fmtDur, distanceM,
 } from '@/lib/transitRouter';
 import { toast } from 'sonner';
 
@@ -473,20 +473,6 @@ function OsrmResultBlock({ route, mode, fromText, toText, nowTime, arrivalTime, 
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-3 gap-2">
-        {[
-          { label: 'Расстояние', value: fmtDist(route.distance), Icon: Route },
-          { label: 'Время',      value: fmtDur(route.duration),  Icon: Clock3 },
-          { label: 'Стоимость',  value: cost > 0 ? cost + ' TJS' : 'Бесплатно', Icon: Copy },
-        ].map(({ label, value, Icon }) => (
-          <div key={label} className="p-3 rounded-2xl border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-center">
-            <Icon size={14} className="mx-auto mb-1 text-slate-400" />
-            <p className="text-[10px] font-bold tracking-widest uppercase text-slate-400">{label}</p>
-            <p className="text-[13px] font-black mt-0.5 text-slate-900 dark:text-white">{value}</p>
-          </div>
-        ))}
-      </div>
-
       <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3.5">
         <div className="flex gap-3">
           <div className="flex flex-col items-center gap-1 pt-1">
@@ -708,7 +694,7 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
     const changed = prev.from !== from || prev.to !== to || prev.mode !== transportMode;
     prevRef.current = { from, to, mode: transportMode };
     if (from && to && changed) buildRoute();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [from, to, transportMode]);
 
   // Swap
@@ -804,7 +790,7 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
 
   return (
     <div
-      className="absolute left-2 right-2 md:left-auto md:right-3 z-[520] bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 rounded-3xl flex flex-col overflow-hidden bottom-[calc(64px+env(safe-area-inset-bottom,0px)+8px)] max-h-[calc(100dvh-64px-env(safe-area-inset-bottom,0px)-1rem-8px)] md:bottom-auto md:top-[136px] md:max-h-[calc(100dvh-160px)] md:w-[400px]"
+      className="absolute left-2 right-2 md:left-auto md:right-3 z-[520] bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 rounded-3xl flex flex-col overflow-hidden bottom-[calc(72px+env(safe-area-inset-bottom,0px)+12px)] max-h-[calc(100dvh-64px-env(safe-area-inset-bottom,0px)-1rem-8px)] md:bottom-auto md:top-[136px] md:max-h-[calc(100dvh-160px)] md:w-[400px]"
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-br from-blue-600/[0.06] to-transparent flex-shrink-0">
