@@ -34,13 +34,13 @@ export default function DriversManager() {
       .then(({ data }) => setRoutes(data || []))
       .catch((err) => console.error('[DriversManager] routes load error:', err));
     supabase.from('driver_routes')
-      .select('id, driver_id, route_id, vehicle_number, phone, status, created_at, routes:route_id(id, number, name, type), profiles:driver_id(id, full_name, email)')
+      .select('id, driver_id, route_id, vehicle_number, phone, status, created_at, routes:route_id(id, number, name, type, created_by_id), profiles:driver_id(id, full_name, email)')
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
         if (error) { console.error('[DriversManager] driver_routes load error:', error); return; }
-        setDriverRoutes(data || []);
+        setDriverRoutes((data || []).filter(dr => dr.routes?.created_by_id === user?.id));
       });
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => { load(); }, [load]);
 
