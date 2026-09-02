@@ -14,6 +14,7 @@ export default function DriverDashboard() {
   const { isTracking, gpsInfo, activeRoute, startTrip, endTrip } = useTrip();
   const [cities, setCities] = useState([]);
   const [routes, setRoutes] = useState([]);
+  const [approvedDriverRoutes, setApprovedDriverRoutes] = useState([]);
   const [selectedCity, setSelectedCity] = useState('');
   const [selectedRoute, setSelectedRoute] = useState('');
   const [vehicleNumber, setVehicleNumber] = useState(user?.vehicle_number || '');
@@ -38,6 +39,27 @@ export default function DriverDashboard() {
   useEffect(() => {
     if (user?.city_id) setSelectedCity(user.city_id);
   }, [user]);
+
+  const loadApprovedDriverRoutes = () => {
+    if (!user?.id) return;
+    supabase
+      .from('driver_routes')
+      .select('id, route_id, vehicle_number, phone, routes:route_id(id, number, name, type, color, city_id)')
+      .eq('driver_id', user.id)
+      .eq('status', 'approved')
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('[DriverDashboard] driver_routes load error:', error);
+          return;
+        }
+        setApprovedDriverRoutes(data || []);
+      });
+  };
+
+  useEffect(() => {
+    loadApprovedDriverRoutes();
+  }, [user?.id]);
 
   useEffect(() => {
     const q = supabase.from('routes').select('*');
@@ -184,12 +206,19 @@ export default function DriverDashboard() {
               className="w-full border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-3 text-xs font-semibold bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 outline-none disabled:opacity-50"
             >
               <option value="">{t('selectRoute')}</option>
-              {routes.map(r => (
-                <option key={r.id} value={r.id}>
-                  #{r.number} — {r.type === 'bus' ? t('bus') : t('minibus')} {r.name || ''}
-                </option>
-              ))}
+              {approvedDriverRoutes
+                .filter(dr => !selectedCity || !dr.routes?.city_id || dr.routes.city_id === selectedCity)
+                .map(dr => (
+                  <option key={dr.id} value={dr.route_id}>
+                    #{dr.routes?.number} — {dr.routes?.type === 'bus' ? t('bus') : t('minibus')} {dr.routes?.name || ''}
+                  </option>
+                ))}
             </select>
+            {approvedDriverRoutes.length === 0 && (
+              <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400 font-bold">
+                ⚠ {t('driver.noApprovedRoutes') || 'Нет подтвержденных маршрутов. Добавьте маршрут в профиле и дождитесь одобрения администратора.'}
+              </p>
+            )}
           </div>
 
           <button

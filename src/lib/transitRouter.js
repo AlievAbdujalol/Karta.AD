@@ -12,6 +12,14 @@ const OSRM = {
   cycling: 'https://routing.openstreetmap.de/routed-bike/route/v1/bike',
 };
 
+/** Тариф по типу маршрута (сомони) */
+function fareForRoute(route) {
+  if (!route) return 0;
+  const t = (route.type || '').toLowerCase();
+  if (t === 'minibus' || t === 'marshrutka') return 5;
+  return 2.5; // bus / trolleybus default
+}
+
 /** Расстояние в метрах между двумя точками (Haversine) */
 export function distanceM(lat1, lng1, lat2, lng2) {
   const R = 6371000;
@@ -139,6 +147,7 @@ async function buildTransitOption(from, to, route, boardIdx, alightIdx, signal) 
     stopCount,
     totalDistance,
     totalDuration,
+    totalPrice: fareForRoute(route),
     walkToBoardDistance: walkTo.distance,
     walkToBoardDuration: walkTo.duration,
     walkFromAlightDistance: walkFrom.distance,
@@ -219,6 +228,7 @@ async function buildTransferOption(from, to, opt1, opt2, signal) {
     routes: [opt1.route, opt2.route],
     totalDistance,
     totalDuration,
+    totalPrice: fareForRoute(opt1.route) + fareForRoute(opt2.route),
     segments: [
       ...opt1.segments.slice(0, 2),
       {

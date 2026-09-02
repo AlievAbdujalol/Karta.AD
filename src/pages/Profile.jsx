@@ -4,7 +4,7 @@ import { useLanguage, LANG_KEY } from '@/lib/useLanguage';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useAuth } from '@/lib/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { User, Save, Heart, History, Camera, Loader2, LogOut, ChevronDown, Search, Wallet, Car } from 'lucide-react';
+import { User, Save, Heart, History, Camera, Loader2, LogOut, ChevronDown, Search, Wallet, Car, PlusCircle, CheckCircle2, X, Pencil, Trash2 } from 'lucide-react';
 import FavoriteRoutes from '@/components/profile/FavoriteRoutes';
 import TripHistory from '@/components/profile/TripHistory';
 import { toast } from 'sonner';
@@ -108,7 +108,6 @@ export default function Profile() {
   const [cities, setCities] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [routes, setRoutes] = useState([]);
-  const [selectedRouteId, setSelectedRouteId] = useState('');
   const [transactions, setTransactions] = useState([]);
   const [form, setForm] = useState({
     role: 'passenger',
@@ -127,6 +126,12 @@ export default function Profile() {
   const [taxiEdit, setTaxiEdit] = useState({});
   const [taxiSaving, setTaxiSaving] = useState(false);
   const [taxiTab, setTaxiTab] = useState('info');
+  const [saveFlash, setSaveFlash] = useState(null);
+  const [addMode, setAddMode] = useState(false);
+  const [vehicleDraft, setVehicleDraft] = useState('');
+  const [routeDraft, setRouteDraft] = useState('');
+  const [driverRoutes, setDriverRoutes] = useState([]);
+  const [drEdit, setDrEdit] = useState(null); // { id, vehicle_number, phone } when editing existing row
 
   const CAR_TYPES = ['Седан', 'Хэтчбек', 'Универсал', 'Минивэн', 'Внедорожник', 'Купе', 'Пикап', 'Электромобиль'];
 
@@ -176,6 +181,25 @@ export default function Profile() {
       .then(({ data }) => setRoutes(data || [])).catch((err) => console.error('[Profile] routes load error:', err));
   }, []);
 
+  const loadDriverRoutes = async () => {
+    if (!user?.id) return;
+    const { data, error } = await supabase
+      .from('driver_routes')
+      .select('id, route_id, vehicle_number, phone, is_active, status, routes:route_id(id, number, name, type, color)')
+      .eq('driver_id', user.id)
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.error('[Profile] driver_routes load error:', error);
+      return;
+    }
+    setDriverRoutes(data || []);
+  };
+
+  useEffect(() => {
+    if (user?.id) loadDriverRoutes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
   useEffect(() => {
     if (user) {
       const rawPhone = user.phone || '';
@@ -194,11 +218,9 @@ export default function Profile() {
         role: normalizedRole,
         language: user.language || 'ru',
         city_id: user.city_id || '',
-        vehicle_number: user.vehicle_number || '',
         phone: localNumber,
       });
       setBioForm(user.bio || '');
-      setSelectedRouteId(user.route_id || '');
       if (user.language && !localStorage.getItem(LANG_KEY)) {
         setLang(user.language);
       }
@@ -245,30 +267,23 @@ export default function Profile() {
 
       data.role = form.role === 'passenger' ? 'user' : form.role;
       delete data.driver_status;
-      if (form.role !== 'driver') {
-        delete data.vehicle_number;
-      }
-
-      if (form.role === 'driver' && selectedRouteId) {
-        data.route_id = selectedRouteId;
-      } else {
-        data.route_id = null;
-      }
+      delete data.vehicle_number;
+      delete data.route_id;
 
       setLang(data.language);
       await update(data);
 
-      // Notify the admin who created the selected route
-      if (form.role === 'driver' && selectedRouteId) {
-        const route = routes.find(r => r.id === selectedRouteId);
-        if (route?.created_by_id) {
-          supabase.from('notifications').insert({
-            user_id: route.created_by_id,
-            title: t('profile.notificationDriverSelectedRoute'),
-            body: `${user.full_name || user.email} ${t('profile.notificationDriverSelectedRoute')} #${route.number} ${route.name || ''}`,
-            type: 'driver_route_selected',
-          }).then(({ error }) => { if (error) console.error('[Profile] notification failed:', error); }).catch(() => {});
-        }
+      const changes = [];
+      const prevUser = user || {};
+      if ((prevUser.phone || '') !== fullPhone) changes.push(t('phone'));
+      if ((prevUser.full_name || '') !== (form.full_name || '')) changes.push('Имя');
+      if (form.role === 'driver' && (prevUser.bio || '') !== (bioForm || '')) changes.push(t('profile.bioLabel'));
+      if (changes.length > 0) {
+        setSaveFlash({
+          fields: changes,
+          at: Date.now(),
+        });
+        setTimeout(() => setSaveFlash(null), 6000);
       }
 
       toast.success(t('saveProfile'));
@@ -277,6 +292,76 @@ export default function Profile() {
       toast.error(t('profile.saveError'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleAddDriverRoute = async () => {
+    if (!user?.id) return;
+    if (!routeDraft) {
+      toast.error(t('profile.routePlaceholder'));
+      return;
+    }
+    setSaving(true);
+    try {
+      const { error } = await supabase.from('driver_routes').insert({
+        driver_id: user.id,
+        route_id: routeDraft,
+        vehicle_number: vehicleDraft || null,
+        phone: form.phone ? `${countryCode}${form.phone}` : null,
+        is_active: true,
+      });
+      if (error) throw error;
+      await loadDriverRoutes();
+      setRouteDraft('');
+      setVehicleDraft('');
+      setAddMode(false);
+      setSaveFlash({ fields: [t('profile.routeLabel'), t('vehicleNumber')], at: Date.now() });
+      setTimeout(() => setSaveFlash(null), 6000);
+      const route = routes.find(r => r.id === routeDraft);
+      if (route?.created_by_id && route.created_by_id !== user.id) {
+        supabase.from('notifications').insert({
+          user_id: route.created_by_id,
+          title: t('profile.notificationDriverSelectedRoute'),
+          body: `${user.full_name || user.email} ${t('profile.notificationDriverSelectedRoute')} #${route.number} ${route.name || ''}`,
+          type: 'driver_route_selected',
+        }).then(({ error }) => { if (error) console.error('[Profile] notification failed:', error); }).catch(() => {});
+      }
+      toast.success(t('profile.routeAdded'));
+    } catch (err) {
+      console.error('[Profile] add driver_route error:', err);
+      toast.error(err.message || t('profile.saveError'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteDriverRoute = async (id) => {
+    if (!window.confirm(t('profile.confirmDeleteRoute'))) return;
+    try {
+      const { error } = await supabase.from('driver_routes').delete().eq('id', id);
+      if (error) throw error;
+      await loadDriverRoutes();
+      toast.success(t('profile.routeDeleted'));
+    } catch (err) {
+      console.error('[Profile] delete driver_route error:', err);
+      toast.error(err.message || t('profile.saveError'));
+    }
+  };
+
+  const handleUpdateDriverRoute = async () => {
+    if (!drEdit) return;
+    try {
+      const { error } = await supabase.from('driver_routes').update({
+        vehicle_number: drEdit.vehicle_number || null,
+        phone: drEdit.phone || null,
+      }).eq('id', drEdit.id);
+      if (error) throw error;
+      setDrEdit(null);
+      await loadDriverRoutes();
+      toast.success(t('profile.routeUpdated'));
+    } catch (err) {
+      console.error('[Profile] update driver_route error:', err);
+      toast.error(err.message || t('profile.saveError'));
     }
   };
 
@@ -322,7 +407,10 @@ export default function Profile() {
       }
       
       if (newRole === 'driver') {
-        dbUpdates.driver_status = 'pending';
+        const current = user?.driver_status;
+        if (!current || current === 'blocked' || current === 'documents_required') {
+          dbUpdates.driver_status = 'pending';
+        }
       }
       if (newRole === 'taxi_driver') {
         dbUpdates.driver_status = 'approved';
@@ -330,7 +418,7 @@ export default function Profile() {
 
       await update(dbUpdates);
 
-      setForm(prev => ({ ...prev, role: newRole, driver_status: newRole === 'driver' ? 'pending' : newRole === 'taxi_driver' ? 'approved' : prev.driver_status }));
+      setForm(prev => ({ ...prev, role: newRole, driver_status: newRole === 'driver' ? (dbUpdates.driver_status || user?.driver_status) : newRole === 'taxi_driver' ? 'approved' : prev.driver_status }));
       
       toast.success(
         newRole === 'passenger'
@@ -941,6 +1029,172 @@ export default function Profile() {
             </div>
           </div>
 
+          {form.role === 'driver' && (
+            <div className="space-y-3 pt-1">
+              <p className="text-sm font-bold text-gray-800 dark:text-gray-100">{t('profile.yourRoutes') || 'Маршруты'}</p>
+
+              {driverRoutes.length === 0 && !addMode && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-3 border border-dashed border-gray-200 dark:border-gray-700 rounded-2xl">
+                  {t('profile.noRoutes') || 'Нет добавленных маршрутов'}
+                </p>
+              )}
+
+              {driverRoutes.map(dr => {
+                const r = dr.routes || {};
+                const isEditing = drEdit?.id === dr.id;
+                return (
+                  <div key={dr.id} className="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3.5 flex items-center gap-3 shadow-sm">
+                    <div
+                      className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-extrabold text-sm flex-shrink-0"
+                      style={{ backgroundColor: r.color || '#EF4444' }}
+                    >
+                      #{r.number}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      {isEditing ? (
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            value={drEdit.vehicle_number || ''}
+                            onChange={e => setDrEdit({ ...drEdit, vehicle_number: e.target.value })}
+                            placeholder={t('vehicleNumber')}
+                            className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-1.5 text-xs bg-white dark:bg-slate-700"
+                          />
+                          <input
+                            type="tel"
+                            value={drEdit.phone || ''}
+                            onChange={e => setDrEdit({ ...drEdit, phone: e.target.value })}
+                            placeholder="+992 90 123 45 67"
+                            className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-1.5 text-xs bg-white dark:bg-slate-700"
+                          />
+                          <div className="flex gap-1.5">
+                            <button
+                              onClick={handleUpdateDriverRoute}
+                              className="px-3 py-1 rounded-lg bg-blue-500 text-white text-[11px] font-bold"
+                            >
+                              {t('saveProfile')}
+                            </button>
+                            <button
+                              onClick={() => setDrEdit(null)}
+                              className="px-3 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          {(() => {
+                            const st = dr.status || 'pending';
+                            const cfg = {
+                              pending:  { label: t('profile.routeStatusPending'),  cls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',  dot: 'bg-amber-500' },
+                              approved: { label: t('profile.routeStatusApproved'), cls: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30', dot: 'bg-emerald-500' },
+                              blocked:  { label: t('profile.routeStatusBlocked'),  cls: 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30',  dot: 'bg-rose-500' },
+                            }[st] || { label: t('profile.routeStatusPending'), cls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30', dot: 'bg-amber-500' };
+                            return (
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-extrabold ${cfg.cls}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />{cfg.label}
+                              </span>
+                            );
+                          })()}
+                          <p className="text-[13px] font-extrabold text-slate-900 dark:text-white truncate mt-1.5">
+                            {r.name || `Маршрут #${r.number}`} <span className="text-slate-500 font-normal">({r.type === 'bus' ? t('bus') : t('minibus')})</span>
+                          </p>
+                          <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-500 dark:text-slate-400 flex-wrap">
+                            {dr.vehicle_number && (
+                              <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-md font-bold text-slate-700 dark:text-slate-200">
+                                ● {dr.vehicle_number}
+                              </span>
+                            )}
+                            {cities.find(c => c.id === r.city_id)?.name && (
+                              <span>· {cities.find(c => c.id === r.city_id).name}</span>
+                            )}
+                            {dr.phone && (
+                              <span>· {dr.phone}</span>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    {!isEditing && (
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <button
+                          onClick={() => setDrEdit({ id: dr.id, vehicle_number: dr.vehicle_number || '', phone: dr.phone || '' })}
+                          className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-600 flex items-center justify-center transition-colors"
+                          aria-label="Edit"
+                        >
+                          <Pencil size={15} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteDriverRoute(dr.id)}
+                          className="px-3 h-9 rounded-xl border-2 border-red-500/80 text-red-500 hover:bg-red-500 hover:text-white flex items-center gap-1.5 text-[11px] font-extrabold transition-all"
+                        >
+                          <Trash2 size={13} /> {t('profile.deleteRoute') || 'Удалить'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {addMode && (
+                <div className="rounded-2xl border-2 border-dashed border-emerald-400 dark:border-emerald-500 bg-emerald-50/40 dark:bg-emerald-900/10 p-3.5 space-y-2.5">
+                  <p className="text-[12px] font-extrabold text-emerald-700 dark:text-emerald-300 uppercase tracking-wide">{t('profile.newRoute') || 'Новый маршрут'}</p>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1 block">{t('profile.routeLabel')}</label>
+                    <select
+                      value={routeDraft}
+                      onChange={e => setRouteDraft(e.target.value)}
+                      className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-slate-700"
+                    >
+                      <option value="">{t('profile.routePlaceholder')}</option>
+                      {routes.filter(r => !form.city_id || !r.city_id || r.city_id === form.city_id).map(r => (
+                        <option key={r.id} value={r.id}>
+                          #{r.number} {r.name || ''} ({r.type === 'bus' ? t('bus') : t('minibus')})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1 block">{t('vehicleNumber')}</label>
+                    <input
+                      type="text"
+                      value={vehicleDraft}
+                      onChange={e => setVehicleDraft(e.target.value)}
+                      placeholder={t('profile.vehicleNumberPlaceholder')}
+                      className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-slate-700"
+                    />
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={handleAddDriverRoute}
+                      disabled={saving || !routeDraft}
+                      className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
+                    >
+                      {saving ? <Loader2 size={14} className="animate-spin" /> : <PlusCircle size={14} />}
+                      {t('profile.addToProfile')}
+                    </button>
+                    <button
+                      onClick={() => { setAddMode(false); setRouteDraft(''); setVehicleDraft(''); }}
+                      className="px-4 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-extrabold"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {!addMode && (
+                <button
+                  onClick={() => { setAddMode(true); setRouteDraft(''); setVehicleDraft(''); }}
+                  className="w-full py-3.5 rounded-2xl border-2 border-amber-500/80 text-amber-600 dark:text-amber-400 hover:bg-amber-500 hover:text-white text-sm font-extrabold flex items-center justify-center gap-2 transition-all"
+                >
+                  <PlusCircle size={18} /> {t('profile.addRoute') || 'Добавить маршрут'}
+                </button>
+              )}
+            </div>
+          )}
+
           <div>
             <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2 block">{t('language')}</label>
             <div className="grid grid-cols-3 gap-2">
@@ -976,25 +1230,25 @@ export default function Profile() {
             </div>
           )}
 
-          {form.role === 'driver' && (
+          {form.role === 'driver' && addMode && (
             <div>
               <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5 block">{t('vehicleNumber')}</label>
               <input
                 type="text"
-                value={form.vehicle_number}
-                onChange={e => setForm({ ...form, vehicle_number: e.target.value })}
+                value={vehicleDraft}
+                onChange={e => setVehicleDraft(e.target.value)}
                 placeholder={t('profile.vehicleNumberPlaceholder')}
                 className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-400"
               />
             </div>
           )}
 
-          {form.role === 'driver' && (
+          {form.role === 'driver' && addMode && (
             <div>
               <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5 block">{t('profile.routeLabel')}</label>
               <select
-                value={selectedRouteId}
-                onChange={e => setSelectedRouteId(e.target.value)}
+                value={routeDraft}
+                onChange={e => setRouteDraft(e.target.value)}
                 className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-sm bg-white dark:bg-gray-700 dark:text-gray-100"
               >
                 <option value="">{t('profile.routePlaceholder')}</option>
@@ -1038,13 +1292,40 @@ export default function Profile() {
             </div>
           )}
 
+          {saveFlash && (
+            <div className="rounded-2xl border border-emerald-200 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 px-4 py-3 flex items-start gap-3 animate-fade-in">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center flex-shrink-0">
+                <CheckCircle2 size={18} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-extrabold text-emerald-800 dark:text-emerald-200">
+                  {t('saveProfile')} ✓
+                </p>
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-300 mt-0.5 leading-snug">
+                  {saveFlash.fields.length > 0 ? (
+                    <>
+                      <span className="font-bold">{t('profile.savedFields')}:</span>{' '}
+                      {saveFlash.fields.join(' · ')}
+                    </>
+                  ) : t('profile.savedNoChanges')}
+                </p>
+              </div>
+              <button
+                onClick={() => setSaveFlash(null)}
+                className="text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-800/40 rounded-lg p-1 flex-shrink-0"
+                aria-label="Close"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
           <button
             onClick={handleSave}
             disabled={saving}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-60 active:scale-95"
           >
-            <Save size={18} />
-            {saving ? t('loading') : t('saveProfile')}
+            {saving ? (<><Loader2 size={18} className="animate-spin" />{t('loading')}</>) : (<><Save size={18} />{t('saveProfile')}</>)}
           </button>
 
           <button

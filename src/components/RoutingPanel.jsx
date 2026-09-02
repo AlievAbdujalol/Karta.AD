@@ -14,8 +14,9 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   Navigation, MapPin, X, RotateCw, Route, AlertCircle, Loader2, Crosshair,
   ChevronDown, Play, Car, Bike, PersonStanding, Clock3, ArrowLeftRight,
-  LocateFixed, Share2, Copy, Check, Bus, Truck, Volume2, VolumeX, Timer,
+  LocateFixed, Share2, Check, Bus, Truck, Volume2, VolumeX, Timer,
   ArrowRight, Footprints, CheckCircle2, CircleDot, Radio, WifiOff,
+  CreditCard,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useNavigation } from '@/lib/NavigationContext';
@@ -319,6 +320,14 @@ function TransitCard({ option, isSelected, onSelect, vehicles }) {
           <>
             <span className="text-slate-300 dark:text-slate-600">&middot;</span>
             <span className="text-slate-500">{option.stopCount} ост.</span>
+          </>
+        )}
+        {option.totalPrice > 0 && (
+          <>
+            <span className="text-slate-300 dark:text-slate-600">&middot;</span>
+            <span className="flex items-center gap-1 font-extrabold text-emerald-600 dark:text-emerald-400">
+              <CreditCard size={11} />{option.totalPrice} TJS
+            </span>
           </>
         )}
       </div>

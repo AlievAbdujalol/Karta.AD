@@ -511,8 +511,17 @@ function OsmStopMarkers({ routes, routeGeometries, routingOpen, onPickResult }) 
   const bounds = map.getBounds();
   const inView = filtered.filter(s => bounds.contains([s.lat, s.lng]));
   const limited = inView.slice(0, 90);
+  const limitedKey = limited.map(s => s.id).join('|');
   return (
-    <MarkerClusterGroup chunkedLoading maxClusterRadius={42} spiderfyOnMaxZoom showCoverageOnHover={false} zoomToBoundsOnClick>
+    <MarkerClusterGroup
+      key={`osm-cluster-${limitedKey.length}-${zoom}`}
+      chunkedLoading={false}
+      maxClusterRadius={42}
+      spiderfyOnMaxZoom
+      showCoverageOnHover={false}
+      zoomToBoundsOnClick
+      animate={false}
+    >
       {limited.map(s => (
         <Marker key={`osm-${s.id}`} position={[s.lat, s.lng]} icon={OsmStopIcon}>
           <Popup maxWidth={300} className="stop-info-popup">
@@ -947,7 +956,18 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
           );
         });
         if (!route && allStops.length > 55) {
-          return <MarkerClusterGroup chunkedLoading maxClusterRadius={38} spiderfyOnMaxZoom showCoverageOnHover={false}>{markers}</MarkerClusterGroup>;
+          return (
+            <MarkerClusterGroup
+              key={`stops-cluster-${markers.length}-${(selectedRoute?.id) || 'all'}`}
+              chunkedLoading={false}
+              maxClusterRadius={38}
+              spiderfyOnMaxZoom
+              showCoverageOnHover={false}
+              animate={false}
+            >
+              {markers}
+            </MarkerClusterGroup>
+          );
         }
         return markers;
       })()}
