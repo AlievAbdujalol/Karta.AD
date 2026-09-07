@@ -16,13 +16,15 @@ import {
   ChevronDown, Play, Car, Bike, PersonStanding, Clock3, ArrowLeftRight,
   LocateFixed, Share2, Check, Bus, Truck, Volume2, VolumeX, Timer,
   ArrowRight, Footprints, CheckCircle2, CircleDot, Radio, WifiOff,
-  CreditCard,
+  CreditCard, Package, Plus, Upload, Settings2,
 } from 'lucide-react';
+import PublicTransportSheet from '@/components/PublicTransportSheet';
 import { useNavigate } from 'react-router-dom';
 import { useNavigation } from '@/lib/NavigationContext';
 import {
   findTransitRoutes, fmtDist, fmtDur, distanceM,
 } from '@/lib/transitRouter';
+import { buildOsrmRoute } from '@/lib/osrmClient';
 import { toast } from 'sonner';
 
 // ---------------------------------------------------------------------------
@@ -34,15 +36,13 @@ const TRANSPORT_MODES = [
   { id: 'taxi',     icon: Car,            label: 'Такси',     osrmProfile: 'driving',  color: '#F59E0B' },
   { id: 'walking',  icon: PersonStanding, label: 'Пешком',    osrmProfile: 'walking',  color: '#7C3AED' },
   { id: 'cycling',  icon: Bike,           label: 'Вело',      osrmProfile: 'cycling',  color: '#059669' },
+  { id: 'scooter',  icon: Bike,           label: 'Самокат',   osrmProfile: 'cycling',  color: '#0ea5e9' },
+  { id: 'truck',    icon: Package,        label: 'Грузовик',  osrmProfile: 'driving',  color: '#78350f' },
   { id: 'bus',      icon: Bus,            label: 'Автобус',   osrmProfile: null,       color: '#EA580C' },
   { id: 'minibus',  icon: Truck,          label: 'Маршрутка', osrmProfile: null,       color: '#DC2626' },
 ];
 
-const OSRM_ENDPOINTS = {
-  driving: 'https://router.project-osrm.org/route/v1/driving',
-  walking: 'https://routing.openstreetmap.de/routed-foot/route/v1/foot',
-  cycling: 'https://routing.openstreetmap.de/routed-bike/route/v1/bike',
-};
+
 
 const RECENT_KEY = 'karta_route_recent_v2';
 
@@ -85,40 +85,6 @@ async function searchAddress(query, limit = 5) {
     }));
   } catch {
     return [];
-  }
-}
-
-async function buildOsrmRoute(from, to, profile = 'driving') {
-  const endpoint = OSRM_ENDPOINTS[profile] || OSRM_ENDPOINTS.driving;
-  const coords = from.lng + ',' + from.lat + ';' + to.lng + ',' + to.lat;
-  try {
-    const resp = await fetch(
-      endpoint + '/' + coords + '?overview=full&geometries=geojson&steps=true',
-      { signal: AbortSignal.timeout(10000) },
-    );
-    if (!resp.ok) return null;
-    const data = await resp.json();
-    if (!data.routes?.length) return null;
-    const r = data.routes[0];
-    const geometry = r.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-    const steps = [];
-    let cursor = 0;
-    (r.legs || []).forEach((leg) => {
-      (leg.steps || []).forEach((step) => {
-        steps.push({
-          instruction: step.maneuver?.type || '',
-          modifier:    step.maneuver?.modifier || '',
-          name:        step.name || '',
-          distance:    step.distance || 0,
-          duration:    step.duration || 0,
-          start:       geometry[cursor] || [0, 0],
-        });
-        cursor = Math.min(cursor + 1, geometry.length - 1);
-      });
-    });
-    return { distance: r.distance, duration: r.duration, geometry, steps };
-  } catch {
-    return null;
   }
 }
 
@@ -585,6 +551,8 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
   const [showSteps, setShowSteps] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [waypoints, setWaypoints] = useState([]);
+  const [showPT, setShowPT] = useState(false);
   const prevRef = useRef({ from: null, to: null, mode: 'minibus' });
 
   // Restore saved points
@@ -687,7 +655,10 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
       }
     } else {
       const mode = TRANSPORT_MODES.find((m) => m.id === transportMode);
-      const result = await buildOsrmRoute(from, to, mode?.osrmProfile || 'driving');
+      let exclude = null; try{ const s=JSON.parse(localStorage.getItem('karta_nav_settings')||'{}'); const vs=JSON.parse(localStorage.getItem('karta_vehicle')||'{}'); const ex=[]; if(s.avoid_tolls|| vs.avoid_tolls) ex.push('toll'); if(s.avoid_unpaved|| vs.avoid_unpaved) ex.push('unpaved'); if(ex.length) exclude=ex.join(','); }catch{}
+      let truckParams=null; if(transportMode==='truck'){ try{ const t=JSON.parse(localStorage.getItem('karta_truck')||'{}'); truckParams={ weight: t.weight_t||t.weight, height: t.height_m, width: t.width_m }; }catch{} }
+      const wps = waypoints.filter(Boolean).map(w=> ({lat:w.lat,lng:w.lng}));
+      const result = await buildOsrmRoute(from, to, mode?.osrmProfile || 'driving', { waypoints: wps, exclude, truckParams, alternatives: true });
       if (result) {
         setOsrmRoute(result);
         onRouteBuilt?.({ ...result, mode: transportMode, from, to, fromText, toText, segments: null });
@@ -882,22 +853,35 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
           >
             <LocateFixed size={12} /> Моё место → Куда
           </button>
+          <button onClick={()=> setWaypoints(w=> [...w, null])} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-blue-50 border border-blue-200 text-[11px] font-bold text-blue-700"><Plus size={11}/> Заехать</button>
+          <label className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[11px] font-medium cursor-pointer"><Upload size={11}/> Загрузить маршрут<input type="file" accept=".gpx,.geojson,.json" className="hidden" onChange={async e=>{ const f=e.target.files[0]; if(!f) return; const txt=await f.text(); try{ let geom=[]; if(f.name.endsWith('.gpx')){ const doc=new DOMParser().parseFromString(txt,'text/xml'); geom=Array.from(doc.querySelectorAll('trkpt')).map(p=>[parseFloat(p.getAttribute('lat')), parseFloat(p.getAttribute('lon'))]); } else { const j=JSON.parse(txt); geom=j.geometry||j.coordinates?.map(([lng,lat])=>[lat,lng])||[]; } if(geom.length){ const r={ distance:0, duration:0, geometry:geom, steps: geom.map((p,i)=>({instruction:i===0?'depart':i===geom.length-1?'arrive':'continue', modifier:'straight', name:'', distance:0, duration:0, start:p}))}; setOsrmRoute(r); onRouteBuilt?.({...r, mode:transportMode, from,to}); toast.success('Маршрут загружен'); } }catch{ toast.error('Не удалось загрузить'); }}}/></label>
           {(from || to) && (
             <button
-              onClick={() => { setFrom(null); setTo(null); setFromText(''); setToText(''); setOsrmRoute(null); setTransitResults(null); setFallbackWalk(null); setError(null); }}
+              onClick={() => { setFrom(null); setTo(null); setFromText(''); setToText(''); setWaypoints([]); setOsrmRoute(null); setTransitResults(null); setFallbackWalk(null); setError(null); }}
               className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[11px] font-medium text-slate-500 hover:text-slate-700"
             >
               <RotateCw size={11} /> Сбросить
             </button>
           )}
         </div>
+        {waypoints.length>0 && (
+          <div className="space-y-1.5">
+            {waypoints.map((wp,i)=> (
+              <div key={i} className="flex items-center gap-2">
+                <span className="text-[11px] font-bold">● {i+1}</span>
+                <button onClick={()=>{ if(!mapPickTarget) onRequestMapPick?.('wp-'+i); }} className="flex-1 text-left px-3 py-2 rounded-xl border bg-white dark:bg-slate-800 text-xs">{wp?`${wp.lat.toFixed(4)}, ${wp.lng.toFixed(4)}`:'Выберите точку → Заехать'}</button>
+                <button onClick={()=> setWaypoints(w=> w.filter((_,idx)=>idx!==i))} className="w-7 h-7 rounded-full bg-red-50 text-red-600 flex items-center justify-center"><X size={12}/></button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Transport modes */}
         <div>
           <p className="text-[10px] font-black tracking-widest uppercase text-slate-400 mb-2 flex items-center gap-1.5">
             <Route size={11} /> Чем едем
           </p>
-          <div className="grid grid-cols-6 gap-1.5">
+          <div className="grid grid-cols-4 gap-1.5">
             {TRANSPORT_MODES.map((mode) => {
               const active = transportMode === mode.id;
               const Icon = mode.icon;
@@ -918,6 +902,14 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
               );
             })}
           </div>
+          {(transportMode==='truck' || transportMode==='scooter') && (
+            <div className="mt-2 p-2 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-[11px]">
+              {transportMode==='truck' && 'Учитываются габариты из Настройки → Грузовик'}
+              {transportMode==='scooter' && 'Избегаем автодорог и лестниц (профиль велосипеда)'}
+            </div>
+          )}
+          <button onClick={()=>setShowPT(v=>!v)} className="w-full mt-2 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold flex items-center justify-center gap-1.5"><Settings2 size={12}/> Общественный транспорт — настройки</button>
+          {showPT && <PublicTransportSheet cityId={from?.cityId||to?.cityId} routes={routes} onClose={()=>setShowPT(false)} />}
         </div>
 
         {/* Map pick banner */}
@@ -947,13 +939,21 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
           </div>
         )}
 
-        {/* Error */}
+        {/* Error — §4: понятное сообщение + CTA */}
         {!loading && error && (
-          <div className="flex gap-3 p-3.5 bg-red-50 dark:bg-red-500/10 rounded-2xl border border-red-200 dark:border-red-500/20">
-            <AlertCircle size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-[13px] font-bold text-red-700 dark:text-red-400">{error}</p>
-              <p className="text-[11px] text-red-600/70 dark:text-red-400/70 mt-1">Попробуйте изменить точки или другой режим.</p>
+          <div className="space-y-2">
+            <div className="flex gap-3 p-3.5 bg-red-50 dark:bg-red-500/10 rounded-2xl border border-red-200 dark:border-red-500/20">
+              <AlertCircle size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-[13px] font-bold text-red-700 dark:text-red-400">{error.includes('транспорт') ? 'Мы пока не умеем строить маршруты общественного транспорта между городами.' : 'Проезд не найден.'}</p>
+                <p className="text-[11px] text-red-600/70 dark:text-red-400/70 mt-1">{error}</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={buildRoute} className="px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold">Попробовать снова</button>
+              <button onClick={()=>setTransportMode('driving')} className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold">Проехать на авто</button>
+              <button onClick={()=>{setFrom(null);setTo(null);setFromText('');setToText('');setError(null);}} className="px-3 py-1.5 rounded-xl bg-white border text-xs font-bold">Изменить маршрут</button>
+              <button onClick={()=>setTransportMode(prev=> prev==='driving'?'walking':'driving')} className="px-3 py-1.5 rounded-xl bg-white border text-xs font-bold">Другой транспорт</button>
             </div>
           </div>
         )}
@@ -1078,6 +1078,20 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
               showSteps={showSteps}
               onToggleSteps={() => setShowSteps((s) => !s)}
             />
+            {osrmRoute.alternatives?.length > 0 && (
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-3 space-y-2">
+                <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">Альтернативы</p>
+                {osrmRoute.alternatives.map((a,i)=> (
+                  <button key={i} onClick={()=>{ const nr={...a, steps:[]}; setOsrmRoute(nr); onRouteBuilt?.({...nr, mode:transportMode, from,to,fromText,toText}); }} className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border text-xs">
+                    <span>Вариант {i+2} · {fmtDist(a.distance)} · {fmtDur(a.duration)}</span>
+                    <span className="text-emerald-600 font-bold">{a.duration>osrmRoute.duration?`+${fmtDur(a.duration-osrmRoute.duration)}`:`−${fmtDur(osrmRoute.duration-a.duration)}`}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="rounded-xl bg-slate-50 dark:bg-slate-800 p-2 text-[11px] text-slate-500 flex flex-wrap gap-2">
+              <span>Пробки: нет данных</span><span>· Платные: {transportMode==='truck'?'учитываются': 'избежать в настройках'}</span><span>· Камеры: —</span><span>· Перекрытия: из Событий</span>
+            </div>
           </div>
         )}
       </div>

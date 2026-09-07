@@ -26,10 +26,14 @@ function distM(lat1, lng1, lat2, lng2) {
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function safeColor(c){ return /^#[0-9a-fA-F]{6}$/.test(c||'') ? c : '#1565C0'; }
+function isValidLatLng(lat,lng){ return typeof lat==='number' && typeof lng==='number' && !isNaN(lat) && !isNaN(lng) && lat>=-90 && lat<=90 && lng>=-180 && lng<=180 && Math.abs(lat)>0.001 && Math.abs(lng)>0.001; }
+const routeGeomCache = new Map();
 
 // Inject CSS to hide leaflet attribution and style controls
-const style = document.createElement('style');
-style.textContent = `
+const style = typeof document !== 'undefined' ? document.createElement('style') : null;
+if(style) style.textContent = `
   .leaflet-control-attribution { display: none !important; }
   .leaflet-control-zoom { display: none !important; }
   .leaflet-control-scale-line {
@@ -80,14 +84,19 @@ style.textContent = `
     color: #fff !important;
   }
 `;
-document.head.appendChild(style);
+if(style && typeof document !== 'undefined' && !document.getElementById('karta-leaflet-style')){
+  style.id='karta-leaflet-style';
+  document.head.appendChild(style);
+}
 
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
+if(typeof L !== 'undefined' && L.Icon && L.Icon.Default){
+  try{ delete L.Icon.Default.prototype._getIconUrl; }catch{}
+  L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
+  });
+}
 
 function MapController({ center, mapRef }) {
   const map = useMap();
@@ -97,6 +106,19 @@ function MapController({ center, mapRef }) {
     mapRef.current = map;
     if (lat && lng) map.setView([lat, lng], 13);
   }, [lat, lng, map, mapRef]);
+  return null;
+}
+function CenterWatcher({ onCenterChange }){
+  const map = useMap();
+  useEffect(()=>{
+    if(!onCenterChange) return;
+    const upd=()=>{ const c=map.getCenter(); onCenterChange([c.lat, c.lng]); };
+    upd(); map.on('moveend', upd); return ()=> map.off('moveend', upd);
+  },[map, onCenterChange]);
+  return null;
+}
+function MapClickHandler({ onMapClick }){
+  useMapEvents({ click(e){ try{ navigator.vibrate?.(40); }catch{} onMapClick?.(e.latlng); } });
   return null;
 }
 
@@ -113,7 +135,7 @@ function FlyToHandler({ flyTo, onDone }) {
   return null;
 }
 
-function UserLocationMarker() {
+function UserLocationMarker({ transportMode }) {
   const [pos, setPos] = useState(null);
   const [accuracy, setAccuracy] = useState(0);
   const map = useMap();
@@ -122,6 +144,8 @@ function UserLocationMarker() {
     if (!navigator.geolocation) return;
     const watchId = navigator.geolocation.watchPosition(
       (p) => {
+        // sensor fusion: if accuracy >50 and use_sensors, keep last pos
+        try{ const s=JSON.parse(localStorage.getItem('karta_vehicle')||'{}'); if(s.use_sensors===false && p.coords.accuracy>80) return; }catch{}
         setPos([p.coords.latitude, p.coords.longitude]);
         setAccuracy(p.coords.accuracy);
       },
@@ -133,10 +157,11 @@ function UserLocationMarker() {
 
   if (!pos) return null;
 
+  const colorByMode = transportMode==='truck'?'#78350f': transportMode==='scooter'?'#0ea5e9': transportMode==='cycling'?'#059669': transportMode==='walking'?'#7c3aed': '#3b82f6';
   const userIcon = L.divIcon({
     html: `<div style="position:relative;width:20px;height:20px;">
-      <div style="position:absolute;inset:0;border-radius:50%;background:rgba(59,130,246,0.15);border:2px solid #3b82f6;box-shadow:0 0 12px rgba(59,130,246,0.4);"></div>
-      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:8px;height:8px;border-radius:50%;background:#3b82f6;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.3);"></div>
+      <div style="position:absolute;inset:0;border-radius:50%;background:${colorByMode}22;border:2px solid ${colorByMode};box-shadow:0 0 12px ${colorByMode}66;"></div>
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:8px;height:8px;border-radius:50%;background:${colorByMode};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.3);"></div>
     </div>`,
     className: '',
     iconSize: [20, 20],
@@ -194,7 +219,7 @@ function RouteNumberLabel({ positions, routeNumber, routeName, color }) {
       position={[label.lat, label.lng]}
       icon={L.divIcon({
         html: `<div style="
-          background:${color || '#1565C0'};
+          background:${safeColor(color)};
           color:#fff;
           border-radius:8px;
           padding:3px 8px;
@@ -205,7 +230,7 @@ function RouteNumberLabel({ positions, routeNumber, routeName, color }) {
           border:2px solid rgba(255,255,255,0.9);
           font-family:Inter,sans-serif;
           letter-spacing:-0.3px;
-        ">#${routeNumber}${routeName ? ` ${routeName}` : ''}</div>`,
+        ">#${esc(routeNumber)}${routeName ? ` ${esc(routeName)}` : ''}</div>`,
         className: '',
         iconSize: [0, 0],
         iconAnchor: [0, -12],
@@ -237,8 +262,8 @@ function createBusIcon(routeNumber, type, t) {
         z-index:1;
         gap:1px;
       ">
-        <span style="color:#fff;font-size:11px;font-weight:800;line-height:1;letter-spacing:-0.5px;">#${routeNumber}</span>
-        <span style="color:rgba(255,255,255,0.75);font-size:8px;font-weight:500;">${type === 'minibus' ? t('busmap.minibusAbbr') : t('busmap.busLabel')}</span>
+        <span style="color:#fff;font-size:11px;font-weight:800;line-height:1;letter-spacing:-0.5px;">#${esc(routeNumber)}</span>
+        <span style="color:rgba(255,255,255,0.75);font-size:8px;font-weight:500;">${esc(type === 'minibus' ? t('busmap.minibusAbbr') : t('busmap.busLabel'))}</span>
       </div>
       <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid ${color};margin-top:-1px;"></div>
     </div>`,
@@ -542,7 +567,7 @@ function OsmStopMarkers({ routes, routeGeometries, routingOpen, onPickResult }) 
 
 const TILE_KEY = 'karta_tile_index';
 
-export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute, panelVisible, onLocate }) {
+export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute, panelVisible, onLocate, tiltEnabled: _tiltEnabled = false, autoCenter = true, routeMeta = null, onPlaceSelect, onCenterChange, onMapClick, eventPos, eventLine=[], roadDir=0 }) {
   const [tileIndex, setTileIndex] = useState(() => {
     try {
       const v = localStorage.getItem(TILE_KEY);
@@ -564,7 +589,41 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
   const { user } = useCurrentUser();
   const mapRef = useRef(null);
   const nav = useNavigation();
+  // 2D/3D удалён — всегда плоская карта
+  useEffect(()=>{ try{ localStorage.removeItem('karta_tilt'); }catch{}
+    if(mapRef.current){
+      const c=mapRef.current.getContainer();
+      if(c){ c.style.transform='none'; c.style.transformOrigin=''; }
+      const wrap=c?.parentElement; if(wrap) wrap.style.perspective='';
+      setTimeout(()=> mapRef.current?.invalidateSize(), 220);
+    }
+  },[]);
+  // auto-scale based on speed
+  useEffect(()=>{
+    if(!nav.isActive || !nav.userSpeed || !autoCenter) return;
+    const spd = nav.userSpeed*3.6;
+    const targetZoom = spd>50?14: spd>30?15: spd>10?16:17;
+    if(mapRef.current && Math.abs(mapRef.current.getZoom()-targetZoom)>0.6) mapRef.current.setZoom(targetZoom, {animate:true});
+  },[nav.userSpeed, nav.isActive, autoCenter]);
+  // PiP: enter when app hidden — показывает манёвр/ETA
+  useEffect(()=>{
+    const h=()=>{ if(document.visibilityState==='hidden' && nav.isActive && JSON.parse(localStorage.getItem('karta_nav_settings')||'{}')?.pip_enabled && document.pictureInPictureEnabled && !document.pictureInPictureElement){
+      try{ const c=mapRef.current?.getContainer(); if(c?.requestPictureInPicture) c.requestPictureInPicture().catch(()=>{}); }catch{}
+    }};
+    document.addEventListener('visibilitychange', h); return ()=>document.removeEventListener('visibilitychange', h);
+  },[nav.isActive]);
+  useEffect(()=>{
+    const onScale=(e)=>{ if(mapRef.current) mapRef.current.setZoom(e.detail, {animate:true}); };
+    window.addEventListener('karta_autoscale', onScale); return ()=>window.removeEventListener('karta_autoscale', onScale);
+  },[]);
 
+  const [mapEvents, setMapEvents] = useState([]);
+  useEffect(()=>{ const load=()=> supabase.from('map_events').select('*').eq('is_active',true).limit(100).then(({data})=>setMapEvents(data||[])); load(); const ch=supabase.channel('map_events_bus').on('postgres_changes',{event:'*',schema:'public',table:'map_events'}, load).subscribe(); return ()=>supabase.removeChannel(ch); },[]);
+  // night mode auto 18-06
+  useEffect(()=>{
+    const check=()=>{ try{ const s=JSON.parse(localStorage.getItem('karta_nav_settings')||'{}'); if(s.night_mode==='auto'){ const h=new Date().getHours(); document.documentElement.classList.toggle('dark', h>=18||h<6);} }catch{} };
+    check(); const iv=setInterval(check, 60000); return ()=>clearInterval(iv);
+  },[]);
   useEffect(() => {
     try { localStorage.setItem(TILE_KEY, String(tileIndex)); } catch {}
   }, [tileIndex]);
@@ -837,39 +896,57 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
     if (isHybrid) setShowLabels(true);
   }, [isHybrid]);
 
-  // Fetch OSRM geometry for all routes (sequential, with fallback to stop positions)
+  // Fetch OSRM geometry for all routes — строго road geometry, без fallback прямых линий
   useEffect(() => {
     const routesWithCoords = (routes || []).filter(r => {
-      const pts = r.stops?.filter(s => s.lat && s.lng);
+      const pts = (r.stops || []).filter(s => isValidLatLng(s.lat, s.lng));
       return pts && pts.length >= 2;
     });
     if (routesWithCoords.length === 0) return;
     let cancelled = false;
     const ctrl = new AbortController();
+    const cacheKey = (r)=> `${r.id}:${(r.stops||[]).map(s=> s.lat?.toFixed(5)+','+s.lng?.toFixed(5)).join('|')}`;
     const fetchAll = async () => {
       for (const r of routesWithCoords) {
         if (cancelled) break;
-        const pts = r.stops.filter(s => s.lat && s.lng);
-        const coords = pts.map(s => `${s.lng},${s.lat}`).join(';');
+        const key = cacheKey(r);
+        if (routeGeomCache.has(key)) {
+          const cached = routeGeomCache.get(key);
+          if (!cancelled) setRouteGeometries(prev => ({ ...prev, [r.id]: cached }));
+          continue;
+        }
+        const pts = r.stops.filter(s => isValidLatLng(s.lat, s.lng));
+        // OSRM ожидает lng,lat — проверяем порядок
+        const coords = pts.map(s => `${Number(s.lng).toFixed(6)},${Number(s.lat).toFixed(6)}`).join(';');
+        if (coords.split(';').length < 2) continue;
         try {
           const resp = await fetch(
-            `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`,
+            `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&continue_straight=true`,
             { signal: ctrl.signal }
           );
-          if (!resp.ok) continue;
-          const data = await resp.json();
-          if (data.routes?.[0]?.geometry?.coordinates) {
-            const positions = data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-            if (!cancelled) {
-              setRouteGeometries(prev => ({ ...prev, [r.id]: positions }));
-            }
+          if (!resp.ok) {
+            console.warn('[BusMap] OSRM no road geometry for', r.number, resp.status);
+            continue;
           }
-        } catch {}
+          const data = await resp.json();
+          const g = data.routes?.[0]?.geometry?.coordinates;
+          if (!g || g.length < 2) continue;
+          // GeoJSON: [lng, lat] → Leaflet [lat,lng] — проверяем
+          const positions = g.map(([lng, lat]) => {
+            if (!isValidLatLng(lat,lng)) return null;
+            return [lat, lng];
+          }).filter(Boolean);
+          if (positions.length < 2) continue;
+          routeGeomCache.set(key, positions);
+          if (!cancelled) setRouteGeometries(prev => ({ ...prev, [r.id]: positions }));
+        } catch (e){
+          if(e?.name!=='AbortError') console.warn('[BusMap] OSRM fetch failed', r.number, e.message);
+        }
       }
     };
     fetchAll();
     return () => { cancelled = true; ctrl.abort(); };
-  }, [routes]);
+  }, [routes.map(r=>r.id+':'+(r.stops||[]).length).join(',')]);
 
   return (
     <div className="w-full h-full dark:bg-gray-800">
@@ -885,9 +962,11 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         tms={TILE_LAYERS[tileIndex].tms || false}
       />
       <MapController center={center} mapRef={mapRef} />
+      <CenterWatcher onCenterChange={onCenterChange} />
+      {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
       <FlyToHandler flyTo={flyTo} onDone={onFlyDone} />
       <ScaleControl position="bottomleft" imperial={false} metric={true} />
-      {!mapPickTarget && <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={routingOpen} onFinderToggle={handleFinderToggle} onShareTrip={onShareTrip} rightOffset={routingOpen ? 400 : panelVisible ? 360 : 0} isNavigating={nav.isActive} onLocate={onLocate} />}
+      {!mapPickTarget && <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={routingOpen} onFinderToggle={handleFinderToggle} onShareTrip={onShareTrip} rightOffset={routingOpen ? 400 : panelVisible ? 360 : 0} isNavigating={nav.isActive} onLocate={onLocate} autoCenter={autoCenter} onToggleAutoCenter={()=>{ const v=!autoCenter; window.dispatchEvent(new CustomEvent('karta_autocenter',{detail:v})); }} />}
 
       {showLabels && (
         <TileLayer
@@ -899,11 +978,19 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
 
       {/* All routes as polylines — when a route is selected, show only it */}
       {(route ? (routes || []).filter(r => r.id === route.id) : (routes || [])).map(r => {
-        const pts = r.stops?.filter(s => s.lat && s.lng);
+        const pts = r.stops?.filter(s => isValidLatLng(s.lat, s.lng));
         if (!pts || pts.length < 2) return null;
         const isSelected = !!route;
         const geoPositions = routeGeometries[r.id];
-        const positions = geoPositions || pts.map(s => [s.lat, s.lng]);
+        // не рисуем fallback прямую — ждём road geometry
+        if (!geoPositions || geoPositions.length < 2) {
+          if (isSelected) {
+            // покажем тонкую пунктирную заглушку с сообщением в консоль, но не прямую через здания
+            console.log('[BusMap] waiting road geometry for', r.number);
+          }
+          return null;
+        }
+        const positions = geoPositions;
         return (
           <Fragment key={r.id}>
             {/* Белая обводка + яркая линия — главный визуальный элемент */}
@@ -982,6 +1069,28 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       {vehicles.filter(v => v.lat && v.lng).map(v => (
         <AnimatedVehicleMarker key={v.id} vehicle={v} route={route} getEtaLabel={getEtaLabel} />
       ))}
+      {eventPos && (
+        <Marker position={[eventPos[0], eventPos[1]]} icon={L.divIcon({ html:`<div style="width:30px;height:30px;border-radius:50% 50% 50% 0; transform:rotate(-45deg); background:#e10600;border:2px solid #fff; display:flex; align-items:center; justify-content:center; box-shadow:0 3px 10px rgba(0,0,0,0.3);"><span style="transform:rotate(45deg); color:#fff; font-weight:800; font-size:16px;">—</span></div>`, className:'', iconSize:[30,38], iconAnchor:[15,30]})} zIndexOffset={1000} />
+      )}
+      {eventLine && eventLine.length>1 && (
+        <>
+          <Polyline positions={eventLine} color={roadDir===0?'#e10600': roadDir===1?'#059669':'#2563eb'} weight={7} opacity={0.9} dashArray={roadDir===0?'8 8':undefined} lineCap="round" />
+          {eventLine.map((p,i)=> (
+            <Marker key={`el-${i}`} position={p} icon={L.divIcon({ html:`<div style="width:10px;height:10px;border-radius:50%;background:#fff;border:2px solid ${roadDir===0?'#e10600':roadDir===1?'#059669':'#2563eb'};box-shadow:0 1px 4px rgba(0,0,0,0.3)"></div>`, className:'', iconSize:[10,10], iconAnchor:[5,5]})} />
+          ))}
+          {roadDir!==0 && eventLine.length>=2 && (()=>{ const mid=eventLine[Math.floor(eventLine.length/2)]; const icon = L.divIcon({ html:`<div style="font-size:18px; filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4))">${roadDir===1?'⬆️':'⬇️'}</div>`, className:'', iconSize:[18,18], iconAnchor:[9,9]}); return <Marker position={mid} icon={icon} interactive={false} />; })()}
+        </>
+      )}
+      {mapEvents.filter(e=>e.lat&&e.lng).map(ev=> {
+        const col = ev.type==='accident'?'#ef4444': ev.type==='camera'?'#3b82f6': ev.type==='roadwork'?'#f59e0b': ev.type==='closure'?'#dc2626': ev.type==='hazard'?'#dc2626': ev.type==='traffic'?'#7c3aed': '#64748b';
+        const label = ({accident:'ДТП', roadwork:'Ремонт', camera:'Камера', closure:'Перекрытие', hazard:'Опасность', traffic:'Пробка', other:'Другое'}[ev.type] || ev.type);
+        const icon = L.divIcon({ html:`<div style="position:relative; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35))"><div style="width:28px;height:28px;border-radius:50% 50% 50% 0; transform:rotate(-45deg); background:${col};border:2px solid #fff; display:flex; align-items:center; justify-content:center;"><span style="transform:rotate(45deg); color:#fff; font-weight:800; font-size:14px; line-height:1;">—</span></div><div style="position:absolute; left:50%; bottom:-6px; width:8px;height:8px;background:${col}; transform:rotate(45deg) translateX(-50%); border-right:2px solid #fff; border-bottom:2px solid #fff;"></div></div>`, className:'', iconSize:[28,36], iconAnchor:[14,28]});
+        const startStr = ev.created_at ? new Date(ev.created_at).toLocaleString('ru') : '';
+        const endStr = ev.expires_at ? new Date(ev.expires_at).toLocaleString('ru') : '';
+        const timeLine = endStr ? `${startStr} → ${endStr}` : startStr;
+        const photoPublic = ev.photo_url ? `https://eotkmnwneivithfkweds.supabase.co/storage/v1/object/public/reports/${ev.photo_url}` : null;
+        return <Marker key={`evt-${ev.id}`} position={[ev.lat, ev.lng]} icon={icon}><Popup><div style={{fontSize:12, minWidth:170, fontFamily:'Inter,sans-serif'}}><div style={{fontWeight:800, color:col}}>{label}</div>{photoPublic && <img src={photoPublic} alt="фото" style={{width:'100%', maxHeight:120, objectFit:'cover', borderRadius:8, marginTop:6}} onError={e=>e.currentTarget.style.display='none'} /> }<div style={{color:'#374151', marginTop:6}}>{ev.description ? ev.description.replace(/\s*\[.*?\]\s*/,'') : ''}</div><div style={{color:'#059669', fontWeight:600, fontSize:11, marginTop:4}}>{timeLine}</div><button onClick={async()=>{ if(!confirm('Удалить?')) return; setMapEvents(prev=>prev.filter(x=>x.id!==ev.id)); mapRef.current?.closePopup(); const {error}=await supabase.from('map_events').update({is_active:false}).eq('id', ev.id); if(error){ const {error:delErr}=await supabase.from('map_events').delete().eq('id', ev.id); if(delErr) toast.error('Не удалось удалить: '+delErr.message);} else toast.success('Удалено'); }} style={{marginTop:8, width:'100%', background:'#fee2e2', color:'#b91c1c', border:'1px solid #fecaca', borderRadius:8, padding:'6px', fontSize:11, fontWeight:700, cursor:'pointer'}}>Удалить</button></div></Popup></Marker>;
+      })}
 
 
 
@@ -990,12 +1099,34 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         (() => {
           const navRoute = nav.isActive && nav.routeData ? nav.routeData : routingRoute;
           const positions = navRoute.geometry;
+          const isPreview = !nav.isActive;
           return (
             <>
+              {/* alternatives as per reference 2 — blue dashed, selectable */}
+              {isPreview && routingRoute?.alternatives?.map((alt,i)=> (
+                <Polyline
+                  key={`alt-${i}`}
+                  positions={alt.geometry}
+                  color="#60a5fa"
+                  weight={6}
+                  opacity={0.55}
+                  dashArray="12 10"
+                  lineCap="round"
+                  lineJoin="round"
+                  eventHandlers={{ click: ()=> {
+                    try{ navigator.vibrate?.(20);}catch{}
+                    setRoutingRoute(prev=> ({ ...alt, from: prev.from, to: prev.to, mode: prev.mode, waypoints: prev.waypoints, alternatives: prev.alternatives }));
+                    if(alt.geometry?.length) { const b=L.latLngBounds(alt.geometry); mapRef.current?.fitBounds(b, {padding:[40,40]}); }
+                  }}}
+                />
+              ))}
+              {isPreview && routingRoute?.alternatives?.[0] && (
+                <Marker position={routingRoute.alternatives[0].geometry[Math.floor(routingRoute.alternatives[0].geometry.length/2)]} interactive={false} icon={L.divIcon({ html:`<div style="background:rgba(59,130,246,0.9);color:#fff;font-size:10px;font-weight:800;padding:2px 6px;border-radius:10px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.25);">то же время</div>`, className:'', iconSize:[70,18], iconAnchor:[35,9]})} />
+              )}
               <Polyline positions={positions} color="white" weight={10} opacity={0.95} lineCap="round" lineJoin="round" />
               <Polyline
                 positions={positions}
-                color={navRoute.mode === 'walking' ? '#7C3AED' : navRoute.mode === 'cycling' ? '#059669' : '#2563EB'}
+                color={navRoute.mode === 'walking' ? '#7C3AED' : navRoute.mode === 'cycling' ? '#059669' : isPreview ? '#22c55e' : '#2563EB'}
                 weight={6}
                 opacity={1}
                 lineCap="round"
@@ -1032,7 +1163,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       {nav.isActive && nav.userPosition ? (
         <NavigationUserArrow position={nav.userPosition} heading={nav.userHeading} />
       ) : (
-        <UserLocationMarker />
+        <UserLocationMarker transportMode={routeMeta?.mode || nav.routeData?.mode} />
       )}
 
       {/* Navigation camera follow + arrow */}

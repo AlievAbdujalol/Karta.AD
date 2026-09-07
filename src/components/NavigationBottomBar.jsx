@@ -1,108 +1,50 @@
 import { useNavigation } from '@/lib/NavigationContext';
-import { Pause, Play, Square, Volume2, VolumeX, Crosshair } from 'lucide-react';
+import { Search, Menu, Pause, Play, Square } from 'lucide-react';
 
-function formatDist(m) {
-  if (!m) return '0 м';
-  if (m >= 1000) return `${(m / 1000).toFixed(1)} км`;
-  return `${Math.round(m)} м`;
-}
+function fmt(m){ if(!m) return '0 м'; if(m>=1000) return `${(m/1000).toFixed(1)} км`; return `${Math.round(m)} м`; }
+function fmtMin(s){ if(!s) return '0 мин'; return `${Math.max(1, Math.round(s/60))} мин`; }
 
-function formatDur(s) {
-  if (!s) return '0 мин';
-  if (s >= 3600) {
-    const h = Math.floor(s / 3600);
-    const m = Math.round((s % 3600) / 60);
-    return `${h} ч ${m} мин`;
-  }
-  return `${Math.round(s)} мин`;
-}
-
-function formatTime(date) {
-  if (!date) return '--:--';
-  return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-}
-
-export default function NavigationBottomBar() {
-  const {
-    isPaused, remainingDistance, remainingDuration, eta,
-    voiceEnabled, followUser, tripStats,
-    togglePause, stopNavigation, toggleVoice, toggleFollow,
-  } = useNavigation();
-
+export default function NavigationBottomBar(){
+  const { remainingDistance, remainingDuration, eta, isPaused, togglePause, stopNavigation } = useNavigation();
+  const time = eta ? eta.toLocaleTimeString('ru-RU',{hour:'2-digit', minute:'2-digit'}) : '--:--';
+  const mins = fmtMin(remainingDuration);
+  const km = fmt(remainingDistance);
   return (
-    <div className="absolute bottom-0 left-0 right-0 z-[800] pointer-events-auto">
-      <div className="mx-2 mb-2 sm:mx-4 sm:mb-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-slate-200/60 dark:border-slate-700/50 overflow-hidden">
-        {/* Stats row */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-          <div className="text-center">
-            <p className="text-[10px] text-slate-400 uppercase tracking-wide">Осталось</p>
-            <p className="text-base font-extrabold text-slate-900 dark:text-white">{formatDist(remainingDistance)}</p>
-          </div>
-          <div className="w-px h-8 bg-slate-200 dark:bg-slate-700" />
-          <div className="text-center">
-            <p className="text-[10px] text-slate-400 uppercase tracking-wide">Время</p>
-            <p className="text-base font-extrabold text-slate-900 dark:text-white">{formatDur(remainingDuration)}</p>
-          </div>
-          <div className="w-px h-8 bg-slate-200 dark:bg-slate-700" />
-          <div className="text-center">
-            <p className="text-[10px] text-slate-400 uppercase tracking-wide">ETA</p>
-            <p className="text-base font-extrabold text-emerald-600 dark:text-emerald-400">{formatTime(eta)}</p>
-          </div>
-        </div>
-
-        {/* Traveled stats */}
-        {tripStats.distance > 0 && (
-          <div className="flex items-center justify-between px-4 py-1.5 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
-            <span className="text-[10px] text-slate-400">Пройдено: <span className="font-bold text-slate-600 dark:text-slate-300">{formatDist(tripStats.distance)}</span></span>
-            <span className="text-[10px] text-slate-400">Средняя: <span className="font-bold text-slate-600 dark:text-slate-300">{Math.round(tripStats.avgSpeed)} км/ч</span></span>
-          </div>
-        )}
-
-        {/* Controls */}
-        <div className="flex items-center gap-2 px-3 py-3">
-          {/* Pause/Resume */}
-          <button
-            onClick={togglePause}
-            className="flex-1 h-11 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
-          >
-            {isPaused ? <Play size={15} /> : <Pause size={15} />}
-            {isPaused ? 'Продолжить' : 'Пауза'}
+    <>
+      {/* bottom bar like reference: white rounded */}
+      <div className="absolute bottom-[88px] left-3 right-3 z-[800] pointer-events-auto">
+        <div className="bg-white rounded-[16px] shadow-[0_8px_28px_rgba(0,0,0,0.22)] px-3 py-2.5 flex items-center gap-2">
+          <button className="w-9 h-9 rounded-[10px] bg-slate-100 flex items-center justify-center">
+            <Search size={16} className="text-slate-600" />
           </button>
-
-          {/* Stop */}
-          <button
-            onClick={stopNavigation}
-            className="flex-1 h-11 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/25"
-          >
-            <Square size={14} className="fill-white" />
-            Завершить
-          </button>
-
-          {/* Voice */}
-          <button
-            onClick={toggleVoice}
-            className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all active:scale-95 ${
-              voiceEnabled
-                ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
-            }`}
-          >
-            {voiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-          </button>
-
-          {/* Follow */}
-          <button
-            onClick={toggleFollow}
-            className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all active:scale-95 ${
-              followUser
-                ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
-            }`}
-          >
-            <Crosshair size={16} />
+          <div className="flex-1 flex items-center justify-center gap-6">
+            <div className="text-center leading-none">
+              <div className="text-[18px] font-black text-slate-900">{mins.split(' ')[0]}</div>
+              <div className="text-[11px] font-medium text-slate-500 -mt-0.5">мин</div>
+            </div>
+            <div className="text-center leading-none">
+              <div className="text-[18px] font-black text-slate-900">{time}</div>
+              <div className="text-[11px] font-medium text-slate-500 -mt-0.5">прибытие</div>
+            </div>
+            <div className="text-center leading-none">
+              <div className="text-[18px] font-black text-slate-900">{km.split(' ')[0]}</div>
+              <div className="text-[11px] font-medium text-slate-500 -mt-0.5">{km.split(' ')[1]||'м'}</div>
+            </div>
+          </div>
+          <button className="w-9 h-9 rounded-[10px] bg-slate-100 flex items-center justify-center">
+            <Menu size={16} className="text-slate-600" />
           </button>
         </div>
       </div>
-    </div>
+      {/* controls hidden in reference during nav - show small pause/stop as overlay second row if needed */}
+      <div className="absolute bottom-[18px] left-3 right-3 z-[800] pointer-events-auto flex gap-2">
+        <button onClick={togglePause} className="flex-1 bg-slate-900/90 backdrop-blur text-white rounded-xl py-2.5 text-xs font-bold flex items-center justify-center gap-1.5">
+          {isPaused ? <Play size={12}/> : <Pause size={12}/>} {isPaused?'Продолжить':'Пауза'}
+        </button>
+        <button onClick={stopNavigation} className="flex-1 bg-[#ff3b30] text-white rounded-xl py-2.5 text-xs font-black flex items-center justify-center gap-1.5">
+          <Square size={10} className="fill-white"/> Завершить
+        </button>
+      </div>
+    </>
   );
 }

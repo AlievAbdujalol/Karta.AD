@@ -99,6 +99,15 @@ export const Review = makeEntity('reviews');
 export const Transaction = makeEntity('transactions');
 export const Notification = makeEntity('notifications');
 export const UserProfile = makeEntity('profiles');
+export const SavedPlace = makeEntity('saved_places');
+export const RouteHistory = makeEntity('route_history');
+export const OfflineMap = makeEntity('offline_maps');
+export const NavigationSettings = makeEntity('navigation_settings');
+export const VehicleSettings = makeEntity('vehicle_settings');
+export const TruckSettings = makeEntity('truck_settings');
+export const MapEvent = makeEntity('map_events');
+export const LocationShare = makeEntity('location_shares');
+export const UserLocation = makeEntity('user_locations');
 
 export const entities = {
   City,
@@ -112,4 +121,13 @@ export const entities = {
   Transaction,
   Notification,
   User: UserProfile,
+  SavedPlace,
+  RouteHistory,
+  OfflineMap,
+  NavigationSettings,
+  VehicleSettings,
+  TruckSettings,
+  MapEvent,
+  LocationShare,
+  UserLocation,
 };

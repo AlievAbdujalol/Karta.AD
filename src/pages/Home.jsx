@@ -22,6 +22,11 @@ import ErrorBoundary, { BusMapErrorFallback } from '@/components/ErrorBoundary';
 import { useNotificationCount } from '@/lib/NotificationContext';
 import { useLocation } from 'react-router-dom';
 import BottomSheet from '@/components/BottomSheet';
+import PlaceCard from '@/components/PlaceCard';
+import ShareRouteSheet from '@/components/ShareRouteSheet';
+import MapEventsSheet from '@/components/MapEventsSheet';
+import BluetoothSheet from '@/components/BluetoothSheet';
+import MiniMap from '@/components/MiniMap';
 
 export default function Home() {
   const { t, lang, setLang } = useLanguage();
@@ -51,6 +56,19 @@ export default function Home() {
   const [sheetState, setSheetState] = useState('collapsed');
   const [activeTab, setActiveTab] = useState('stops');
   const [routingOpen, setRoutingOpen] = useState(false);
+  const [placeCard, setPlaceCard] = useState(null);
+  const [shareSheet, setShareSheet] = useState(null);
+  const [eventsOpen, setEventsOpen] = useState(false);
+  const [tiltEnabled, setTiltEnabled] = useState(()=> { try{return localStorage.getItem('karta_tilt')==='1';}catch{return false;}});
+  const [autoCenter, setAutoCenter] = useState(true);
+  const [routeMeta, setRouteMeta] = useState(null);
+  const [liveCenter, setLiveCenter] = useState(null);
+  const [eventPos, setEventPos] = useState(null);
+  const [eventLine, setEventLine] = useState([]);
+  const [roadDir, setRoadDir] = useState(0);
+  const [eventType, setEventType] = useState('closure');
+  useEffect(()=>{ const h=(e)=>setTiltEnabled(!!e.detail); window.addEventListener('karta_tilt_change', h); return ()=>window.removeEventListener('karta_tilt_change', h); },[]);
+  useEffect(()=>{ const h=(e)=>setAutoCenter(!!e.detail); window.addEventListener('karta_autocenter', h); return ()=>window.removeEventListener('karta_autocenter', h); },[]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -166,6 +184,7 @@ export default function Home() {
 
   const handleSelectResult = useCallback((item) => {
     setSearchResult(item);
+    setPlaceCard(item);
     setFlyTo({ lat: item.lat, lng: item.lng, zoom: 16 });
 
     if (item._type === 'route') {
@@ -177,7 +196,9 @@ export default function Home() {
     } else if (item._type === 'stop') {
       setWatchedStop(item);
     }
-  }, [routes]);
+    // history
+    try { if(currentUser?.id) supabase.from('route_history').insert({ user_id: currentUser.id, start_lat: item.lat, start_lng: item.lng, transport_mode: 'driving', polyline: item }).then(()=>{}); } catch{}
+  }, [routes, currentUser?.id]);
 
   useStopNotifier({
     vehicles,
@@ -295,8 +316,34 @@ export default function Home() {
     <div className="relative w-full h-full bg-slate-50 dark:bg-slate-950 overflow-hidden select-none">
       <div className="absolute inset-0 w-full h-full z-0">
         <ErrorBoundary fallback={(error) => <BusMapErrorFallback error={error} />}>
-          <BusMap vehicles={vehicles} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} flyTo={flyTo} onFlyDone={() => setFlyTo(null)} routes={routes} onRoutingOpen={() => setSheetState('collapsed')} onRoutingStateChange={setRoutingOpen} contactLocations={contactLocations} groupRouteMembers={onlineMembers} onShareTrip={handleShareTrip} groupRoute={groupRoute} panelVisible={panelVisible} onLocate={handleLocateUser} />
+          <BusMap vehicles={vehicles} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} flyTo={flyTo} onFlyDone={() => setFlyTo(null)} routes={routes} onRoutingOpen={() => setSheetState('collapsed')} onRoutingStateChange={(open, meta)=>{setRoutingOpen(open); if(meta) setRouteMeta(meta);}} contactLocations={contactLocations} groupRouteMembers={onlineMembers} onShareTrip={handleShareTrip} groupRoute={groupRoute} panelVisible={panelVisible} onLocate={handleLocateUser} tiltEnabled={tiltEnabled} autoCenter={autoCenter} routeMeta={routeMeta} onPlaceSelect={setPlaceCard} onCenterChange={setLiveCenter} onMapClick={eventsOpen ? (latlng)=> {
+            if(eventType==='roadwork'){
+              setEventLine(prev=>{
+                const next=[...prev, [latlng.lat, latlng.lng]];
+                // cycle dir each tap: 1 point ❌, 2 points ⬆️, 3+ ⬇️
+                setRoadDir(next.length===1?0 : next.length===2?1 : 2);
+                try{ navigator.vibrate?.(30);}catch{}
+                return next;
+              });
+            } else setEventPos([latlng.lat, latlng.lng]);
+          } : undefined} eventPos={eventPos} eventLine={eventLine} roadDir={roadDir} />
         </ErrorBoundary>
+        {eventsOpen && !eventPos && (
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-10" style={{bottom:'42vh'}}>
+            <div className="relative">
+              <div className="w-8 h-8 rounded-full bg-[#e10600] border-2 border-white shadow-lg flex items-center justify-center text-white font-black">—</div>
+              <div className="absolute left-1/2 -bottom-1 w-2 h-2 bg-[#e10600] rotate-45 -translate-x-1/2 border-r border-b border-white" />
+            </div>
+            <div className="absolute flex items-center justify-center -translate-y-10">
+              <span className="bg-white/90 dark:bg-slate-900/90 px-2 py-1 rounded-full text-[11px] font-bold shadow border">Тапните по карте — выберите место, затем тип</span>
+            </div>
+          </div>
+        )}
+        {eventPos && (
+          <div className="absolute inset-0 pointer-events-none z-10" style={{bottom:'42vh'}}>
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-emerald-600 text-white px-3 py-1 rounded-full text-[11px] font-bold shadow">✓ Место выбрано</div>
+          </div>
+        )}
       </div>
 
       {/* Navigation overlays — rendered above z-0 map container */}
@@ -333,6 +380,20 @@ export default function Home() {
       {searchResult && (
         <SearchResultCard result={searchResult} onClose={() => setSearchResult(null)} />
       )}
+      {placeCard && <PlaceCard place={placeCard} onClose={()=>setPlaceCard(null)} onRoute={(p)=>{setPlaceCard(null); setRouteMeta({to:p});}} onFlyTo={(p)=>setFlyTo({lat:p.lat,lng:p.lng,zoom:16})} userPos={nav.userPosition}/>}
+      {shareSheet && <ShareRouteSheet from={shareSheet.from} to={shareSheet.to} route={shareSheet.route} onClose={()=>setShareSheet(null)}/>}
+      {eventsOpen && <MapEventsSheet center={eventPos || (eventLine[0] ? eventLine[0] : null) || liveCenter || mapCenter} eventLine={eventLine} roadDir={roadDir} onDirChange={setRoadDir} onClearLine={()=> setEventLine([])} onTypeChange={setEventType} onClose={()=>{setEventsOpen(false); setEventPos(null); setEventLine([]);}} onPickHint={eventPos || eventLine.length ? null : 'Тапните по карте, чтобы выбрать место'}/>}
+      <BluetoothSheet onClose={()=>{}}/>
+      {nav.isActive && <div className="absolute bottom-[136px] left-2 z-[550] opacity-90 hover:opacity-100 transition-opacity pointer-events-none"><MiniMap center={nav.userPosition||mapCenter} route={nav.routeData} userPos={nav.userPosition} heading={nav.userHeading}/></div>}
+      {nav.isActive && (
+        <div className="absolute top-[58px] left-2 right-20 z-[550] pointer-events-auto">
+          <div className="bg-slate-900/90 backdrop-blur text-white rounded-xl px-3 py-2 flex items-center gap-2 shadow-lg border border-white/10 max-w-[280px]">
+            <span className="text-[11px] leading-tight flex-1">Отправляйте друзьям свою геопозицию в реальном времени</span>
+            <button onClick={()=>{ try{navigator.share?.({title:'Геопозиция', url: window.location.href});}catch{} }} className="text-emerald-400 text-[11px] font-bold whitespace-nowrap">Делиться</button>
+          </div>
+        </div>
+      )}
+      <button onClick={()=>{ try{ navigator.vibrate?.(50); }catch{} if(!eventsOpen){ setTimeout(()=> setEventsOpen(true), 70); setEventPos(null); } else setEventsOpen(false); }} className="absolute left-2 bottom-[160px] z-[500] w-9 h-9 rounded-2xl bg-white dark:bg-slate-900 border shadow flex items-center justify-center text-[10px] font-black">{eventsOpen?'×':'!'}</button>
 
       {/* Group Route Panel */}
       {panelVisible && (
@@ -358,7 +419,7 @@ export default function Home() {
         />
       )}
 
-      <BottomSheet
+      {!nav.isActive && <BottomSheet
         selectedCity={selectedCity}
         routes={routes}
         vehicles={vehicles}
@@ -386,9 +447,8 @@ export default function Home() {
             setFlyTo({ lat: data.lat, lng: data.lng, zoom: 16 });
           }
         }}
-      />
-
-      <SchedulePanel route={selectedRoute} hidden={routingOpen} />
+      />}
+      {!nav.isActive && <SchedulePanel route={selectedRoute} hidden={routingOpen} />}
 
       <div className="absolute top-40 md:top-3 left-1/2 -translate-x-1/2 md:left-[400px] md:translate-x-0 z-[200] pointer-events-none flex flex-col gap-2 items-start">
         {locating && (

@@ -111,12 +111,14 @@ export function useLocationSharing(userId) {
     loadContactLocations();
   }, [loadContactLocations]);
 
-  const shareWith = useCallback(async (contactId) => {
+  const shareWith = useCallback(async (contactId, minutes=60) => {
     if (!userId || !contactId) return;
+    const expires = minutes ? new Date(Date.now()+minutes*60000).toISOString() : null;
     const { error } = await supabase.from('location_shares').upsert({
       sharer_id: userId,
       shared_with_id: contactId,
       status: 'active',
+      expires_at: expires,
     }, { onConflict: 'sharer_id,shared_with_id' });
     if (!error) {
       setSharingEnabled(true);

@@ -67,6 +67,15 @@ export const AuthProvider = ({ children }) => {
           setUser(profile || { ...session.user, id: session.user.id });
           setIsAuthenticated(true);
           setAuthError(null);
+          // guest -> auth sync §24
+          try{
+            const pairs=[['karta_nav_settings','navigation_settings'],['karta_vehicle','vehicle_settings'],['karta_truck','truck_settings'],['karta_public_transport','public_transport_settings']];
+            for(const [key, table] of pairs){
+              const raw=localStorage.getItem(key); if(!raw) continue;
+              const parsed=JSON.parse(raw);
+              await supabase.from(table).upsert({user_id: session.user.id, ...parsed, updated_at:new Date().toISOString()}, {onConflict:'user_id'});
+            }
+          }catch{}
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
           setIsAuthenticated(false);

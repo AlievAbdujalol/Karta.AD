@@ -1,88 +1,40 @@
 import { useNavigation } from '@/lib/NavigationContext';
-import { Navigation, ArrowRight, ArrowLeft, ChevronUp, RotateCcw } from 'lucide-react';
 
-function formatDist(m) {
-  if (m >= 1000) return `${(m / 1000).toFixed(1)} км`;
+function formatDist(m){
+  if(m>=1000) return `${(m/1000).toFixed(1)} км`;
+  if(m>=1000) return `${(m/1000).toFixed(1)} км`;
   return `${Math.round(m)} м`;
 }
 
-function formatTime(date) {
-  if (!date) return '--:--';
-  return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-}
-
-function getManeuverIcon(instruction, modifier) {
-  if (instruction === 'depart') return <Navigation size={22} className="text-white" />;
-  if (instruction === 'arrive') return <span className="text-lg">🏁</span>;
-  if (instruction === 'roundabout') return <RotateCcw size={20} className="text-white" />;
-  if (instruction === 'uturn') return <RotateCcw size={20} className="text-white" style={{ transform: 'scaleX(-1)' }} />;
-
-  if (modifier === 'right' || modifier === 'sharp right' || modifier === 'slight right') {
-    return <ArrowRight size={22} className="text-white" />;
-  }
-  if (modifier === 'left' || modifier === 'sharp left' || modifier === 'slight left') {
-    return <ArrowLeft size={22} className="text-white" />;
-  }
-  return <ChevronUp size={22} className="text-white" />;
-}
-
-export default function NavigationHUD() {
-  const { nextInstruction, remainingDistance, eta, userSpeed, remainingDuration } = useNavigation();
-
-  if (!nextInstruction) return null;
-
-  const formatDur = (s) => {
-    if (s >= 3600) {
-      const h = Math.floor(s / 3600);
-      const m = Math.round((s % 3600) / 60);
-      return `${h} ч ${m} мин`;
-    }
-    return `${Math.round(s)} мин`;
-  };
-
+export default function NavigationHUD(){
+  const { nextInstruction, userSpeed } = useNavigation();
+  if(!nextInstruction) return null;
+  const dist = nextInstruction.distance ?? nextInstruction.dist ?? 0;
+  const speed = Math.round((userSpeed||0)*3.6);
+  const text = nextInstruction.text || nextInstruction.streetName || 'Прямо';
+  const m = Math.round(dist);
+  const label = m < 20 ? `${m} м` : m < 1000 ? `${m} м` : `${(m/1000).toFixed(1)} км`;
   return (
-    <div className="absolute top-0 left-0 right-0 z-[800] pointer-events-auto">
-      <div className="mx-2 mt-2 sm:mx-4 sm:mt-3 bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-slate-700/50 overflow-hidden">
-        {/* Maneuver banner */}
-        <div className="flex items-center gap-4 px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700">
-          <div className="w-12 h-12 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
-            {getManeuverIcon(nextInstruction.instruction, nextInstruction.modifier)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-white font-extrabold text-lg leading-tight truncate">
-              {formatDist(nextInstruction.distance)}
-            </p>
-            {nextInstruction.streetName && (
-              <p className="text-blue-200 text-xs font-medium truncate mt-0.5">
-                {nextInstruction.streetName}
-              </p>
-            )}
-          </div>
-          <div className="text-right flex-shrink-0">
-            <p className="text-white font-bold text-sm">
-              {userSpeed > 0 ? `${Math.round(userSpeed * 3.6)} км/ч` : ''}
-            </p>
-          </div>
-        </div>
-
-        {/* Bottom info row */}
-        <div className="flex items-center justify-between px-4 py-2 bg-slate-900">
-          <div className="text-center">
-            <p className="text-[10px] text-slate-500 uppercase tracking-wide">Осталось</p>
-            <p className="text-sm font-bold text-white">{formatDist(remainingDistance)}</p>
-          </div>
-          <div className="w-px h-6 bg-slate-700" />
-          <div className="text-center">
-            <p className="text-[10px] text-slate-500 uppercase tracking-wide">Прибытие</p>
-            <p className="text-sm font-bold text-emerald-400">{formatTime(eta)}</p>
-          </div>
-          <div className="w-px h-6 bg-slate-700" />
-          <div className="text-center">
-            <p className="text-[10px] text-slate-500 uppercase tracking-wide">Время</p>
-            <p className="text-sm font-bold text-white">{formatDur(remainingDuration)}</p>
-          </div>
+    <>
+      {/* top maneuver */}
+      <div className="absolute top-3 left-3 z-[800] pointer-events-auto">
+        <div className="bg-white rounded-[14px] shadow-[0_4px_16px_rgba(0,0,0,0.18)] px-3 py-2 flex items-center gap-2.5 min-w-[96px]">
+          <span className="text-[#0a84ff] text-[22px] leading-none">↑</span>
+          <span className="text-[18px] font-black tracking-tight text-slate-900">{label}</span>
         </div>
       </div>
-    </div>
+      {/* speed */}
+      <div className="absolute top-3 right-3 z-[800] pointer-events-auto flex flex-col items-center gap-1.5">
+        <div className="w-[56px] h-[56px] rounded-full bg-white shadow-[0_4px_16px_rgba(0,0,0,0.18)] flex items-center justify-center border border-slate-100">
+          <span className="text-[22px] font-black text-slate-900">{speed}</span>
+        </div>
+        {speed===0 && (
+          <div className="w-[36px] h-[28px] rounded-[10px] bg-white shadow flex items-center justify-center border border-slate-100">
+            <span className="text-[#0a84ff] font-black text-[14px]">P</span>
+          </div>
+        )}
+      </div>
+      {/* compass handled by MapControls, not here */}
+    </>
   );
 }

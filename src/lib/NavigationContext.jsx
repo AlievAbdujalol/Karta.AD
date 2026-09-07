@@ -118,6 +118,19 @@ export function NavigationProvider({ children }) {
   }, []);
 
   const processPosition = useCallback((lat, lng, heading, speed) => {
+    // GPS smoothing: moving average last 3
+    const hist = positionsRef.current.slice(-2);
+    if (hist.length >= 2) {
+      const avgLat = (hist[0].lat + hist[1].lat + lat) / 3;
+      const avgLng = (hist[0].lng + hist[1].lng + lng) / 3;
+      if (Math.hypot(avgLat - lat, avgLng - lng) * 111320 < 40) { lat = avgLat; lng = avgLng; }
+    }
+    // jump filter >150m in <2s
+    const last = positionsRef.current[positionsRef.current.length - 1];
+    if (last) {
+      const jump = Math.hypot(lat - last.lat, lng - last.lng) * 111320;
+      if (jump > 150) return;
+    }
     setUserPosition([lat, lng]);
 
     const lastPos = positionsRef.current[positionsRef.current.length - 1];
@@ -148,8 +161,16 @@ export function NavigationProvider({ children }) {
     stepIndexRef.current = stepIdx;
 
     const step = steps[stepIdx];
+    const nextStep = steps[stepIdx + 1];
     const loc = step.start || [0, 0];
     const distToStep = Math.hypot(lat - loc[0], lng - loc[1]) * 111320;
+    // авто-масштаб: приблизить перед поворотом
+    try {
+      const autoScale = JSON.parse(localStorage.getItem('karta_nav_settings')||'{}')?.auto_scale !== false;
+      if (autoScale && nextStep && step.distance < 120) {
+        window.dispatchEvent(new CustomEvent('karta_autoscale', { detail: nextStep.distance < 80 ? 18 : 16 }));
+      }
+    } catch {}
 
     setNextInstruction({
       text: getManeuverText(step.instruction, step.modifier, step.distance),
@@ -177,8 +198,17 @@ export function NavigationProvider({ children }) {
     setRemainingDistance(totalRemaining);
 
     const elapsed = startTimeRef.current ? (Date.now() - startTimeRef.current) / 1000 : 0;
-    const avgSpd = traveledRef.current > 0 ? traveledRef.current / elapsed : 0;
-    const etaSec = avgSpd > 0 ? totalRemaining / avgSpd : 0;
+    const avgSpd = traveledRef.current > 0 && elapsed > 15 ? traveledRef.current / elapsed : 0;
+    // ETA: пока мало проехали (<100м) или скорость нестабильна — используем OSRM duration пропорционально
+    let etaSec = 0;
+    if (route && route.duration && route.distance) {
+      const progress = Math.max(0, Math.min(1, 1 - totalRemaining / route.distance));
+      const osrmRemaining = route.duration * (1 - progress);
+      if (traveledRef.current < 100 || avgSpd < 1.2) etaSec = osrmRemaining;
+      else etaSec = totalRemaining / avgSpd;
+    } else if (avgSpd > 0) etaSec = totalRemaining / avgSpd;
+    // защита от 3524 мин бага — не показываем > 12ч
+    if (etaSec > 43200) etaSec = route?.duration || 0;
     setEta(new Date(Date.now() + etaSec * 1000));
     setRemainingDuration(Math.round(etaSec));
     setTripStats({ distance: traveledRef.current, duration: elapsed, avgSpeed: avgSpd * 3.6 });
@@ -237,12 +267,14 @@ export function NavigationProvider({ children }) {
     isPausedRef.current = false;
     resetNavState();
     startGps();
+    try { localStorage.setItem('karta_nav_active', JSON.stringify(route)); } catch {}
     speak('Начинаем навигацию');
   }, [startGps, resetNavState, speak]);
 
   const stopNavigation = useCallback(() => {
     clearGps();
     try { window.speechSynthesis.cancel(); } catch {}
+    try { localStorage.removeItem('karta_nav_active'); } catch {}
     const elapsed = startTimeRef.current ? (Date.now() - startTimeRef.current) / 1000 : 0;
     const dist = traveledRef.current;
     const avgSpd = elapsed > 0 ? (dist / elapsed) * 3.6 : 0;
@@ -335,8 +367,9 @@ const reroute = useCallback(async (from, to, profile = 'driving') => {
   }, []);
 
   useEffect(() => {
+    try { const saved = localStorage.getItem('karta_nav_active'); if (saved) { const r = JSON.parse(saved); if (r?.geometry) { routeRef.current = r; setRouteData(r); setIsActive(true); startGps(); } } } catch {}
     return () => { clearGps(); try { window.speechSynthesis.cancel(); } catch {} };
-  }, [clearGps]);
+  }, [clearGps, startGps]);
 
   const value = useMemo(() => ({
     isActive, isPaused,

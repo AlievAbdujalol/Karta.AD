@@ -17,7 +17,35 @@ function fareForRoute(route) {
   if (!route) return 0;
   const t = (route.type || '').toLowerCase();
   if (t === 'minibus' || t === 'marshrutka') return 5;
-  return 2.5; // bus / trolleybus default
+  if (t === 'metro' || t === 'mcc' || t === 'mcd' || t === 'aeroexpress') return 8;
+  if (t === 'tram' || t === 'trolley' || t === 'express_tram' || t === 'light_metro') return 3;
+  if (t === 'ferry' || t === 'funicular' || t === 'cable' || t === 'monorail') return 6;
+  return 2.5; // bus default
+}
+
+function estimateTaxiPrice(distM, durationS){
+  const km = distM/1000; const durMin = durationS/60;
+  return Math.round(km*5 + durMin*0.5 + 25);
+}
+
+async function buildComboOption(from,to,route,boardIdx,alightIdx,signal){
+  const base = await buildTransitOption(from,to,route,boardIdx,alightIdx,signal);
+  if(!base) return null;
+  // taxi from alight to target on top of walk
+  const taxi = await fetchOsrm('driving', [{lat: base.alightStop.lat, lng: base.alightStop.lng}, to], signal);
+  if(!taxi || taxi.distance < 400) return null;
+  const price = estimateTaxiPrice(taxi.distance, taxi.duration);
+  // replace last walking with taxi
+  const segs = [...base.segments];
+  segs[segs.length-1] = { type:'taxi', geometry: taxi.geometry, distance: taxi.distance, duration: taxi.duration, from: segs[segs.length-1].from, to, routeColor:'#F59E0B', label:`Такси ${Math.round(taxi.distance/1000*10)/10} км ~${price} TJS` };
+  return {
+    type:'combo', route, boardStop: base.boardStop, alightStop: base.alightStop, routes:[route],
+    totalDistance: base.totalDistance - base.walkFromAlightDistance + taxi.distance,
+    totalDuration: base.totalDuration - base.walkFromAlightDuration + taxi.duration,
+    totalPrice: base.totalPrice + price,
+    segments: segs,
+    walkToBoardDistance: base.walkToBoardDistance,
+  };
 }
 
 /** Расстояние в метрах между двумя точками (Haversine) */
@@ -116,21 +144,19 @@ async function buildTransitOption(from, to, route, boardIdx, alightIdx, signal) 
   const orderedStops = boardIdx <= alightIdx ? busStops : [...busStops].reverse();
   const validBusStops = orderedStops.filter((s) => s.lat && s.lng);
 
-  // Строим маршрут через OSRM по дорогам
-  let busGeom = validBusStops.map((s) => [s.lat, s.lng]); // fallback — прямые
-  let busDistance = distanceM(boardStop.lat, boardStop.lng, alightStop.lat, alightStop.lng) * 1.35;
-  let busDuration = Math.abs(alightIdx - boardIdx) * 120;
-
-  if (validBusStops.length >= 2) {
-    try {
-      const busOsrm = await fetchOsrm('driving', validBusStops, signal);
-      if (busOsrm) {
-        busGeom = busOsrm.geometry;
-        busDistance = busOsrm.distance;
-        busDuration = busOsrm.duration;
-      }
-    } catch { /* оставляем fallback */ }
-  }
+  // Строим маршрут через OSRM по дорогам — строго road geometry, без fallback прямых линий
+  if (validBusStops.length < 2) return null;
+  let busGeom, busDistance, busDuration;
+  try {
+    const busOsrm = await fetchOsrm('driving', validBusStops, signal);
+    if (!busOsrm || !busOsrm.geometry || busOsrm.geometry.length < 2) return null;
+    busGeom = busOsrm.geometry;
+    busDistance = busOsrm.distance;
+    busDuration = busOsrm.duration;
+  } catch { return null; }
+  // валидация: не допускаем диагональных срезов через здания — геометрия должна быть > прямой дистанции * 0.7
+  const straight = distanceM(boardStop.lat, boardStop.lng, alightStop.lat, alightStop.lng);
+  if (busDistance < straight * 0.7) return null;
 
   const stopCount = Math.abs(alightIdx - boardIdx);
 
@@ -267,8 +293,11 @@ export async function findTransitRoutes(from, to, routes, typeFilter = null) {
   const timeout = setTimeout(() => ctrl.abort(), 20000);
 
   try {
+    let allowed = null;
+    try{ const s=JSON.parse(localStorage.getItem('karta_public_transport')||'{}'); allowed = s.allowed_types; }catch{}
     const filtered = routes.filter((r) => {
       if (!r.stops?.length) return false;
+      if (allowed && allowed.length && !allowed.includes(r.type)) return false;
       if (typeFilter && r.type !== typeFilter) return false;
       return true;
     });
@@ -365,9 +394,18 @@ export async function findTransitRoutes(from, to, routes, typeFilter = null) {
       transfers.sort((a, b) => a.totalDuration - b.totalDuration);
     }
 
-    const best = direct[0] || transfers[0] || null;
+    let combo=[];
+    try{ const s=JSON.parse(localStorage.getItem('karta_public_transport')||'{}'); if(s.combo_taxi) {
+      for(const route of filtered.slice(0,6)){
+        const boardCandidates = nearestStops(route, from.lat, from.lng, 1500, 1);
+        const alightCandidates = nearestStops(route, to.lat, to.lng, 3000, 1);
+        for(const b of boardCandidates) for(const a of alightCandidates){ if(b.index===a.index) continue; const c=await buildComboOption(from,to,route,b.index,a.index,ctrl.signal); if(c) combo.push(c); }
+      }
+      combo.sort((a,b)=>a.totalDuration-b.totalDuration);
+    }}catch{}
+    const best = direct[0] || transfers[0] || combo[0] || null;
 
-    return { direct: direct.slice(0, 3), transfers: transfers.slice(0, 2), best };
+    return { direct: direct.slice(0, 3), transfers: transfers.slice(0, 2), combo: combo.slice(0,2), best };
   } finally {
     clearTimeout(timeout);
   }
@@ -384,8 +422,9 @@ export function buildSegmentPolylines(option) {
     color:
       seg.type === 'walking'
         ? '#7C3AED'
+        : seg.type === 'taxi' ? '#F59E0B'
         : seg.routeColor || '#1565C0',
-    weight: seg.type === 'walking' ? 3 : 5,
+    weight: seg.type === 'walking' ? 3 : seg.type==='taxi'?4 : 5,
     opacity: seg.type === 'walking' ? 0.7 : 1,
     dashed: seg.type === 'walking',
     dashArray: seg.type === 'walking' ? '6 8' : null,

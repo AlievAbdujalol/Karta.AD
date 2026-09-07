@@ -197,7 +197,7 @@ export default function Profile() {
 
   useEffect(() => {
     if (user?.id) loadDriverRoutes();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [user?.id]);
 
   useEffect(() => {
@@ -1327,6 +1327,13 @@ export default function Profile() {
           >
             {saving ? (<><Loader2 size={18} className="animate-spin" />{t('loading')}</>) : (<><Save size={18} />{t('saveProfile')}</>)}
           </button>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={()=>navigate('/offline-maps')} className="py-2.5 rounded-xl bg-white dark:bg-slate-800 border font-bold text-xs">Офлайн-карты</button>
+            <button onClick={()=>navigate('/settings/navigator')} className="py-2.5 rounded-xl bg-white dark:bg-slate-800 border font-bold text-xs">Навигатор</button>
+            <button onClick={()=>navigate('/settings/vehicle')} className="py-2.5 rounded-xl bg-white dark:bg-slate-800 border font-bold text-xs">Авто</button>
+            <button onClick={()=>navigate('/settings/truck')} className="py-2.5 rounded-xl bg-white dark:bg-slate-800 border font-bold text-xs">Грузовик</button>
+          </div>
 
           <button
             onClick={() => logout()}

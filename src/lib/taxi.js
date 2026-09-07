@@ -1,5 +1,5 @@
 import {
-  Car, Sparkles, Wind, Truck, Ban, Bike, Package, Route, Zap, Boxes, Crown, Wallet,
+  Car, Sparkles, Wind, Truck, Ban, Bike, Package, Route, Zap, Boxes, Crown,
 } from 'lucide-react';
 
 // ─── ТАРИФЫ ──────────────────────────────────────────────────────────────────

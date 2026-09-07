@@ -82,7 +82,7 @@ export default function LocationSharingPanel({ contactLocations = [], sharingEna
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-[11px] font-semibold text-slate-200 truncate">{loc.full_name}</div>
-                        <div className="text-[9px] text-slate-500">{formatTime(loc.updated_at)}</div>
+                        <div className="text-[9px] text-slate-500 flex gap-1.5">{formatTime(loc.updated_at)} {loc.speed!=null && <span>{(loc.speed*3.6).toFixed(0)} км/ч</span>} {loc.heading!=null && <span>↗ {Math.round(loc.heading)}°</span>}</div>
                       </div>
                       <MapPin size={12} className="text-emerald-400 flex-shrink-0" />
                     </div>
@@ -93,6 +93,9 @@ export default function LocationSharingPanel({ contactLocations = [], sharingEna
               {sharingEnabled && (
                 <div className="space-y-1">
                   <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t('locationSharing.shareWith') || 'Поделиться с'}</div>
+                  <div className="flex gap-1 mb-1">
+                    {[15,30,60,0].map(m=> <button key={m} onClick={()=>window._shareMin=m} className="flex-1 py-1 rounded-lg bg-slate-800 text-[10px] font-bold text-slate-400 focus:bg-emerald-600 focus:text-white">{m===0?'∞':m+'м'}</button>)}
+                  </div>
                   <div className="relative">
                     <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500" />
                     <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
@@ -102,8 +105,9 @@ export default function LocationSharingPanel({ contactLocations = [], sharingEna
                   <div className="max-h-36 overflow-y-auto space-y-0.5">
                     {filteredContacts.slice(0, 8).map(c => (
                       <button key={c.id} onClick={() => {
+                        const mins = window._shareMin ?? 60;
                         if (sharedWith.includes(c.id)) { onUnshareWith?.(c.id); setSharedWith(prev => prev.filter(id => id !== c.id)); }
-                        else { onShareWith?.(c.id); setSharedWith(prev => [...prev, c.id]); }
+                        else { onShareWith?.(c.id, mins); setSharedWith(prev => [...prev, c.id]); }
                       }} className="w-full flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-800 transition-colors text-left">
                         <div className="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
                           {c.photo_url ? <img src={c.photo_url} alt="" className="w-full h-full rounded-full object-cover" /> : <span className="text-[9px] font-bold text-slate-400">{(c.full_name || '?')[0]}</span>}

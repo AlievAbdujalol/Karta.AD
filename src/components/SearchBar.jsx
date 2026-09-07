@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, X, MapPin, Bus, Route, Clock, Building2 } from 'lucide-react';
+import { Search, X, MapPin, Bus, Route, Clock, Building2, Mic, MicOff, Navigation, Heart, Fuel, ShoppingBag, UtensilsCrossed, Hotel, ParkingCircle, Pill, Landmark as AtmIcon } from 'lucide-react';
 import { searchAll, flattenResults, getSearchHistory, addToHistory, clearHistory } from '@/lib/searchUtils';
 import { useLanguage } from '@/lib/useLanguage';
+import { supabase } from '@/api/supabase';
 
 export default function SearchBar({ cityId, selectedCity, selectedCountry, onSelectResult, mapCenter }) {
   const { t } = useLanguage();
@@ -13,9 +14,21 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry, onSel
   const [showHistory, setShowHistory] = useState(false);
   const [selectedIdx, setSelectedIdx] = useState(-1);
   const [loading, setLoading] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [favPlaces, setFavPlaces] = useState([]);
   const inputRef = useRef(null);
   const containerRef = useRef(null);
   const debounceRef = useRef(null);
+  const POI_CATS = [
+    { q:'остановка', icon: MapPin, label:'Остановки' },
+    { q:'парковка', icon: ParkingCircle, label:'Парковки' },
+    { q:'АЗС', icon: Fuel, label:'АЗС' },
+    { q:'аптека', icon: Pill, label:'Аптеки' },
+    { q:'магазин', icon: ShoppingBag, label:'Магазины' },
+    { q:'ресторан', icon: UtensilsCrossed, label:'Рестораны' },
+    { q:'гостиница', icon: Hotel, label:'Гостиницы' },
+    { q:'банкомат', icon: AtmIcon, label:'Банкоматы' },
+  ];
 
   const refreshHistory = useCallback(() => {
     setHistory(getSearchHistory());
@@ -23,6 +36,7 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry, onSel
 
   useEffect(() => {
     refreshHistory();
+    supabase.auth.getUser().then(({data:{user}})=>{ if(!user) return; supabase.from('saved_places').select('id,name,lat,lng').eq('user_id', user.id).limit(5).then(({data})=>setFavPlaces(data||[])); });
   }, [refreshHistory]);
 
   useEffect(() => {
@@ -91,85 +105,15 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry, onSel
         }));
       } catch {}
 
-      // Google Places Autocomplete — biased toward selected city
-      const googleKey = import.meta.env.VITE_GOOGLE_MAPS_KEY;
-      if (googleKey) {
-        try {
-          const gpUrl = new URL('https://maps.googleapis.com/maps/api/place/autocomplete/json');
-          gpUrl.searchParams.set('input', query);
-          gpUrl.searchParams.set('key', googleKey);
-          gpUrl.searchParams.set('language', 'ru');
-          gpUrl.searchParams.set('components', `country:${googleCountry}`);
-          gpUrl.searchParams.set('locationbias', `point:${biasLat},${biasLng}`);
-          const gp = await fetch(gpUrl.toString());
-          const gpData = await gp.json();
-          const placeIds = (gpData.predictions || []).slice(0, 5).map(p => p.place_id);
-          await Promise.all(placeIds.map(async (pid) => {
-            try {
-              const det = await fetch(`https://maps.googleapis.com/maps/api/place/details/json?place_id=${pid}&key=${googleKey}&language=ru&fields=geometry,formatted_address,name`);
-              const d = await det.json();
-              if (d.result?.geometry?.location) {
-                addPoi({
-                  _type: 'poi', id: `g-${pid}`,
-                  name: d.result.name || d.result.formatted_address?.split(',')[0],
-                  fullAddress: d.result.formatted_address,
-                  lat: d.result.geometry.location.lat, lng: d.result.geometry.location.lng,
-                  category: 'place', source: 'Google',
-                });
-              }
-            } catch {}
-          }));
-        } catch {}
-      }
-
-      // Yandex Geocoder — biased toward selected city
-      const yandexKey = import.meta.env.VITE_YANDEX_GEOCODER_KEY;
-      if (yandexKey) {
-        try {
-          const yxUrl = new URL('https://geocode-maps.yandex.ru/1.x/');
-          yxUrl.searchParams.set('apikey', yandexKey);
-          yxUrl.searchParams.set('geocode', query);
-          yxUrl.searchParams.set('format', 'json');
-          yxUrl.searchParams.set('lang', 'ru_RU');
-          yxUrl.searchParams.set('results', '5');
-          yxUrl.searchParams.set('ll', `${biasLng},${biasLat}`);
-          yxUrl.searchParams.set('spn', '2.0,2.0');
-          const yx = await fetch(yxUrl.toString());
-          const yxData = await yx.json();
-          (yxData.response?.GeoObjectCollection?.featureMember || []).forEach(m => {
-            const obj = m.GeoObject;
-            const pos = obj.Point?.pos?.split(' ');
-            if (pos) addPoi({
-              _type: 'poi', id: `yx-${obj.name}-${pos[0]}-${pos[1]}`,
-              name: obj.name, fullAddress: obj.metaDataProperty?.GeocoderMetaData?.text || obj.name,
-              lat: parseFloat(pos[1]), lng: parseFloat(pos[0]),
-              category: 'place', source: 'Yandex',
-            });
-          });
-        } catch {}
-      }
-
-      // Photon — biased toward selected city
-      try {
-        const phUrl = new URL('https://photon.komoot.io/api/');
-        phUrl.searchParams.set('q', query);
-        phUrl.searchParams.set('limit', '5');
-        phUrl.searchParams.set('lang', 'ru');
-        phUrl.searchParams.set('lon', String(biasLng));
-        phUrl.searchParams.set('lat', String(biasLat));
-        const ph = await fetch(phUrl.toString());
-        const phData = await ph.json();
-        (phData.features || []).forEach(f => {
-          const p = f.properties;
-          const label = [p.name, p.city, p.state, p.country].filter(Boolean).join(', ');
-          addPoi({
-            _type: 'poi', id: `ph-${f.properties.osm_id || f.properties.name}-${f.geometry.coordinates[0]}`,
-            name: p.name || label.split(',')[0], fullAddress: label,
-            lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0],
-            category: p.osm_key || 'place', source: 'Photon',
-          });
-        });
-      } catch {}
+      // Внешние провайдеры Google/Yandex/Photon отключены на клиенте из-за CORS.
+      // Используйте Edge Function proxy (supabase/functions/search-proxy) или оставьте только Nominatim.
+      // Nominatim уже отработал выше. Дополнительный Photon — только если доступен, без шума в консоли.
+      // try { // Photon disabled to avoid 400 spam — раскомментируйте если прокси настроен
+      //   const phUrl = new URL('https://photon.komoot.io/api/');
+      //   phUrl.searchParams.set('q', query); phUrl.searchParams.set('limit','5'); phUrl.searchParams.set('lang','ru');
+      //   phUrl.searchParams.set('lon', String(biasLng)); phUrl.searchParams.set('lat', String(biasLat));
+      //   const ph = await fetch(phUrl.toString()); if(ph.ok){ const phData=await ph.json(); (phData.features||[]).forEach(f=>{ const p=f.properties; const label=[p.name,p.city,p.state,p.country].filter(Boolean).join(', '); addPoi({_type:'poi', id:`ph-${p.osm_id||p.name}-${f.geometry.coordinates[0]}`, name:p.name||label.split(',')[0], fullAddress:label, lat:f.geometry.coordinates[1], lng:f.geometry.coordinates[0], category:p.osm_key||'place', source:'Photon'});});}
+      // } catch {}
 
       res.pois = pois;
       setResults(res);
@@ -223,9 +167,24 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry, onSel
 
   const focusInput = () => {
     inputRef.current?.focus();
-    if (!query.trim() && history.length) {
+    if (!query.trim() && (history.length || favPlaces.length)) {
       setShowHistory(true);
     }
+  };
+  const startVoice = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    const rec = new SR(); rec.lang='ru-RU'; rec.interimResults=false;
+    rec.onstart=()=>setListening(true); rec.onend=()=>setListening(false);
+    rec.onresult=(e)=>{ const txt=e.results[0][0].transcript; setQuery(txt); setShowHistory(false); };
+    rec.start();
+  };
+  const searchNearby = () => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition((pos)=>{
+      const {latitude, longitude}=pos.coords;
+      onSelectResult?.({ _type:'poi', name:'Рядом', lat: latitude, lng: longitude, fullAddress:'Результаты рядом' });
+    });
   };
 
   const typeIcons = {
@@ -263,15 +222,23 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry, onSel
           onChange={e => { setQuery(e.target.value); setShowHistory(false); }}
           onFocus={focusInput}
           onKeyDown={handleKeyDown}
-          placeholder={t('search.placeholder')}
-          className="w-full h-9 sm:h-11 pl-9 pr-9 text-xs sm:text-sm bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/60 dark:border-slate-700/80 rounded-2xl shadow-lg outline-none text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+          placeholder={t('search.placeholder') || 'Куда?'}
+          className="w-full h-9 sm:h-11 pl-9 pr-20 text-xs sm:text-sm bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/60 dark:border-slate-700/80 rounded-2xl shadow-lg outline-none text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
         />
-        {query && (
-          <button onClick={() => { setQuery(''); setOpen(false); inputRef.current?.focus(); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-            <X size={16} />
-          </button>
-        )}
+        <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+          <button onClick={startVoice} className={`w-7 h-7 rounded-full flex items-center justify-center ${listening?'bg-red-500 text-white animate-pulse':'bg-slate-100 dark:bg-slate-800 text-slate-500'}`} title="Голосовой ввод">{listening?<MicOff size={13}/>:<Mic size={13}/>}</button>
+          {query ? (
+            <button onClick={() => { setQuery(''); setOpen(false); inputRef.current?.focus(); }} className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500"><X size={13} /></button>
+          ) : (
+            <button onClick={searchNearby} className="w-7 h-7 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center" title="Рядом"><Navigation size={13}/></button>
+          )}
+        </div>
       </div>
+      {(!query.trim() && (open||showHistory)) && (
+        <div className="mt-2 flex gap-1.5 overflow-x-auto scrollbar-none pb-1">
+          {POI_CATS.map(c=> <button key={c.q} onClick={()=>setQuery(c.q)} className="shrink-0 px-2.5 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-bold flex items-center gap-1"><c.icon size={10}/>{c.label}</button>)}
+        </div>
+      )}
 
       {(open || showHistory) && (
         <div className="absolute top-full mt-1.5 left-0 right-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/60 dark:border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden max-h-80 overflow-y-auto">
@@ -289,8 +256,14 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry, onSel
                   <button onClick={() => { clearHistory(); refreshHistory(); }} className="text-[11px] text-blue-500 hover:text-blue-700 font-medium">{t('search.clearHistory')}</button>
                 )}
               </div>
-              {history.length === 0 && (
+              {history.length === 0 && favPlaces.length===0 && (
                 <p className="text-xs text-slate-400 text-center py-4">{t('search.historyEmpty')}</p>
+              )}
+              {favPlaces.length>0 && (
+                <div className="px-2 py-1">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-2 py-1 flex items-center gap-1"><Heart size={10}/>Избранное</p>
+                  {favPlaces.map(p=> <button key={p.id} onClick={()=>onSelectResult?.({_type:'poi', name:p.name, lat:p.lat, lng:p.lng})} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-500/10 text-left"><Heart size={12} className="text-rose-500"/><span className="text-xs truncate">{p.name}</span></button>)}
+                </div>
               )}
               {history.map((h, i) => (
                 <button

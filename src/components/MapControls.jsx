@@ -1,10 +1,11 @@
-import { Layers, Crosshair, Plus, Minus, Navigation, Share2 } from 'lucide-react';
+import { Layers, Crosshair, Plus, Minus, Navigation, Share2, LocateFixed } from 'lucide-react';
 import { useMap } from 'react-leaflet';
 import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
 
 const TILE_LAYERS = [
   { labelKey: 'mapControls.layerStandard', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_2m2c_1_fd237f9c15572ee356a4aa42', isHybrid: false },
+  { labelKey: 'mapControls.layerDark', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', isHybrid: false },
   { labelKey: 'mapControls.layerHybrid', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', isHybrid: true },
   { labelKey: 'mapControls.layerOsm', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', isHybrid: false },
   { labelKey: 'mapControls.layerEsriStreet', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', isHybrid: false },
@@ -16,7 +17,7 @@ const TILE_LAYERS = [
 
 const LABEL_OVERLAY_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/light_only_labels/{z}/{x}/{y}{r}.png';
 
-export default function MapControls({ tileIndex, setTileIndex, finderActive, onFinderToggle, onShareTrip, rightOffset, isNavigating, onLocate }) {
+export default function MapControls({ tileIndex, setTileIndex, finderActive, onFinderToggle, onShareTrip, rightOffset, isNavigating, onLocate, tiltEnabled, onToggleTilt, autoCenter, onToggleAutoCenter }) {
   const map = useMap();
   const { t } = useLanguage();
 
@@ -65,6 +66,9 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
         </button>
         <button onClick={() => map.zoomOut()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90`} title={t('mapControls.zoomOut')}>
           <Minus size={18} className="stroke-[2.2]" />
+        </button>
+        <button onClick={() => onToggleAutoCenter?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${autoCenter ? '!bg-emerald-600 !text-white' : ''}`} title="Авто-центр">
+          <LocateFixed size={18} className="stroke-[2.2]" />
         </button>
         <button onClick={cycleLayer} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 relative`} title={`${t('mapControls.layerLabel')} ${t(TILE_LAYERS[tileIndex].labelKey)}`}>
           <Layers size={18} className="stroke-[2.2]" />

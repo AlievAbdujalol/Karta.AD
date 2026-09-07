@@ -12,6 +12,7 @@ export default function RoutesManager() {
   const { user } = useCurrentUser();
   const [routes, setRoutes] = useState([]);
   const [cities, setCities] = useState([]);
+  const ROUTE_TYPES = ['bus','minibus','trolley','tram','metro','train','funicular','monorail','ferry','cable','express_tram','aeroexpress','mcc','mcd','light_metro','speed_tram'];
   const [form, setForm] = useState({ number: '', name: '', type: 'bus', city_id: '', color: '#1565C0' });
   const [adding, setAdding] = useState(false);
   const [schedulingRoute, setSchedulingRoute] = useState(null);
@@ -99,8 +100,7 @@ export default function RoutesManager() {
               onChange={e => setForm({ ...form, name: e.target.value })} className="border rounded-lg px-3 py-2 text-sm" />
             <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}
               className="border rounded-lg px-3 py-2 text-sm">
-              <option value="bus">{t('bus')}</option>
-              <option value="minibus">{t('minibus')}</option>
+              {ROUTE_TYPES.map(tp=> <option key={tp} value={tp}>{tp}</option>)}
             </select>
             <select value={form.city_id} onChange={e => setForm({ ...form, city_id: e.target.value })}
               className="border rounded-lg px-3 py-2 text-sm">

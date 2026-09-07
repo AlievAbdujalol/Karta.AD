@@ -153,7 +153,16 @@ export type Tables =
   | 'notifications'
   | 'transactions'
   | 'trip_logs'
-  | 'subscription_payments';
+  | 'subscription_payments'
+  | 'saved_places'
+  | 'route_history'
+  | 'offline_maps'
+  | 'navigation_settings'
+  | 'vehicle_settings'
+  | 'truck_settings'
+  | 'map_events'
+  | 'location_shares'
+  | 'user_locations';
 
 export type ProfileInsert = Omit<Profile, 'id' | 'created_at' | 'updated_at'> & { id?: string };
 export type VehicleInsert = Omit<Vehicle, 'id' | 'created_at'> & { id?: string };
