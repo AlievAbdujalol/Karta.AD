@@ -316,7 +316,7 @@ export default function Home() {
     <div className="relative w-full h-full bg-slate-50 dark:bg-slate-950 overflow-hidden select-none">
       <div className="absolute inset-0 w-full h-full z-0">
         <ErrorBoundary fallback={(error) => <BusMapErrorFallback error={error} />}>
-          <BusMap vehicles={vehicles} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} flyTo={flyTo} onFlyDone={() => setFlyTo(null)} routes={routes} onRoutingOpen={() => setSheetState('collapsed')} onRoutingStateChange={(open, meta)=>{setRoutingOpen(open); if(meta) setRouteMeta(meta);}} contactLocations={contactLocations} groupRouteMembers={onlineMembers} onShareTrip={handleShareTrip} groupRoute={groupRoute} panelVisible={panelVisible} onLocate={handleLocateUser} tiltEnabled={tiltEnabled} autoCenter={autoCenter} routeMeta={routeMeta} onPlaceSelect={setPlaceCard} onCenterChange={setLiveCenter} onMapClick={eventsOpen ? (latlng)=> {
+          <BusMap vehicles={vehicles} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} flyTo={flyTo} onFlyDone={() => setFlyTo(null)} routes={routes} onRoutingOpen={() => setSheetState('collapsed')} onRoutingStateChange={(open, meta)=>{setRoutingOpen(open); if(meta) setRouteMeta(meta);}} contactLocations={contactLocations} groupRouteMembers={onlineMembers} onShareTrip={handleShareTrip} groupRoute={groupRoute} panelVisible={panelVisible} onLocate={handleLocateUser} tiltEnabled={tiltEnabled} autoCenter={autoCenter} routeMeta={routeMeta} onPlaceSelect={setPlaceCard} onCenterChange={setLiveCenter} hideEvents={eventsOpen} onMapClick={eventsOpen ? (latlng)=> {
             if(eventType==='roadwork'){
               setEventLine(prev=>{
                 const next=[...prev, [latlng.lat, latlng.lng]];

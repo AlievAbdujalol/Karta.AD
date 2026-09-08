@@ -35,14 +35,19 @@ export function useOverpassStops() {
   });
   const map = useMap();
   const fetchedKeys = useRef(new Set(Object.keys(loadCache())));
+  const failedKeys = useRef(new Map()); // key -> ts провала, чтобы не долбить 504 по кругу
   const timerRef = useRef(null);
   const fetchingRef = useRef(false);
   const lastFetchRef = useRef(0);
   const cooldownUntilRef = useRef(0);
+  const FAILED_TTL = 5 * 60 * 1000; // не трогаем упавший тайл 5 минут
+  const FAIL_COOLDOWN = 30000; // после тотального провала — тишина 30с
 
   const fetchStops = useCallback(async (bounds, key, attempt = 0) => {
     if (fetchingRef.current) return;
     if (fetchedKeys.current.has(key)) return;
+    const failedAt = failedKeys.current.get(key);
+    if (failedAt && Date.now() - failedAt < FAILED_TTL) return;
     if (Date.now() < cooldownUntilRef.current) return;
     if (Date.now() - lastFetchRef.current < 8000) return;
     if (map.getZoom() < 12) return;
@@ -87,8 +92,12 @@ export function useOverpassStops() {
         }
       }
       if (!data) {
+        // все зеркала упали (504/таймаут) — помечаем тайл и уходим в кулдаун, иначе ретрай на каждый moveend
+        failedKeys.current.set(key, Date.now());
+        cooldownUntilRef.current = Date.now() + FAIL_COOLDOWN;
         return;
       }
+      failedKeys.current.delete(key);
       const stops = (data.elements || [])
         .map((el) => ({
           id: el.id,
@@ -122,6 +131,8 @@ export function useOverpassStops() {
       const ne = bounds.getNorthEast();
       const key = `${sw.lat.toFixed(2)}_${sw.lng.toFixed(2)}_${ne.lat.toFixed(2)}_${ne.lng.toFixed(2)}_z${map.getZoom()}`;
       if (fetchedKeys.current.has(key)) return;
+      const failedAt = failedKeys.current.get(key);
+      if (failedAt && Date.now() - failedAt < FAILED_TTL) return;
       if (Date.now() < cooldownUntilRef.current) return;
       clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => fetchStops(bounds, key), 2200);

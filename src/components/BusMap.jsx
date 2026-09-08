@@ -104,17 +104,36 @@ function MapController({ center, mapRef }) {
   const lng = center?.[1];
   useEffect(() => {
     mapRef.current = map;
-    if (lat && lng) map.setView([lat, lng], 13);
+    if (lat && lng) {
+      // двигаем карту только если центр реально ушёл — иначе setView плодит moveend-циклы
+      try {
+        const c = map.getCenter();
+        if (Math.abs(c.lat - lat) < 0.0005 && Math.abs(c.lng - lng) < 0.0005) return;
+        map.setView([lat, lng], map.getZoom() || 13);
+      } catch { map.setView([lat, lng], 13); }
+    }
   }, [lat, lng, map, mapRef]);
   return null;
 }
 function CenterWatcher({ onCenterChange }){
   const map = useMap();
+  const cbRef = useRef(onCenterChange);
+  cbRef.current = onCenterChange;
+  const lastRef = useRef(null);
   useEffect(()=>{
-    if(!onCenterChange) return;
-    const upd=()=>{ const c=map.getCenter(); onCenterChange([c.lat, c.lng]); };
-    upd(); map.on('moveend', upd); return ()=> map.off('moveend', upd);
-  },[map, onCenterChange]);
+    const upd=()=>{
+      try{
+        const c=map.getCenter();
+        const prev=lastRef.current;
+        // шлём наверх только реально новый центр — новый массив каждый раз = ре-рендер родителя
+        if(prev && Math.abs(prev[0]-c.lat)<1e-6 && Math.abs(prev[1]-c.lng)<1e-6) return;
+        lastRef.current=[c.lat, c.lng];
+        cbRef.current?.([c.lat, c.lng]);
+      }catch{}
+    };
+    // без синхронного upd() на маунте: он дёргал setState родителя в коммите и давал петлю обновлений
+    map.on('moveend', upd); return ()=> map.off('moveend', upd);
+  },[map]);
   return null;
 }
 function MapClickHandler({ onMapClick }){
@@ -567,7 +586,7 @@ function OsmStopMarkers({ routes, routeGeometries, routingOpen, onPickResult }) 
 
 const TILE_KEY = 'karta_tile_index';
 
-export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute, panelVisible, onLocate, tiltEnabled: _tiltEnabled = false, autoCenter = true, routeMeta = null, onPlaceSelect, onCenterChange, onMapClick, eventPos, eventLine=[], roadDir=0 }) {
+export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute, panelVisible, onLocate, tiltEnabled: _tiltEnabled = false, autoCenter = true, routeMeta = null, onPlaceSelect, onCenterChange, onMapClick, eventPos, eventLine=[], roadDir=0, hideEvents=false }) {
   const [tileIndex, setTileIndex] = useState(() => {
     try {
       const v = localStorage.getItem(TILE_KEY);
@@ -729,9 +748,16 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
     if (routingOpen) { setRoutingRoute(null); setMapPickTarget(null); }
   }, [routingOpen, onRoutingOpen]);
 
+  // уведомляем родителя только при реальной смене routingOpen — колбэк из пропсов
+  // пересоздаётся каждый рендер родителя, поэтому держим его в ref, иначе петля эффектов
+  const routingStateCbRef = useRef(onRoutingStateChange);
+  routingStateCbRef.current = onRoutingStateChange;
+  const lastRoutingNotifiedRef = useRef(null);
   useEffect(() => {
-    if (onRoutingStateChange) onRoutingStateChange(routingOpen);
-  }, [routingOpen, onRoutingStateChange]);
+    if (lastRoutingNotifiedRef.current === routingOpen) return;
+    lastRoutingNotifiedRef.current = routingOpen;
+    routingStateCbRef.current?.(routingOpen);
+  }, [routingOpen]);
 
   function MapPickerOverlay({ target, onPick, onCancel }) {
     const map = useMap();
@@ -1081,7 +1107,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
           {roadDir!==0 && eventLine.length>=2 && (()=>{ const mid=eventLine[Math.floor(eventLine.length/2)]; const icon = L.divIcon({ html:`<div style="font-size:18px; filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4))">${roadDir===1?'⬆️':'⬇️'}</div>`, className:'', iconSize:[18,18], iconAnchor:[9,9]}); return <Marker position={mid} icon={icon} interactive={false} />; })()}
         </>
       )}
-      {mapEvents.filter(e=>e.lat&&e.lng).map(ev=> {
+      {!hideEvents && mapEvents.filter(e=>e.lat&&e.lng).map(ev=> {
         const col = ev.type==='accident'?'#ef4444': ev.type==='camera'?'#3b82f6': ev.type==='roadwork'?'#f59e0b': ev.type==='closure'?'#dc2626': ev.type==='hazard'?'#dc2626': ev.type==='traffic'?'#7c3aed': '#64748b';
         const label = ({accident:'ДТП', roadwork:'Ремонт', camera:'Камера', closure:'Перекрытие', hazard:'Опасность', traffic:'Пробка', other:'Другое'}[ev.type] || ev.type);
         const icon = L.divIcon({ html:`<div style="position:relative; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35))"><div style="width:28px;height:28px;border-radius:50% 50% 50% 0; transform:rotate(-45deg); background:${col};border:2px solid #fff; display:flex; align-items:center; justify-content:center;"><span style="transform:rotate(45deg); color:#fff; font-weight:800; font-size:14px; line-height:1;">—</span></div><div style="position:absolute; left:50%; bottom:-6px; width:8px;height:8px;background:${col}; transform:rotate(45deg) translateX(-50%); border-right:2px solid #fff; border-bottom:2px solid #fff;"></div></div>`, className:'', iconSize:[28,36], iconAnchor:[14,28]});
@@ -1089,7 +1115,24 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         const endStr = ev.expires_at ? new Date(ev.expires_at).toLocaleString('ru') : '';
         const timeLine = endStr ? `${startStr} → ${endStr}` : startStr;
         const photoPublic = ev.photo_url ? `https://eotkmnwneivithfkweds.supabase.co/storage/v1/object/public/reports/${ev.photo_url}` : null;
-        return <Marker key={`evt-${ev.id}`} position={[ev.lat, ev.lng]} icon={icon}><Popup><div style={{fontSize:12, minWidth:170, fontFamily:'Inter,sans-serif'}}><div style={{fontWeight:800, color:col}}>{label}</div>{photoPublic && <img src={photoPublic} alt="фото" style={{width:'100%', maxHeight:120, objectFit:'cover', borderRadius:8, marginTop:6}} onError={e=>e.currentTarget.style.display='none'} /> }<div style={{color:'#374151', marginTop:6}}>{ev.description ? ev.description.replace(/\s*\[.*?\]\s*/,'') : ''}</div><div style={{color:'#059669', fontWeight:600, fontSize:11, marginTop:4}}>{timeLine}</div><button onClick={async()=>{ if(!confirm('Удалить?')) return; setMapEvents(prev=>prev.filter(x=>x.id!==ev.id)); mapRef.current?.closePopup(); const {error}=await supabase.from('map_events').update({is_active:false}).eq('id', ev.id); if(error){ const {error:delErr}=await supabase.from('map_events').delete().eq('id', ev.id); if(delErr) toast.error('Не удалось удалить: '+delErr.message);} else toast.success('Удалено'); }} style={{marginTop:8, width:'100%', background:'#fee2e2', color:'#b91c1c', border:'1px solid #fecaca', borderRadius:8, padding:'6px', fontSize:11, fontWeight:700, cursor:'pointer'}}>Удалить</button></div></Popup></Marker>;
+        // ленивый (.+?) обрезал JSON по первой же ']' и полосы никогда не парсились — жадные скобочные группы
+        let lanes = null; try{ const m = ev.description?.match(/\[lanes:(\[.*\])\]/); if(m) lanes = JSON.parse(m[1]); }catch{}
+        let lineInfo = null; try{ const m = ev.description?.match(/\[line:(\{.*\})\]/); if(m) lineInfo = JSON.parse(m[1]); }catch{}
+        return <Marker key={`evt-${ev.id}`} position={[ev.lat, ev.lng]} icon={icon}><Popup><div style={{fontSize:12, minWidth:190, fontFamily:'Inter,sans-serif'}}><div style={{fontWeight:800, color:col}}>{label}</div>
+        {lanes && Array.isArray(lanes) && (
+          <div style={{display:'grid', gridTemplateColumns:`repeat(${lanes.length},1fr)`, gap:4, marginTop:6}}>
+            {lanes.map((st,i)=>(
+              <div key={i} style={{
+                aspectRatio:'1', borderRadius:6, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800,
+                background: st==='blocked' ? '#fee2e2' : st==='up' ? '#ecfdf5' : st==='down' ? '#eff6ff' : '#fff',
+                border: `1.5px solid ${st==='blocked'?'#ef4444': st==='up'?'#10b981': st==='down'?'#3b82f6':'#e5e7eb'}`,
+                color: st==='blocked'?'#e10600': st==='up'?'#059669': st==='down'?'#2563eb':'transparent'
+              }}>{st==='blocked'?'✕': st==='up'?'↑': st==='down'?'↓':''}</div>
+            ))}
+          </div>
+        )}
+        {lineInfo?.line && <div style={{marginTop:6, fontSize:10, color:'#6b7280'}}>Линия: {lineInfo.line.length} точек · {lineInfo.dir===0?'❌':lineInfo.dir===1?'⬆️':'⬇️'}</div>}
+        {photoPublic && <img src={photoPublic} alt="фото" style={{width:'100%', maxHeight:120, objectFit:'cover', borderRadius:8, marginTop:6}} onError={e=>e.currentTarget.style.display='none'} /> }<div style={{color:'#374151', marginTop:6}}>{ev.description ? ev.description.replace(/\s*\[.*?\]\s*/g,'').trim() : ''}</div><div style={{color:'#059669', fontWeight:600, fontSize:11, marginTop:4}}>{timeLine}</div><button onClick={async()=>{ if(!confirm('Удалить?')) return; setMapEvents(prev=>prev.filter(x=>x.id!==ev.id)); mapRef.current?.closePopup(); const {error}=await supabase.from('map_events').update({is_active:false}).eq('id', ev.id); if(error){ const {error:delErr}=await supabase.from('map_events').delete().eq('id', ev.id); if(delErr) toast.error('Не удалось удалить: '+delErr.message);} else toast.success('Удалено'); }} style={{marginTop:8, width:'100%', background:'#fee2e2', color:'#b91c1c', border:'1px solid #fecaca', borderRadius:8, padding:'6px', fontSize:11, fontWeight:700, cursor:'pointer'}}>Удалить</button></div></Popup></Marker>;
       })}
 
 

@@ -118,6 +118,9 @@ function nearestStops(route, lat, lng, maxDist = 1500, topN = 3) {
  * Возвращает объект варианта или null.
  */
 async function buildTransitOption(from, to, route, boardIdx, alightIdx, signal) {
+  // посадка обязана быть раньше высадки по ходу маршрута — езда «задом наперёд»
+  // гнала OSRM по встречным односторонним и давала петли в десятки км
+  if (boardIdx >= alightIdx) return null;
   const boardStop = route.stops[boardIdx];
   const alightStop = route.stops[alightIdx];
 
@@ -136,13 +139,12 @@ async function buildTransitOption(from, to, route, boardIdx, alightIdx, signal) 
 
   if (!walkTo || !walkFrom) return null;
 
-  // Геометрия автобусного участка — OSRM driving через все остановки маршрута
-  const busStops = route.stops.slice(
-    Math.min(boardIdx, alightIdx),
-    Math.max(boardIdx, alightIdx) + 1
-  );
-  const orderedStops = boardIdx <= alightIdx ? busStops : [...busStops].reverse();
-  const validBusStops = orderedStops.filter((s) => s.lat && s.lng);
+  // отсекаем мусорные пешие плечи — точки в пределах 1.5 км не могут дать 20+ км пешком
+  if (walkTo.distance > 5000 || walkFrom.distance > 5000) return null;
+
+  // Геометрия автобусного участка — OSRM driving через остановки строго по ходу маршрута
+  const busStops = route.stops.slice(boardIdx, alightIdx + 1);
+  const validBusStops = busStops.filter((s) => s.lat && s.lng);
 
   // Строим маршрут через OSRM по дорогам — строго road geometry, без fallback прямых линий
   if (validBusStops.length < 2) return null;
@@ -157,6 +159,8 @@ async function buildTransitOption(from, to, route, boardIdx, alightIdx, signal) 
   // валидация: не допускаем диагональных срезов через здания — геометрия должна быть > прямой дистанции * 0.7
   const straight = distanceM(boardStop.lat, boardStop.lng, alightStop.lat, alightStop.lng);
   if (busDistance < straight * 0.7) return null;
+  // и наоборот — отсекаем объездные петли (встречки/развороты OSRM): автобус не едет в 4+ раз длиннее прямой
+  if (straight > 200 && busDistance > straight * 4) return null;
 
   const stopCount = Math.abs(alightIdx - boardIdx);
 
@@ -312,8 +316,7 @@ export async function findTransitRoutes(from, to, routes, typeFilter = null) {
       for (const board of boardCandidates) {
         for (const alight of alightCandidates) {
           if (board.index === alight.index) continue;
-          // Проверяем, что посадка раньше высадки по направлению маршрута
-          // (допускаем оба направления — некоторые маршруты двусторонние)
+          // посадка раньше высадки по ходу маршрута (проверка внутри buildTransitOption)
           const opt = await buildTransitOption(
             from,
             to,

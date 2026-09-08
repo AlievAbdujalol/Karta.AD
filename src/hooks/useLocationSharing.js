@@ -65,6 +65,21 @@ export function useLocationSharing(userId) {
     };
   }, [userId, sharingEnabled]);
 
+  // id пользователей, которые реально поделились со мной (источник правды — RPC).
+  // realtime шлёт ВСЮ таблицу user_locations, поэтому чужих отбрасываем здесь.
+  const allowedIdsRef = useRef(new Set());
+  const reloadTimerRef = useRef(null);
+
+  const loadContactLocations = useCallback(async () => {
+    if (!userId) return;
+    const { data } = await supabase.rpc('get_shared_locations');
+    if (data) {
+      const mine = data.filter(l => l.user_id !== userId);
+      allowedIdsRef.current = new Set(mine.map(l => l.user_id));
+      setContactLocations(mine);
+    }
+  }, [userId]);
+
   useEffect(() => {
     if (!userId) return;
 
@@ -80,6 +95,13 @@ export function useLocationSharing(userId) {
           return;
         }
         const loc = payload.new;
+        if (!loc || loc.user_id === userId) return; // себя не показываем
+        if (!allowedIdsRef.current.has(loc.user_id)) {
+          // чужак без шаринга — не добавляем; вдруг шаринг дали только что — перепроверяем через RPC
+          clearTimeout(reloadTimerRef.current);
+          reloadTimerRef.current = setTimeout(() => loadContactLocations(), 2000);
+          return;
+        }
         setContactLocations(prev => {
           const idx = prev.findIndex(c => c.user_id === loc.user_id);
           const updated = { ...loc };
@@ -94,18 +116,13 @@ export function useLocationSharing(userId) {
       .subscribe();
 
     return () => {
+      clearTimeout(reloadTimerRef.current);
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
       }
     };
-  }, [userId]);
-
-  const loadContactLocations = useCallback(async () => {
-    if (!userId) return;
-    const { data } = await supabase.rpc('get_shared_locations');
-    if (data) setContactLocations(data);
-  }, [userId]);
+  }, [userId, loadContactLocations]);
 
   useEffect(() => {
     loadContactLocations();
