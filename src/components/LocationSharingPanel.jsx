@@ -10,10 +10,20 @@ export default function LocationSharingPanel({ contactLocations = [], sharingEna
   const [searchQuery, setSearchQuery] = useState('');
   const [sharedWith, setSharedWith] = useState([]);
 
+  // Поиск людей через RPC (RLS отдаёт только свой профиль, напрямую других не прочитать).
+  // Пустой запрос возвращает тех, с кем уже делимся. Fallback — прямое чтение.
   useEffect(() => {
-    supabase.from('profiles').select('id, full_name, photo_url, phone')
-      .then(({ data }) => { if (data) setContacts(data); }).catch(() => {});
-  }, []);
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const { data, error } = await supabase.rpc('search_contacts', { search_text: searchQuery.trim() });
+        if (!cancelled && !error && data) { setContacts(data); return; }
+      } catch {}
+      supabase.from('profiles').select('id, full_name, photo_url, phone')
+        .then(({ data }) => { if (!cancelled && data) setContacts(data); }).catch(() => {});
+    }, searchQuery ? 350 : 0);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [searchQuery]);
 
   useEffect(() => {
     if (!sharingEnabled) { setSharedWith([]); return; }
@@ -22,9 +32,8 @@ export default function LocationSharingPanel({ contactLocations = [], sharingEna
       .then(({ data }) => { if (data) setSharedWith(data.map(r => r.shared_with_id)); }).catch(() => {});
   }, [sharingEnabled, expanded]);
 
-  const filteredContacts = contacts.filter(c =>
-    c.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) || c.phone?.includes(searchQuery)
-  );
+  // сервер (RPC) уже отфильтровал по запросу и исключил себя — показываем как есть
+  const filteredContacts = contacts;
 
   const formatTime = (iso) => {
     if (!iso) return '';
