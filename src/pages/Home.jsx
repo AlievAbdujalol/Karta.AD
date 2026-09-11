@@ -27,6 +27,7 @@ import ShareRouteSheet from '@/components/ShareRouteSheet';
 import MapEventsSheet from '@/components/MapEventsSheet';
 import BluetoothSheet from '@/components/BluetoothSheet';
 import MiniMap from '@/components/MiniMap';
+import AiChat from '@/components/AiChat';
 
 export default function Home() {
   const { t, lang, setLang } = useLanguage();
@@ -249,12 +250,17 @@ export default function Home() {
 
   const filteredRoutes = selectedType === 'all' ? routes : routes.filter(r => r.type === selectedType);
 
+  // стабильный ключ вместо массива routes — иначе каждый setRoutes перезапускал опрос и плодил дубли запросов
+  const routesKey = routes.map(r => r.id).join(',');
+
   useEffect(() => {
     let interval;
     let retryDelay = 5000;
 
     const fetchVehicles = async () => {
       if (!selectedCity) { setVehicles([]); return; }
+      // нет сети — даже не стучимся, иначе висячие таймауты и спам в консоли
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) { setIsOffline(true); return; }
       try {
         let q = supabase.from('vehicles').select('*').eq('is_active', true);
         if (selectedRoute) q = q.eq('route_id', selectedRoute.id);
@@ -274,8 +280,11 @@ export default function Home() {
     };
     fetchVehicles();
     interval = setInterval(fetchVehicles, 5000);
-    return () => clearInterval(interval);
-  }, [selectedCity, selectedRoute, routes]);
+    // сеть вернулась — сразу пробуем, не ждём тик
+    const goOnline = () => fetchVehicles();
+    window.addEventListener('online', goOnline);
+    return () => { clearInterval(interval); window.removeEventListener('online', goOnline); };
+  }, [selectedCity, selectedRoute, routesKey]);
 
   const mapCenter = selectedCity?.lat && selectedCity?.lng
     ? [selectedCity.lat, selectedCity.lng]
@@ -351,6 +360,8 @@ export default function Home() {
       {nav.isActive && <NavigationBottomBar />}
       <TripSummary />
 
+      {/* в навигации шапку прячем — иначе налезает на манёвр слева и скорость справа */}
+      {!nav.isActive && (
       <div className="absolute top-0 left-1/2 -translate-x-1/2 z-[600] pointer-events-auto pt-3">
         <HomeHeader
           lang={lang} setLang={setLang}
@@ -369,6 +380,7 @@ export default function Home() {
           mapCenter={mapCenter}
         />
       </div>
+      )}
 
       {isOffline && (
         <div className="absolute top-36 left-1/2 -translate-x-1/2 z-[700] bg-amber-500/95 backdrop-blur-md text-white text-[10px] font-extrabold px-3 py-1.5 rounded-2xl flex items-center justify-center gap-1.5 shadow-lg pointer-events-auto animate-pulse">
@@ -384,9 +396,9 @@ export default function Home() {
       {shareSheet && <ShareRouteSheet from={shareSheet.from} to={shareSheet.to} route={shareSheet.route} onClose={()=>setShareSheet(null)}/>}
       {eventsOpen && <MapEventsSheet center={eventPos || (eventLine[0] ? eventLine[0] : null) || liveCenter || mapCenter} eventLine={eventLine} roadDir={roadDir} onDirChange={setRoadDir} onClearLine={()=> setEventLine([])} onTypeChange={setEventType} onClose={()=>{setEventsOpen(false); setEventPos(null); setEventLine([]);}} onPickHint={eventPos || eventLine.length ? null : 'Тапните по карте, чтобы выбрать место'}/>}
       <BluetoothSheet onClose={()=>{}}/>
-      {nav.isActive && <div className="absolute bottom-[136px] left-2 z-[550] opacity-90 hover:opacity-100 transition-opacity pointer-events-none"><MiniMap center={nav.userPosition||mapCenter} route={nav.routeData} userPos={nav.userPosition} heading={nav.userHeading}/></div>}
+      {nav.isActive && <div className="absolute bottom-[204px] left-2 z-[550] opacity-90 hover:opacity-100 transition-opacity pointer-events-none"><MiniMap center={nav.userPosition||mapCenter} route={nav.routeData} userPos={nav.userPosition} heading={nav.userHeading}/></div>}
       {nav.isActive && (
-        <div className="absolute top-[58px] left-2 right-20 z-[550] pointer-events-auto">
+        <div className="absolute top-[88px] left-2 right-2 sm:right-20 z-[550] pointer-events-auto">
           <div className="bg-slate-900/90 backdrop-blur text-white rounded-xl px-3 py-2 flex items-center gap-2 shadow-lg border border-white/10 max-w-[280px]">
             <span className="text-[11px] leading-tight flex-1">Отправляйте друзьям свою геопозицию в реальном времени</span>
             <button onClick={()=>{ try{navigator.share?.({title:'Геопозиция', url: window.location.href});}catch{} }} className="text-emerald-400 text-[11px] font-bold whitespace-nowrap">Делиться</button>
@@ -394,6 +406,7 @@ export default function Home() {
         </div>
       )}
       <button onClick={()=>{ try{ navigator.vibrate?.(50); }catch{} if(!eventsOpen){ setTimeout(()=> setEventsOpen(true), 70); setEventPos(null); } else setEventsOpen(false); }} className="absolute left-2 bottom-[160px] z-[500] w-9 h-9 rounded-2xl bg-white dark:bg-slate-900 border shadow flex items-center justify-center text-[10px] font-black">{eventsOpen?'×':'!'}</button>
+      <AiChat cityName={selectedCity?.name || selectedCity?.country || ''} />
 
       {/* Group Route Panel */}
       {panelVisible && (

@@ -6,6 +6,51 @@ export function useNavigation() {
   return useContext(NavigationContext);
 }
 
+// манёвры, о которых стоит говорить голосом (о «прямо» молчим, чтобы не спамить)
+const ANNOUNCEABLE = new Set(['turn', 'roundabout', 'rotary', 'uturn', 'merge', 'end of road', 'depart', 'arrive', 'exit', 'fork', 'off ramp', 'on ramp']);
+
+// язык озвучки из настроек («Навигатор» → Голоса)
+function getNavLang() {
+  try {
+    const l = JSON.parse(localStorage.getItem('karta_nav_settings') || '{}')?.voice_language;
+    return l === 'tg' || l === 'en' ? l : 'ru';
+  } catch { return 'ru'; }
+}
+
+// фразы манёвров на трёх языках
+const DIR_WORD = {
+  ru: { left: 'налево', right: 'направо', 'sharp left': 'резко налево', 'sharp right': 'резко направо', 'slight left': 'слегка налево', 'slight right': 'слегка направо', straight: 'прямо', uturn: 'развернитесь' },
+  tg: { left: 'ба чап', right: 'ба рост', 'sharp left': 'тез ба чап', 'sharp right': 'тез ба рост', 'slight left': 'каме ба чап', 'slight right': 'каме ба рост', straight: 'рост', uturn: 'бозгаштед' },
+  en: { left: 'left', right: 'right', 'sharp left': 'sharp left', 'sharp right': 'sharp right', 'slight left': 'slight left', 'slight right': 'slight right', straight: 'straight ahead', uturn: 'make a U-turn' },
+};
+const PHRASE = {
+  ru: {
+    depart: 'Начните движение', arrive: 'Вы прибыли',
+    turn: d => `Поверните ${d}`, newName: d => `Продолжайте ${d || 'прямо'}`, merge: d => `Продолжайте ${d || 'прямо'}`,
+    endOfRoad: d => `В конце дороги поверните ${d}`, roundabout: () => 'На круговом перекрёстке продолжайте движение',
+    continue: 'Продолжайте движение прямо', fallback: d => `Двигайтесь ${d || 'прямо'}`,
+    via: (dist, action) => `Через ${dist} ${action.toLowerCase()}`, arrived: 'Вы прибыли в пункт назначения',
+    m: 'м', km: 'км',
+  },
+  tg: {
+    depart: 'Ҳаракатро оғоз кунед', arrive: 'Шумо расидед',
+    turn: k => `${{ left: 'Ба чап', right: 'Ба рост', 'sharp left': 'Тез ба чап', 'sharp right': 'Тез ба рост', 'slight left': 'Каме ба чап', 'slight right': 'Каме ба рост' }[k] || 'Рост'} гардед`,
+    newName: () => 'Ҳаракатро давом диҳед', merge: () => 'Ҳаракатро давом диҳед',
+    endOfRoad: d => `Дар охири роҳ ${d} гардед`, roundabout: () => 'Аз чорроҳаи даврӣ гузаред',
+    continue: 'Рост равед', fallback: () => 'Рост равед',
+    via: (dist, action) => `Баъди ${dist} ${action.toLowerCase()}`, arrived: 'Шумо ба манзили таъинот расидед',
+    m: 'метр', km: 'км',
+  },
+  en: {
+    depart: 'Start driving', arrive: 'You have arrived',
+    turn: d => `Turn ${d}`, newName: () => 'Continue', merge: () => 'Continue',
+    endOfRoad: d => `At the end of the road, turn ${d}`, roundabout: () => 'At the roundabout, continue',
+    continue: 'Continue straight ahead', fallback: d => `Go ${d || 'straight ahead'}`,
+    via: (dist, action) => `In ${dist}, ${action.toLowerCase()}`, arrived: 'You have arrived at your destination',
+    m: 'meters', km: 'kilometers',
+  },
+};
+
 function bearing(fromLat, fromLng, toLat, toLng) {
   const toRad = (d) => (d * Math.PI) / 180;
   const toDeg = (r) => (r * 180) / Math.PI;
@@ -37,6 +82,7 @@ export function NavigationProvider({ children }) {
 
   const watchIdRef = useRef(null);
   const lastAnnounceRef = useRef(0);
+  const annKeyRef = useRef({ idx: -1, pre: false, final: false });
   const routeRef = useRef(null);
   const stepIndexRef = useRef(0);
   const traveledRef = useRef(0);
@@ -57,35 +103,54 @@ export function NavigationProvider({ children }) {
 
   const speak = useCallback((text) => {
     if (!voiceEnabledRef.current || !text) return;
+    // настройки из «Навигатор» (голоса): выкл/громкость/язык — читаем живьём, чтобы тумблер сразу работал
+    let cfg = {};
+    try { cfg = JSON.parse(localStorage.getItem('karta_nav_settings') || '{}'); } catch {}
+    if (cfg.voice_enabled === false) return;
+    const langMap = { ru: 'ru-RU', tg: 'tg-TJ', en: 'en-US' };
+    const wantLang = langMap[cfg.voice_language] || 'ru-RU';
+    const wantUri = cfg.voice_uri || null;
     try {
-      window.speechSynthesis.cancel();
+      const synth = window.speechSynthesis;
+      if (!synth) return;
+      synth.cancel();
       const u = new SpeechSynthesisUtterance(text);
-      u.lang = 'ru-RU';
+      u.lang = wantLang;
       u.rate = 1.1;
       u.pitch = 1;
-      window.speechSynthesis.speak(u);
+      if (typeof cfg.voice_volume === 'number') u.volume = Math.max(0, Math.min(1, cfg.voice_volume));
+      // голос: сначала выбранный вручную, потом под язык настроек, потом любой русский
+      try {
+        const vs = synth.getVoices?.() || [];
+        const prefix = wantLang.split('-')[0].toLowerCase();
+        const match = (wantUri && vs.find(v => v.voiceURI === wantUri))
+          || vs.find(v => (v.lang || '').toLowerCase().startsWith(prefix))
+          || vs.find(v => (v.lang || '').toLowerCase().startsWith('ru'))
+          || vs[0];
+        if (match) { u.voice = match; u.lang = match.lang; }
+      } catch {}
+      synth.speak(u);
     } catch {}
   }, []);
 
-  const getManeuverText = useCallback((instruction, modifier, distance) => {
-    const dir = {
-      left: 'налево', right: 'направо', 'sharp left': 'резко налево',
-      'sharp right': 'резко направо', 'slight left': 'слегка налево',
-      'slight right': 'слегка направо', straight: 'прямо',
-      uturn: 'развернитесь',
-    }[modifier] || '';
+  const getManeuverText = useCallback((instruction, modifier, distance, lang) => {
+    const L = PHRASE[lang] || PHRASE.ru;
+    const D = DIR_WORD[lang] || DIR_WORD.ru;
+    const dir = D[modifier] || '';
     const action = {
-      depart: 'Начните движение',
-      arrive: 'Вы прибыли',
-      turn: `Поверните ${dir}`,
-      'new name': `Продолжайте ${dir || 'прямо'}`,
-      merge: `Продолжайте ${dir || 'прямо'}`,
-      'end of road': `В конце дороги поверните ${dir}`,
-      roundabout: `На круговом перекрёстке выезд ${dir}`,
-      continue: 'Продолжайте движение прямо',
-    }[instruction] || `Двигайтесь ${dir || 'прямо'}`;
+      depart: L.depart,
+      arrive: L.arrive,
+      turn: L.turn(modifier),
+      'new name': L.newName(dir),
+      merge: L.merge(dir),
+      'end of road': L.endOfRoad(dir),
+      roundabout: L.roundabout(dir),
+      rotary: L.roundabout(dir),
+      continue: L.continue,
+    }[instruction] || L.fallback(dir);
     if (distance > 50 && instruction !== 'depart' && instruction !== 'arrive') {
-      return `Через ${distance >= 1000 ? `${(distance / 1000).toFixed(1)} км` : `${Math.round(distance)} м`} ${action.toLowerCase()}`;
+      const distStr = distance >= 1000 ? `${(distance / 1000).toFixed(1)} ${L.km}` : `${Math.round(distance)} ${L.m}`;
+      return L.via(distStr, action);
     }
     return action;
   }, []);
@@ -172,21 +237,30 @@ export function NavigationProvider({ children }) {
       }
     } catch {}
 
+    const navLang = getNavLang();
+    const arrivedText = (PHRASE[navLang] || PHRASE.ru).arrived;
     setNextInstruction({
-      text: getManeuverText(step.instruction, step.modifier, step.distance),
+      text: getManeuverText(step.instruction, step.modifier, step.distance, navLang),
       streetName: step.name || '',
       distance: distToStep,
       instruction: step.instruction,
       modifier: step.modifier,
     });
 
+    // двухэтапные подсказки: за ~200 м предупреждаем, у поворота — командуем. По разу на шаг.
     const now = Date.now();
-    if (distToStep < 25 && step.instruction !== 'arrive' && now - lastAnnounceRef.current > 8000) {
-      speak(getManeuverText(step.instruction, step.modifier, step.distance));
+    if (annKeyRef.current.idx !== stepIdx) annKeyRef.current = { idx: stepIdx, pre: false, final: false };
+    const ann = annKeyRef.current;
+    if (ANNOUNCEABLE.has(step.instruction) && !ann.pre && distToStep < 200 && distToStep >= 25 && now - lastAnnounceRef.current > 8000) {
+      speak(getManeuverText(step.instruction, step.modifier, Math.round(distToStep), navLang));
+      ann.pre = true;
       lastAnnounceRef.current = now;
     }
-    if (step.instruction === 'arrive' && distToStep < 30 && now - lastAnnounceRef.current > 8000) {
-      speak('Вы прибыли в пункт назначения');
+    if (ANNOUNCEABLE.has(step.instruction) && !ann.final && distToStep < 25 && now - lastAnnounceRef.current > 8000) {
+      speak(step.instruction === 'arrive'
+        ? arrivedText
+        : getManeuverText(step.instruction, step.modifier, 0, navLang));
+      ann.final = true;
       lastAnnounceRef.current = now;
     }
 
@@ -235,6 +309,7 @@ export function NavigationProvider({ children }) {
     traveledRef.current = 0;
     setTraveledDistance(0);
     stepIndexRef.current = 0;
+    annKeyRef.current = { idx: -1, pre: false, final: false };
     positionsRef.current = [];
     lastAnnounceRef.current = 0;
     setTripStats({ distance: 0, duration: 0, avgSpeed: 0 });
@@ -256,6 +331,8 @@ export function NavigationProvider({ children }) {
     isPausedRef.current = false;
     resetNavState();
     startGps();
+    // сохраняем С обогащением — иначе после перезагрузки ОТ/ДО пропадают с карты
+    try { localStorage.setItem('karta_nav_active', JSON.stringify(enriched)); } catch {}
     speak('Начинаем навигацию');
   }, [startGps, resetNavState, speak]);
 

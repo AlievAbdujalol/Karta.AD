@@ -15,19 +15,81 @@ const AVAILABLE = [
   { id:'monster', label:'Монстр-трак', icon:'🚜' },
 ];
 
+// Выбор конкретного голоса из установленных в устройстве + подсказка, если голоса под язык нет
+function VoiceSettings({ s, save }){
+  const [voices, setVoices] = useState([]);
+  useEffect(()=>{
+    const load = ()=>{
+      try{
+        const vs = window.speechSynthesis?.getVoices?.() || [];
+        setVoices(vs.filter(v => /^(ru|tg|en|uk|uz|kk)/i.test(v.lang || '')));
+      }catch{}
+    };
+    load();
+    try{ window.speechSynthesis.onvoiceschanged = load; }catch{}
+    return ()=>{ try{ window.speechSynthesis.onvoiceschanged = null; }catch{} };
+  },[]);
+  const langPrefix = { ru: 'ru', tg: 'tg', en: 'en' }[s.voice_language] || 'ru';
+  const hasLangVoice = voices.some(v => (v.lang || '').toLowerCase().startsWith(langPrefix));
+  const testVoice = ()=>{
+    try{
+      const synth = window.speechSynthesis; if(!synth) return toast.error('Нет синтеза речи');
+      synth.cancel();
+      const u = new SpeechSynthesisUtterance(s.voice_language === 'tg' ? 'Ҳаракатро оғоз кунед' : s.voice_language === 'en' ? 'Start driving' : 'Начните движение');
+      const pick = voices.find(v => v.voiceURI === s.voice_uri) || voices.find(v => (v.lang || '').toLowerCase().startsWith(langPrefix)) || voices[0];
+      if (pick) { u.voice = pick; u.lang = pick.lang; }
+      if (typeof s.voice_volume === 'number') u.volume = s.voice_volume;
+      synth.speak(u);
+    }catch{ toast.error('Не получилось'); }
+  };
+  return (
+    <div className="bg-white dark:bg-slate-900 rounded-[14px] p-4 border">
+      <h3 className="font-bold flex items-center gap-2"><Volume2 size={16}/>Голоса</h3>
+      <div className="flex items-center justify-between mt-3">
+        <span className="text-sm">Включён</span>
+        <label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked={s.voice_enabled} onChange={e=>save({voice_enabled:e.target.checked})} className="sr-only peer"/><div className="w-9 h-5 bg-slate-200 rounded-full peer peer-checked:bg-emerald-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4 relative"/></label>
+      </div>
+      <div className="flex items-center gap-2 mt-3">
+        <span className="text-xs">Язык</span>
+        <select value={s.voice_language} onChange={e=>save({voice_language:e.target.value, voice_uri:''})} className="rounded-xl border px-2 py-1 text-xs bg-white dark:bg-slate-800">
+          <option value="ru">Русский</option><option value="tg">Таджикский</option><option value="en">English</option>
+        </select>
+        <input type="range" min="0" max="1" step="0.1" value={s.voice_volume} onChange={e=>save({voice_volume: Number(e.target.value)})} className="flex-1 ml-2"/>
+      </div>
+      <div className="flex items-center gap-2 mt-3">
+        <span className="text-xs whitespace-nowrap">Голос</span>
+        <select value={s.voice_uri || ''} onChange={e=>save({voice_uri:e.target.value})} className="flex-1 min-w-0 rounded-xl border px-2 py-1.5 text-xs bg-white dark:bg-slate-800">
+          <option value="">Автоматически</option>
+          {voices.map(v => <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>)}
+        </select>
+        <button onClick={testVoice} className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shrink-0">Слушать</button>
+      </div>
+      {!hasLangVoice && (
+        <p className="mt-2 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
+          Голос для этого языка не найден в телефоне — будет звучать другой. Установите языковой пакет в настройках синтеза речи устройства.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function NavigatorSettings(){
   const navigate = useNavigate();
   const [tab, setTab] = useState('cursors');
-  const [s, setS] = useState({ voice_enabled:true, voice_language:'ru', voice_volume:0.9, cursor_style:'classic', night_mode:'auto', pip_enabled:false, auto_scale:true, show_traffic:true, speed_alert:true });
+  const [s, setS] = useState(()=>{ try{ return { voice_enabled:true, voice_language:'ru', voice_volume:0.9, cursor_style:'classic', night_mode:'auto', pip_enabled:false, auto_scale:true, show_traffic:true, speed_alert:true, ...JSON.parse(localStorage.getItem('karta_nav_settings')||'{}') }; }catch{ return { voice_enabled:true, voice_language:'ru', voice_volume:0.9, cursor_style:'classic', night_mode:'auto', pip_enabled:false, auto_scale:true, show_traffic:true, speed_alert:true }; } });
   const [profilePhoto, setProfilePhoto] = useState(null);
 
-  useEffect(()=>{ supabase.auth.getUser().then(({data:{user}})=>{ if(!user) return; supabase.from('profiles').select('photo_url').eq('id', user.id).maybeSingle().then(({data})=> setProfilePhoto(data?.photo_url)); supabase.from('navigation_settings').select('*').eq('user_id',user.id).maybeSingle().then(({data})=>{ if(data) setS(data); }); }); },[]);
+  useEffect(()=>{ supabase.auth.getUser().then(({data:{user}})=>{ if(!user) return; supabase.from('profiles').select('photo_url').eq('id', user.id).maybeSingle().then(({data})=> setProfilePhoto(data?.photo_url)).catch(()=>{}); supabase.from('navigation_settings').select('*').eq('user_id',user.id).maybeSingle().then(({data})=>{ if(data){ setS(data); try{ localStorage.setItem('karta_nav_settings', JSON.stringify(data)); }catch{} } }).catch(()=>{}); }).catch(()=>{}); },[]);
 
+  // локально — сразу и всегда; на сервер — по возможности (иначе без сети настройки «не работают»)
   const save = async (patch)=>{
     const ns={...s,...patch}; setS(ns);
-    const { data:{user}} = await supabase.auth.getUser(); if(!user) { localStorage.setItem('karta_nav_settings', JSON.stringify(ns)); return; }
-    const { error } = await supabase.from('navigation_settings').upsert({ user_id:user.id, ...ns, updated_at:new Date().toISOString() }, {onConflict:'user_id'});
-    if(error) toast.error(error.message); else { localStorage.setItem('karta_nav_settings', JSON.stringify(ns)); toast.success('Сохранено'); }
+    try{ localStorage.setItem('karta_nav_settings', JSON.stringify(ns)); }catch{}
+    try{
+      const { data:{user}} = await supabase.auth.getUser(); if(!user) return;
+      const { error } = await supabase.from('navigation_settings').upsert({ user_id:user.id, ...ns, updated_at:new Date().toISOString() }, {onConflict:'user_id'});
+      if(error) toast.error(error.message); else toast.success('Сохранено');
+    }catch{ /* офлайн — локальная копия уже сохранена */ }
   };
 
   return (
@@ -119,20 +181,7 @@ export default function NavigatorSettings(){
         </div>
       ) : (
         <div className="flex-1 px-4 pt-6 pb-24 space-y-4">
-          <div className="bg-white dark:bg-slate-900 rounded-[14px] p-4 border">
-            <h3 className="font-bold flex items-center gap-2"><Volume2 size={16}/>Голоса</h3>
-            <div className="flex items-center justify-between mt-3">
-              <span className="text-sm">Включён</span>
-              <label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked={s.voice_enabled} onChange={e=>save({voice_enabled:e.target.checked})} className="sr-only peer"/><div className="w-9 h-5 bg-slate-200 rounded-full peer peer-checked:bg-emerald-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4 relative"/></label>
-            </div>
-            <div className="flex items-center gap-2 mt-3">
-              <span className="text-xs">Язык</span>
-              <select value={s.voice_language} onChange={e=>save({voice_language:e.target.value})} className="rounded-xl border px-2 py-1 text-xs bg-white dark:bg-slate-800">
-                <option value="ru">Русский</option><option value="tg">Таджикский</option><option value="en">English</option>
-              </select>
-              <input type="range" min="0" max="1" step="0.1" value={s.voice_volume} onChange={e=>save({voice_volume: Number(e.target.value)})} className="flex-1 ml-2"/>
-            </div>
-          </div>
+          <VoiceSettings s={s} save={save} />
         </div>
       )}
     </div>

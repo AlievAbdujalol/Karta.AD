@@ -265,7 +265,9 @@ export default function Profile() {
         data.bio = bioForm.trim();
       }
 
-      data.role = form.role === 'passenger' ? 'user' : form.role;
+      // роль тут не сохраняем: её меняет только RPC request_role_change,
+      // иначе триггер protect_profile_role роняет всё сохранение профиля
+      delete data.role;
       delete data.driver_status;
       delete data.vehicle_number;
       delete data.route_id;
@@ -390,35 +392,25 @@ export default function Profile() {
         throw new Error(t('profile.insufficientBalance'));
       }
 
-      const updates = { role: newRole === 'passenger' ? 'user' : newRole };
-
-      if (newRole === 'admin' && !user?.admin_activated) {
-        updates.admin_activated = true;
-      }
-
-      const dbUpdates = { ...updates };
-
-      if (fee > 0) {
-        dbUpdates.balance = Math.max(0, Number(user?.balance || 0) - fee);
-        dbUpdates.subscription_status = 'active';
-        const nextMonth = new Date();
-        nextMonth.setDate(nextMonth.getDate() + 30);
-        dbUpdates.subscription_paid_until = nextMonth.toISOString();
-      }
-      
-      if (newRole === 'driver') {
-        const current = user?.driver_status;
-        if (!current || current === 'blocked' || current === 'documents_required') {
-          dbUpdates.driver_status = 'pending';
+      // смена роли — только через RPC: триггер БД режет прямое обновление role,
+      // а сервер сам проверит баланс, спишет оплату и продлит подписку
+      const { error } = await supabase.rpc('request_role_change', { new_role: newRole });
+      if (error) {
+        const msg = error.message || '';
+        if (msg.includes('schema cache') || msg.includes('Could not find the function')) {
+          throw new Error('Серверная функция смены роли не установлена: выполните SQL из supabase/migrations/20260909000000_role_change_rpc.sql в Supabase Dashboard → SQL Editor');
         }
+        throw new Error(msg === 'insufficient balance'
+          ? t('profile.insufficientBalance')
+          : msg);
       }
-      if (newRole === 'taxi_driver') {
-        dbUpdates.driver_status = 'approved';
-      }
+      await refreshUser?.();
 
-      await update(dbUpdates);
-
-      setForm(prev => ({ ...prev, role: newRole, driver_status: newRole === 'driver' ? (dbUpdates.driver_status || user?.driver_status) : newRole === 'taxi_driver' ? 'approved' : prev.driver_status }));
+      const nextDriverStatus = newRole === 'taxi_driver' ? 'approved'
+        : newRole === 'driver'
+          ? ((!user?.driver_status || ['blocked', 'documents_required'].includes(user.driver_status)) ? 'pending' : user.driver_status)
+          : undefined;
+      setForm(prev => ({ ...prev, role: newRole, ...(nextDriverStatus ? { driver_status: nextDriverStatus } : {}) }));
       
       toast.success(
         newRole === 'passenger'

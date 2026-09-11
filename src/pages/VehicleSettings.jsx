@@ -4,9 +4,18 @@ import { supabase } from '@/api/supabase';
 import { toast } from 'sonner';
 
 export default function VehicleSettings(){
-  const [v,setV]=useState({ preferred_type:'car', plate_number:'', fuel_type:'petrol', auto_start:false, easy_routes:false, show_traffic_lights:true, green_wave_speed:50, suggest_better:true, use_sensors:true, taxi_mode:false, ads_on_stop:true });
-  useEffect(()=>{ supabase.auth.getUser().then(({data:{user}})=>{ if(!user) return; supabase.from('vehicle_settings').select('*').eq('user_id',user.id).maybeSingle().then(({data})=>{ if(data) setV(data); }); }); },[]);
-  const save=async(patch)=>{ const nv={...v,...patch}; setV(nv); const {data:{user}}=await supabase.auth.getUser(); if(!user) return; const {error}=await supabase.from('vehicle_settings').upsert({user_id:user.id,...nv, updated_at:new Date().toISOString()},{onConflict:'user_id'}); if(error) toast.error(error.message); else { localStorage.setItem('karta_vehicle', JSON.stringify(nv)); toast.success('Сохранено'); } };
+  const [v,setV]=useState(()=>{ try{ return { preferred_type:'car', plate_number:'', fuel_type:'petrol', auto_start:false, easy_routes:false, show_traffic_lights:true, green_wave_speed:50, suggest_better:true, use_sensors:true, taxi_mode:false, ads_on_stop:true, ...JSON.parse(localStorage.getItem('karta_vehicle')||'{}') }; }catch{ return { preferred_type:'car', plate_number:'', fuel_type:'petrol', auto_start:false, easy_routes:false, show_traffic_lights:true, green_wave_speed:50, suggest_better:true, use_sensors:true, taxi_mode:false, ads_on_stop:true }; } });
+  useEffect(()=>{ supabase.auth.getUser().then(({data:{user}})=>{ if(!user) return; supabase.from('vehicle_settings').select('*').eq('user_id',user.id).maybeSingle().then(({data})=>{ if(data){ setV(data); try{ localStorage.setItem('karta_vehicle', JSON.stringify(data)); }catch{} } }).catch(()=>{}); }).catch(()=>{}); },[]);
+  // локально — сразу и всегда; на сервер — по возможности (иначе без сети настройки «не работают»)
+  const save=async(patch)=>{
+    const nv={...v,...patch}; setV(nv);
+    try{ localStorage.setItem('karta_vehicle', JSON.stringify(nv)); }catch{}
+    try{
+      const {data:{user}}=await supabase.auth.getUser(); if(!user) return;
+      const {error}=await supabase.from('vehicle_settings').upsert({user_id:user.id,...nv, updated_at:new Date().toISOString()},{onConflict:'user_id'});
+      if(error) toast.error(error.message); else toast.success('Сохранено');
+    }catch{ /* офлайн — локальная копия уже сохранена */ }
+  };
   return (
     <div className="min-h-[100dvh] bg-slate-50 dark:bg-slate-950 pt-6 pb-24 px-4 max-w-[640px] mx-auto space-y-4">
       <h1 className="text-xl font-black flex items-center gap-2"><Car size={20}/>Настройки автомобиля</h1>

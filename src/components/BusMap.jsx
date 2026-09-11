@@ -494,6 +494,15 @@ function NavigationCamera({ followUser, userPosition, reroute, routeData }) {
     map.setView(userPosition, Math.max(map.getZoom(), 17), { animate: true, duration: 0.5 });
   }, [userPosition, followUser, map]);
 
+  // Режим «весь маршрут»: слежение выключено — показываем весь путь от и до
+  useEffect(() => {
+    if (followUser || !routeData?.geometry?.length) return;
+    try {
+      const b = L.latLngBounds(routeData.geometry);
+      map.fitBounds(b, { paddingTopLeft: [50, 130], paddingBottomRight: [50, 190], animate: true });
+    } catch {}
+  }, [followUser, routeData, map]);
+
   // Auto-reroute when deviated >30m
   useEffect(() => {
     if (!userPosition || !routeData?.from || !routeData?.to) return;
@@ -567,7 +576,8 @@ function OsmStopMarkers({ routes, routeGeometries, routingOpen, onPickResult }) 
       animate={false}
     >
       {limited.map(s => (
-        <Marker key={`osm-${s.id}`} position={[s.lat, s.lng]} icon={OsmStopIcon}>
+        <Marker key={`osm-${s.id}`} position={[s.lat, s.lng]} icon={OsmStopIcon} bubblingMouseEvents={false}
+          eventHandlers={{ click: () => { try { map.flyTo([s.lat, s.lng], Math.max(map.getZoom(), 15), { animate: true, duration: 0.5 }); } catch {} try { navigator.vibrate?.(15); } catch {} } }}>
           <Popup maxWidth={300} className="stop-info-popup">
             <StopInfoPopup
               stop={{ lat: s.lat, lng: s.lng, name: s.name }}
@@ -599,6 +609,23 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
   });
   const [showLabels, setShowLabels] = useState(true);
   const [routingOpen, setRoutingOpen] = useState(false);
+  // зеркало для обработчиков: апдейтеры setState обязаны быть чистыми,
+  // сайд-эффекты (колбэки родителя) внутри них дают setState в рендере
+  const routingOpenRef = useRef(false);
+  useEffect(() => { routingOpenRef.current = routingOpen; }, [routingOpen]);
+  // маршрут фразой от ИИ: событие karta_ai_route {from, to} → открываем панель и отдаём точки
+  const [aiRouteReq, setAiRouteReq] = useState(null);
+  useEffect(() => {
+    const h = (e) => {
+      if (!e?.detail?.from || !e?.detail?.to) return;
+      try { navigator.vibrate?.(20); } catch {}
+      setAiRouteReq({ ...e.detail, _nonce: Date.now() });
+      routingOpenRef.current = true;
+      setRoutingOpen(true);
+    };
+    window.addEventListener('karta_ai_route', h);
+    return () => window.removeEventListener('karta_ai_route', h);
+  }, []);
   const [routingRoute, setRoutingRoute] = useState(null);
   const [mapPickTarget, setMapPickTarget] = useState(null);
   const [mapPickResult, setMapPickResult] = useState(null);
@@ -649,10 +676,9 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
 
   const handleStopPickResult = useCallback((data) => {
     setMapPickResult(data);
-    setRoutingOpen(prev => {
-      if (!prev && onRoutingOpen) onRoutingOpen();
-      return true;
-    });
+    if (!routingOpenRef.current && onRoutingOpen) onRoutingOpen();
+    routingOpenRef.current = true;
+    setRoutingOpen(true);
     if (onRoutingStateChange) onRoutingStateChange(true);
     if (mapRef.current) mapRef.current.closePopup();
   }, [onRoutingOpen, onRoutingStateChange]);
@@ -740,13 +766,12 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
   }, []);
 
   const handleFinderToggle = useCallback(() => {
-    setRoutingOpen(prev => {
-      const opening = !prev;
-      if (opening && onRoutingOpen) onRoutingOpen();
-      return opening;
-    });
-    if (routingOpen) { setRoutingRoute(null); setMapPickTarget(null); }
-  }, [routingOpen, onRoutingOpen]);
+    const opening = !routingOpenRef.current;
+    if (opening && onRoutingOpen) onRoutingOpen();
+    routingOpenRef.current = opening;
+    setRoutingOpen(opening);
+    if (!opening) { setRoutingRoute(null); setMapPickTarget(null); }
+  }, [onRoutingOpen]);
 
   // уведомляем родителя только при реальной смене routingOpen — колбэк из пропсов
   // пересоздаётся каждый рендер родителя, поэтому держим его в ref, иначе петля эффектов
@@ -903,20 +928,6 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
     iconAnchor: [12, 12],
   });
 
-  const routingFromIcon = L.divIcon({
-    html: `<div style="width:20px;height:20px;border-radius:50%;background:#22c55e;border:3px solid #fff;box-shadow:0 2px 8px rgba(34,197,94,0.5);"></div>`,
-    className: '',
-    iconSize: [20, 20],
-    iconAnchor: [10, 10],
-  });
-
-  const routingToIcon = L.divIcon({
-    html: `<div style="width:20px;height:20px;border-radius:50%;background:#ef4444;border:3px solid #fff;box-shadow:0 2px 8px rgba(239,68,68,0.5);"></div>`,
-    className: '',
-    iconSize: [20, 20],
-    iconAnchor: [10, 10],
-  });
-
   const isHybrid = TILE_LAYERS[tileIndex].isHybrid;
   useEffect(() => {
     if (isHybrid) setShowLabels(true);
@@ -992,7 +1003,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
       <FlyToHandler flyTo={flyTo} onDone={onFlyDone} />
       <ScaleControl position="bottomleft" imperial={false} metric={true} />
-      {!mapPickTarget && <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={routingOpen} onFinderToggle={handleFinderToggle} onShareTrip={onShareTrip} rightOffset={routingOpen ? 400 : panelVisible ? 360 : 0} isNavigating={nav.isActive} onLocate={onLocate} autoCenter={autoCenter} onToggleAutoCenter={()=>{ const v=!autoCenter; window.dispatchEvent(new CustomEvent('karta_autocenter',{detail:v})); }} />}
+      {!mapPickTarget && <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={routingOpen} onFinderToggle={handleFinderToggle} onShareTrip={onShareTrip} rightOffset={routingOpen ? 400 : panelVisible ? 360 : 0} isNavigating={nav.isActive} onLocate={onLocate} autoCenter={autoCenter} onToggleAutoCenter={()=>{ const v=!autoCenter; window.dispatchEvent(new CustomEvent('karta_autocenter',{detail:v})); }} overviewActive={!nav.followUser} onToggleOverview={()=>nav.toggleFollow()} />}
 
       {showLabels && (
         <TileLayer
@@ -1054,7 +1065,8 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
             iconAnchor: isWatched ? [15, 15] : [11, 11],
           });
           return (
-            <Marker key={`stop-all-${idx}`} position={[stop.lat, stop.lng]} icon={icon} zIndexOffset={isWatched ? 1000 : 0}>
+            <Marker key={`stop-all-${idx}`} position={[stop.lat, stop.lng]} icon={icon} zIndexOffset={isWatched ? 1000 : 0} bubblingMouseEvents={false}
+              eventHandlers={{ click: () => { try { mapRef.current?.flyTo([stop.lat, stop.lng], Math.max(mapRef.current.getZoom(), 15), { animate: true, duration: 0.5 }); } catch {} try { navigator.vibrate?.(15); } catch {} } }}>
               <Popup maxWidth={300} className="stop-info-popup">
                 <StopInfoPopup
                   stop={stop}
@@ -1175,16 +1187,36 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
                 lineCap="round"
                 lineJoin="round"
               />
-              {navRoute.from && (
-                <Marker position={[navRoute.from.lat, navRoute.from.lng]} icon={routingFromIcon}>
-                  <Popup><div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>📍 {navRoute.from.shortName || navRoute.fromText || 'Откуда'}</div></Popup>
-                </Marker>
-              )}
-              {navRoute.to && (
-                <Marker position={[navRoute.to.lat, navRoute.to.lng]} icon={routingToIcon}>
-                  <Popup><div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>🏁 {navRoute.to.shortName || navRoute.toText || 'Куда'}</div></Popup>
-                </Marker>
-              )}
+              {(() => {
+                // ОТ/ДО всегда видны: если точек нет в данных (транзит/рестарт) — берём концы геометрии
+                const fp = navRoute.from?.lat != null
+                  ? navRoute.from
+                  : (positions.length ? { lat: positions[0][0], lng: positions[0][1] } : null);
+                const tp = navRoute.to?.lat != null
+                  ? navRoute.to
+                  : (positions.length ? { lat: positions[positions.length - 1][0], lng: positions[positions.length - 1][1] } : null);
+                // подпись ПОД точкой — иначе плашка уезжает под верхнее меню (манёвр/скорость)
+                const endIcon = (label, bg, border) => L.divIcon({
+                  html: `<div style="display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.45));">`
+                    + `<div style="width:24px;height:24px;border-radius:50%;background:${bg};border:3.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.35);"></div>`
+                    + `<div style="width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:9px solid ${border};margin-top:1px;"></div>`
+                    + `<div style="background:#fff;color:${bg};font-size:11px;font-weight:900;padding:3px 10px;border-radius:12px;border:2.5px solid ${border};white-space:nowrap;max-width:150px;overflow:hidden;text-overflow:ellipsis;font-family:Inter,sans-serif;margin-top:-1px;">${label}</div></div>`,
+                  className: '', iconSize: [150, 64], iconAnchor: [75, 12],
+                });
+                const escName = (s) => String(s ?? '').replace(/[<>&"]/g, '');
+                return (<>
+                  {fp && (
+                    <Marker position={[fp.lat, fp.lng]} icon={endIcon(`ОТ · ${escName(fp.shortName || navRoute.fromText || 'Старт').slice(0, 18)}`, '#15803d', '#22c55e')} zIndexOffset={1000}>
+                      <Popup><div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>📍 ОТ: {fp.shortName || navRoute.fromText || 'Старт'}</div></Popup>
+                    </Marker>
+                  )}
+                  {tp && (
+                    <Marker position={[tp.lat, tp.lng]} icon={endIcon(`ДО · ${escName(tp.shortName || navRoute.toText || 'Финиш').slice(0, 18)}`, '#b91c1c', '#ef4444')} zIndexOffset={1000}>
+                      <Popup><div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>🏁 ДО: {tp.shortName || navRoute.toText || 'Финиш'}</div></Popup>
+                    </Marker>
+                  )}
+                </>);
+              })()}
               {navRoute.waypoints && navRoute.waypoints.filter(Boolean).map((wp, i) => (
                 <Marker key={`wp-${i}`} position={[wp.lat, wp.lng]} icon={routingIcon}>
                   <Popup><div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>➕ {wp.shortName || `Точка ${i + 1}`}</div></Popup>
@@ -1341,6 +1373,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       {/* Routing panel — outside MapContainer to avoid Leaflet stacking context */}
       {routingOpen && (
         <RoutingPanel
+          externalRoute={aiRouteReq}
           onClose={() => { setRoutingOpen(false); setRoutingRoute(null); setMapPickTarget(null); setMapPickResult(null); if (onRoutingStateChange) onRoutingStateChange(false); }}
           onRouteBuilt={(route) => setRoutingRoute(route)}
           onStartNavigation={(route) => {

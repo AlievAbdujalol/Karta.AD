@@ -533,7 +533,7 @@ function OsrmResultBlock({ route, mode, fromText, toText, nowTime, arrivalTime, 
   );
 }
 
-export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation, onRequestMapPick, mapPickResult, mapPickTarget, routes = [], vehicles = [] }) {
+export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation, onRequestMapPick, mapPickResult, mapPickTarget, routes = [], vehicles = [], externalRoute = null }) {
   const navigate = useNavigate();
   const navCtl = useNavigation();
 
@@ -578,6 +578,14 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
     if (mapPickResult.target === 'from') { setFrom(mapPickResult); setFromText(mapPickResult.shortName || ''); pushRecent(mapPickResult); }
     else if (mapPickResult.target === 'to') { setTo(mapPickResult); setToText(mapPickResult.shortName || ''); pushRecent(mapPickResult); }
   }, [mapPickResult]);
+
+  // Точки от ИИ («маршрут фразой»): подставляем — автобилд подхватит сам
+  useEffect(() => {
+    if (!externalRoute?.from || !externalRoute?.to) return;
+    setFrom(externalRoute.from); setFromText(externalRoute.from.shortName || '');
+    setTo(externalRoute.to); setToText(externalRoute.to.shortName || '');
+    pushRecent(externalRoute.from); pushRecent(externalRoute.to);
+  }, [externalRoute?._nonce]);
 
   // Auto-fill from with geolocation on first open
   const autoLocRef = useRef(false);
@@ -770,7 +778,7 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
 
   return (
     <div
-      className="absolute left-2 right-2 md:left-auto md:right-3 z-[520] bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 rounded-3xl flex flex-col overflow-hidden bottom-[calc(72px+env(safe-area-inset-bottom,0px)+12px)] max-h-[calc(100dvh-64px-env(safe-area-inset-bottom,0px)-1rem-8px)] md:bottom-auto md:top-[136px] md:max-h-[calc(100dvh-160px)] md:w-[400px]"
+      className="absolute left-2 right-2 md:left-auto md:right-3 z-[520] bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 rounded-3xl flex flex-col overflow-hidden bottom-[calc(60px+env(safe-area-inset-bottom,0px)+8px)] max-h-[calc(100dvh-238px-env(safe-area-inset-bottom,0px))] md:bottom-auto md:top-[136px] md:max-h-[calc(100dvh-160px)] md:w-[400px]"
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-br from-blue-600/[0.06] to-transparent flex-shrink-0">

@@ -1,4 +1,5 @@
 import { supabase } from '@/api/supabase';
+import { isGeminiConfigured, parseSearchIntent } from '@/lib/gemini';
 
 const HISTORY_KEY = 'karta_search_history';
 const MAX_HISTORY = 20;
@@ -142,6 +143,70 @@ export async function searchAll(query, options = {}) {
 
   await Promise.allSettled(promises);
   return results;
+}
+
+const NATURAL_RE = /[?]|как|где|куда|откуда|найди|найти|покажи|показать|доехать|добраться|остановк|маршрут|автобус|рядом|near|where|how/i;
+
+/** Похоже ли на фразу на естественном языке, а не на короткое название/номер */
+export function looksNaturalLanguage(query) {
+  const q = (query || '').trim();
+  if (!q) return false;
+  if (NATURAL_RE.test(q)) return true;
+  return q.split(/\s+/).length >= 4;
+}
+
+function mergeBuckets(list) {
+  const seen = new Set();
+  const out = [];
+  for (const bucket of list) {
+    for (const item of bucket) {
+      const key = item._type === 'route' ? `r:${item.id}`
+        : item._type === 'vehicle' ? `v:${item.id}`
+        : `${item._type}:${item.lat?.toFixed?.(5)}_${item.lng?.toFixed?.(5)}_${(item.name || '').slice(0, 24)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(item);
+    }
+  }
+  return out;
+}
+
+function mergeResults(all, limit) {
+  const merged = { routes: [], stops: [], vehicles: [], addresses: [], pois: [] };
+  for (const k of Object.keys(merged)) {
+    merged[k] = mergeBuckets(all.map(r => r[k] || []), limit)
+      .sort((a, b) => (b._score || 0) - (a._score || 0))
+      .slice(0, limit);
+  }
+  return merged;
+}
+
+/**
+ * Умный поиск: фразу на естественном языке разбирает Gemini на ключевые
+ * термины и ищет по каждому, результаты сливает. Без ключа/при ошибке —
+ * обычный поиск. Возвращает результаты + _aiIntent (что понял).
+ */
+export async function smartSearch(query, options = {}) {
+  const limit = options.limit || 8;
+  const q = (query || '').trim();
+  if (!q) return { routes: [], stops: [], vehicles: [], addresses: [], pois: [], _aiIntent: null };
+  if (!looksNaturalLanguage(q) || !isGeminiConfigured()) {
+    return { ...(await searchAll(q, options)), _aiIntent: null };
+  }
+  try {
+    const intent = await parseSearchIntent(q);
+    if (!intent) return { ...(await searchAll(q, options)), _aiIntent: null };
+    const extraTerms = [intent.routeNumber, intent.stopName, intent.place, intent.from, intent.to]
+      .filter(Boolean)
+      .filter(t => !intent.terms.includes(t));
+    const terms = [...intent.terms, ...extraTerms].slice(0, 5);
+    const parts = await Promise.all(terms.map(t => searchAll(t, options).catch(() => null)));
+    const valid = parts.filter(Boolean);
+    if (!valid.length) return { ...(await searchAll(q, options)), _aiIntent: intent };
+    return { ...mergeResults(valid, limit), _aiIntent: intent };
+  } catch {
+    return { ...(await searchAll(q, options)), _aiIntent: null };
+  }
 }
 
 export function flattenResults(results) {

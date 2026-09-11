@@ -1,4 +1,4 @@
-import { Layers, Crosshair, Plus, Minus, Navigation, Share2, LocateFixed } from 'lucide-react';
+import { Layers, Crosshair, Plus, Minus, Navigation, Share2, LocateFixed, Route } from 'lucide-react';
 import { useMap } from 'react-leaflet';
 import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
@@ -17,7 +17,7 @@ const TILE_LAYERS = [
 
 const LABEL_OVERLAY_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/light_only_labels/{z}/{x}/{y}{r}.png';
 
-export default function MapControls({ tileIndex, setTileIndex, finderActive, onFinderToggle, onShareTrip, rightOffset, isNavigating, onLocate, tiltEnabled, onToggleTilt, autoCenter, onToggleAutoCenter }) {
+export default function MapControls({ tileIndex, setTileIndex, finderActive, onFinderToggle, onShareTrip, rightOffset, isNavigating, onLocate, tiltEnabled, onToggleTilt, autoCenter, onToggleAutoCenter, overviewActive, onToggleOverview }) {
   const map = useMap();
   const { t } = useLanguage();
 
@@ -58,6 +58,11 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
             <Navigation size={18} className="stroke-[2.2]" />
           </button>
         )}
+        {isNavigating && (
+          <button onClick={() => onToggleOverview?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${overviewActive ? '!bg-blue-600 !text-white border-blue-400 shadow-blue-500/30' : ''}`} title="Весь маршрут — от и до">
+            <Route size={18} className="stroke-[2.2]" />
+          </button>
+        )}
         <button onClick={locate} className={`${btnBase} w-10 h-10 !bg-gradient-to-tr !from-emerald-600 !to-teal-500 hover:!from-emerald-700 hover:!to-teal-600 !text-white border-none shadow-emerald-500/20`} title={t('mapControls.myLocation')}>
           <Crosshair size={18} className="stroke-[2.2]" />
         </button>
@@ -90,6 +95,11 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
         {!isNavigating && (
           <button onClick={() => onFinderToggle?.()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${finderActive ? '!bg-violet-600 !text-white border-violet-400 shadow-violet-500/30' : ''}`}>
             <Navigation size={15} className="stroke-[2.2]" />
+          </button>
+        )}
+        {isNavigating && (
+          <button onClick={() => onToggleOverview?.()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${overviewActive ? '!bg-blue-600 !text-white border-blue-400 shadow-blue-500/30' : ''}`} title="Весь маршрут — от и до">
+            <Route size={15} className="stroke-[2.2]" />
           </button>
         )}
         <button onClick={locate} className={`${btnBase} w-9 h-9 !bg-gradient-to-tr !from-emerald-600 !to-teal-500 !text-white border-none shadow-emerald-500/20`}>

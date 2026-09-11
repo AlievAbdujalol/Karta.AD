@@ -38,7 +38,12 @@ export function useLocationSharing(userId) {
       return;
     }
 
+    // при мёртвой сети GPS шлёт апдейты постоянно — после 3 провалов молчим минуту, консоль не спамим
+    let fails = 0;
+    let pausedUntil = 0;
     const sendLocation = (pos) => {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      if (Date.now() < pausedUntil) return;
       supabase.from('user_locations').upsert({
         user_id: userId,
         lat: pos.coords.latitude,
@@ -47,7 +52,12 @@ export function useLocationSharing(userId) {
         speed: pos.coords.speed || null,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' }).then(({ error }) => {
-        if (error) console.error('[LocationSharing] upsert error:', error);
+        if (error) {
+          fails += 1;
+          if (fails >= 3) { pausedUntil = Date.now() + 60000; fails = 0; }
+        } else {
+          fails = 0;
+        }
       });
     };
 

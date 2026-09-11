@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, X, MapPin, Bus, Route, Clock, Building2, Mic, MicOff, Navigation, Heart, Fuel, ShoppingBag, UtensilsCrossed, Hotel, ParkingCircle, Pill, Landmark as AtmIcon } from 'lucide-react';
-import { searchAll, flattenResults, getSearchHistory, addToHistory, clearHistory } from '@/lib/searchUtils';
+import { smartSearch, flattenResults, getSearchHistory, addToHistory, clearHistory } from '@/lib/searchUtils';
+import { requestRouteFromPhrase, speakText } from '@/lib/aiAssistant';
 import { useLanguage } from '@/lib/useLanguage';
 import { supabase } from '@/api/supabase';
 
@@ -14,6 +15,11 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry, onSel
   const [showHistory, setShowHistory] = useState(false);
   const [selectedIdx, setSelectedIdx] = useState(-1);
   const [loading, setLoading] = useState(false);
+  const [aiHint, setAiHint] = useState(null);
+  const [aiRoute, setAiRoute] = useState(null);
+  const [aiRouteBusy, setAiRouteBusy] = useState(false);
+  const [aiRouteError, setAiRouteError] = useState(null);
+  const voiceAskedRef = useRef(false);
   const [listening, setListening] = useState(false);
   const [favPlaces, setFavPlaces] = useState([]);
   const inputRef = useRef(null);
@@ -55,13 +61,26 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry, onSel
     if (!query.trim()) {
       setResults({ routes: [], stops: [], vehicles: [], addresses: [], pois: [] });
       setFlat([]);
+      setAiHint(null);
       setOpen(false);
       setLoading(false);
       return;
     }
     setLoading(true);
     debounceRef.current = setTimeout(async () => {
-      const res = await searchAll(query, { cityId });
+      // умный поиск: фразу понимает Gemini, короткое — обычный поиск
+      const res = await smartSearch(query, { cityId });
+      setAiHint(res._aiIntent?.terms?.length ? res._aiIntent.terms : null);
+      const intent = res._aiIntent;
+      setAiRoute(intent?.from && intent?.to ? { from: intent.from, to: intent.to } : null);
+      setAiRouteError(null);
+      // голосовой запрос — озвучиваем итог
+      if (voiceAskedRef.current) {
+        voiceAskedRef.current = false;
+        const n = (res.routes?.length || 0) + (res.stops?.length || 0) + (res.addresses?.length || 0) + (res.pois?.length || 0);
+        const first = res.routes?.[0] ? `Маршрут ${res.routes[0].number}` : res.stops?.[0]?.name || res.addresses?.[0]?.name || res.pois?.[0]?.name || '';
+        speakText(n > 0 ? `Найдено: ${n}. ${first}` : 'Ничего не найдено');
+      }
       const pois = [];
       const seenCoords = new Set();
 
@@ -176,8 +195,18 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry, onSel
     if (!SR) return;
     const rec = new SR(); rec.lang='ru-RU'; rec.interimResults=false;
     rec.onstart=()=>setListening(true); rec.onend=()=>setListening(false);
-    rec.onresult=(e)=>{ const txt=e.results[0][0].transcript; setQuery(txt); setShowHistory(false); };
+    rec.onresult=(e)=>{ const txt=e.results[0][0].transcript; voiceAskedRef.current = true; setQuery(txt); setShowHistory(false); };
     rec.start();
+  };
+  const handleAiRoute = async () => {
+    if (!aiRoute || aiRouteBusy) return;
+    setAiRouteBusy(true); setAiRouteError(null);
+    const center = selectedCity?.lat ? { lat: selectedCity.lat, lng: selectedCity.lng } : undefined;
+    const r = await requestRouteFromPhrase(aiRoute.from, aiRoute.to, center);
+    setAiRouteBusy(false);
+    if (!r.ok) { setAiRouteError(r.reason); return; }
+    setQuery(''); setOpen(false); setAiHint(null); setAiRoute(null);
+    inputRef.current?.blur();
   };
   const searchNearby = () => {
     if (!navigator.geolocation) return;
@@ -278,7 +307,25 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry, onSel
             </div>
           )}
 
-          {!loading && open && query.trim() && flat.length === 0 && (
+          {!loading && aiHint && (
+            <p className="px-4 pt-2.5 pb-1 text-[11px] font-semibold text-violet-600 dark:text-violet-400 truncate">✨ Понял как: {aiHint.join(' · ')}</p>
+          )}
+
+          {!loading && aiRoute && (
+            <div className="px-3 pt-2">
+              <button onClick={handleAiRoute} disabled={aiRouteBusy}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-left active:scale-[0.99] transition-all">
+                <Navigation size={15} className="shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-bold truncate">Поехать: {aiRoute.from} → {aiRoute.to}</span>
+                  <span className="block text-[10px] opacity-80">{aiRouteBusy ? 'Строю маршрут…' : 'Построить маршрут фразой'}</span>
+                </span>
+              </button>
+              {aiRouteError && <p className="text-[11px] text-red-500 font-medium px-1 pt-1">{aiRouteError}</p>}
+            </div>
+          )}
+
+          {!loading && open && query.trim() && flat.length === 0 && !aiRoute && (
             <p className="text-xs text-slate-400 text-center py-6">{t('search.noResults')}</p>
           )}
 

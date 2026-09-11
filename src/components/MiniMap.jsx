@@ -1,15 +1,43 @@
-import { MapContainer, TileLayer, Polyline, Marker } from 'react-leaflet';
+import { MapContainer, TileLayer, Polyline, Marker, useMap } from 'react-leaflet';
+import { useEffect } from 'react';
 import L from 'leaflet';
+
+// Вписывает весь маршрут от и до в круг миникарты при его появлении/смене
+function FitRoute({ route }) {
+  const map = useMap();
+  useEffect(() => {
+    const g = route?.geometry;
+    if (!g?.length) return;
+    try {
+      if (g.length < 2) map.setView(g[0], 15, { animate: false });
+      else map.fitBounds(L.latLngBounds(g), { padding: [14, 14], animate: false });
+    } catch {}
+  }, [route, map]);
+  return null;
+}
+
+const dot = (bg) => L.divIcon({
+  html: `<div style="width:9px;height:9px;border-radius:50%;background:${bg};border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.4);"></div>`,
+  className: '', iconSize: [9, 9], iconAnchor: [4, 4],
+});
 
 export default function MiniMap({ center, route, userPos, heading }){
   if(!center) return null;
   const icon = L.divIcon({ html:`<div style="width:10px;height:10px;border-radius:50%;background:#22c55e;border:2px solid #fff;transform:rotate(${heading||0}deg)"></div>`, className:'', iconSize:[10,10], iconAnchor:[5,5]});
+  const geom = route?.geometry?.length ? route.geometry : null;
   return (
     <div className="w-[92px] h-[92px] rounded-full overflow-hidden border-2 border-white dark:border-slate-700 shadow-xl bg-slate-200">
       <MapContainer center={center} zoom={13} style={{height:'100%', width:'100%'}} zoomControl={false} dragging={false} attributionControl={false} doubleClickZoom={false} scrollWheelZoom={false}>
         <TileLayer url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        {route?.geometry && <Polyline positions={route.geometry} color="#22c55e" weight={3} />}
-        {userPos && <Marker position={userPos} icon={icon} />}
+        <FitRoute route={route} />
+        {geom && <Polyline positions={geom} color="#22c55e" weight={3} />}
+        {geom && geom.length > 1 && (
+          <>
+            <Marker position={geom[0]} icon={dot('#22c55e')} interactive={false} keyboard={false} />
+            <Marker position={geom[geom.length - 1]} icon={dot('#ef4444')} interactive={false} keyboard={false} />
+          </>
+        )}
+        {userPos && <Marker position={userPos} icon={icon} interactive={false} keyboard={false} />}
       </MapContainer>
     </div>
   );

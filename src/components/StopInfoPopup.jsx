@@ -1,5 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useLanguage } from '@/lib/useLanguage';
+import { describeStop } from '@/lib/aiAssistant';
+import { isGeminiConfigured } from '@/lib/gemini';
 
 const EPSILON_MERGE = 0.00035;
 const STOP_RADIUS_M = 140;
@@ -117,11 +119,39 @@ export default function StopInfoPopup({ stop, routes, routeGeometries, routingOp
   const buses = passingRoutes.filter(r => r.type === 'bus');
   const minibuses = passingRoutes.filter(r => r.type === 'minibus');
   const stopName = stop.name || t('busmap.stopDefaultName');
+  const [aiText, setAiText] = useState(null);
+  const [aiBusy, setAiBusy] = useState(false);
+
+  const handleAiInfo = async () => {
+    if (aiBusy) return;
+    if (aiText) { setAiText(null); return; }
+    if (!isGeminiConfigured()) { setAiText('ИИ не настроен: добавь VITE_GEMINI_API_KEY в .env.local.'); return; }
+    setAiBusy(true);
+    try {
+      const txt = await describeStop(stopName, passingRoutes.map(r => ({ number: r.number, name: r.name })));
+      setAiText(txt || 'Не получилось, попробуй позже.');
+    } catch {
+      setAiText('Ошибка сети, попробуй позже.');
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   return (
     <div style={S.card}>
       <div style={S.title}>{stopName}</div>
       <div style={S.suggestRow}>✎ {t('stopPopup.suggestName') || 'Предложить народное название'}</div>
+      <button
+        onClick={handleAiInfo}
+        style={{ width: '100%', marginBottom: 10, background: aiText ? 'rgba(139,92,246,0.15)' : 'linear-gradient(135deg,#7c3aed,#d946ef)', color: '#fff', border: '1px solid rgba(167,139,250,0.4)', borderRadius: 10, padding: '7px 0', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}
+      >
+        {aiBusy ? '✨ Думаю…' : aiText ? '✨ Скрыть справку' : '✨ ИИ-справка: чем уехать'}
+      </button>
+      {aiText && (
+        <div style={{ fontSize: 11.5, lineHeight: 1.45, color: '#ddd6fe', background: 'rgba(139,92,246,0.12)', borderRadius: 10, padding: '8px 10px', marginBottom: 10 }}>
+          {aiText}
+        </div>
+      )}
 
       {buses.length > 0 && (
         <div>
