@@ -7,8 +7,8 @@
  * с ключом в secrets — клиент оставить как есть, сменить только endpoint.
  */
 
-const DEFAULT_MODEL = import.meta.env.VITE_GEMINI_MODEL || 'gemini-2.0-flash';
-const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+const DEFAULT_MODEL = import.meta.env.VITE_GEMINI_MODEL || 'gemini-3.6-flash';
+const API_BASE = 'https://generativelanguage.googleapis.com/v1/models';
 
 export function getGeminiKey() {
   const k = (import.meta.env.VITE_GEMINI_API_KEY || '').trim();
