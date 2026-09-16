@@ -122,3 +122,15 @@ export const DRIVER_STATUS_CONFIG = {
 
 // Порядок шагов заказа для водителя
 export const ORDER_STEPS = ['found', 'arrived', 'riding', 'completed', 'payment', 'rated'];
+
+// ─── ЦЕНА ДОСТАВКИ / КУРЬЕРА ──────────────────────────────────────────────────
+// Единая функция расчёта цены для доставки и курьера.
+export function calculateDeliveryPrice({ distanceKm = 0, durationMin = 0, category = 'delivery', extras = {}, demandCoef = 1, night = false }) {
+  const r = RATES[category] || RATES.delivery;
+  let base = r.base + r.perKm * distanceKm + r.perMin * durationMin;
+  if (night) base *= 1.5;
+  base *= demandCoef;
+  let surcharge = priceSurcharge(category, extras, distanceKm);
+  let total = Math.max(base + surcharge, r.min * demandCoef);
+  return Math.ceil(total * 2) / 2;
+}

@@ -485,6 +485,11 @@ export default function Profile() {
         body_type: taxiVehicle.body_type,
         seats: parseInt(taxiVehicle.seats) || 4,
         category: taxiVehicle.category,
+        categories: taxiVehicle.categories || [taxiVehicle.category],
+        has_luggage: !!taxiVehicle.has_luggage,
+        has_child_seat: !!taxiVehicle.has_child_seat,
+        pets_allowed: !!taxiVehicle.pets_allowed,
+        has_ac: taxiVehicle.has_ac ?? true,
         photo_url: taxiVehicle.photo_url || null,
       }).eq('id', taxiVehicle.id);
       if (error) throw new Error(error.message);
@@ -907,20 +912,44 @@ export default function Profile() {
                         </select>
                       </div>
                       <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">Опции автомобиля</label>
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                          {[
+                            { key: 'has_luggage', label: '🧳 Багаж', active: taxiVehicle.has_luggage },
+                            { key: 'has_child_seat', label: '👶 Детское кресло', active: taxiVehicle.has_child_seat },
+                            { key: 'pets_allowed', label: '🐾 С питомцем', active: taxiVehicle.pets_allowed },
+                            { key: 'has_ac', label: '❄️ Кондиц.', active: taxiVehicle.has_ac },
+                          ].map(f => (
+                            <button key={f.key} type="button"
+                              onClick={() => setTaxiVehicle({ ...taxiVehicle, [f.key]: !taxiVehicle[f.key] })}
+                              className={`px-3 py-2 rounded-xl border text-[11px] font-bold transition-all ${taxiVehicle[f.key] ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm' : 'bg-white dark:bg-slate-700 text-slate-500 border-slate-200 dark:border-slate-600 hover:border-emerald-300'}`}>
+                              {f.label} {taxiVehicle[f.key] ? '✓' : ''}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
                         <label className="text-[10px] font-bold text-gray-400 uppercase">Категория — тариф</label>
                         <div className="grid grid-cols-2 gap-2">
                           {Object.entries(TAXI_CATEGORIES).map(([key, label]) => {
                             const emojis = { economy:'🚕', comfort:'✨', comfort_plus:'💎', business:'👑', minivan:'🚐', electric:'⚡', women:'👩', cargo:'📦', delivery:'📮', courier:'🚴', intercity:'🛣️' };
-                            const isSel = taxiVehicle.category === key;
+                            const cats = taxiVehicle.categories || (taxiVehicle.category ? [taxiVehicle.category] : ['economy']);
+                            const isSel = cats.includes(key);
                             return (
-                              <button key={key} onClick={() => setTaxiVehicle({ ...taxiVehicle, category: key })}
+                              <button key={key} type="button"
+                                onClick={() => {
+                                  const current = taxiVehicle.categories || (taxiVehicle.category ? [taxiVehicle.category] : ['economy']);
+                                  const next = isSel ? current.filter(c => c !== key) : [...current, key];
+                                  if (next.length === 0) return;
+                                  setTaxiVehicle({ ...taxiVehicle, categories: next, category: next[0] });
+                                }}
                                 className={`px-2.5 py-2.5 rounded-2xl border-2 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all ${isSel ? 'border-emerald-500 bg-emerald-500 text-white shadow-md shadow-emerald-500/20' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:border-emerald-200'}`}>
                                 <span>{emojis[key] || '•'}</span> {label}
                               </button>
                             );
                           })}
                         </div>
-                        <p className="text-[10px] text-slate-400 mt-1">Категория определяет тариф пассажира и расчёт в «Финансах»</p>
+                        <p className="text-[10px] text-slate-400 mt-1">Можно выбрать несколько категорий. Первая — основная.</p>
                       </div>
                       <button onClick={handleTaxiVehicleSave} disabled={taxiSaving}
                         className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all disabled:opacity-60">

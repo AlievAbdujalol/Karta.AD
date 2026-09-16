@@ -197,7 +197,7 @@ export default function TaxiPassenger() {
     business: { passengers: 1, luggage: false, childSeat: false, pets: false, has_ac: true, comment: '' },
     minivan: { passengers: 1, luggage: false, childSeats: 0, pets: false, comment: '' },
     delivery: { parcelType: 'box', weight: 1, receiverName: '', receiverPhone: '', fragile: false, express: false, comment: '' },
-    courier: { urgent: false, itemDesc: '', weight: 0.5, signature: false, photoProof: false, comment: '' },
+    courier: { urgent: false, parcelType: 'box', itemDesc: '', weight: 0.5, receiverName: '', receiverPhone: '', fragile: false, express: false, signature: false, photoProof: false, comment: '' },
     intercity: { passengers: 1, luggage: false, childSeat: false, returnTrip: false, scheduledAt: '', comment: '' },
     electric: { passengers: 1, luggage: false, childSeat: false, pets: false, comment: '' },
   }), []);
@@ -632,8 +632,17 @@ export default function TaxiPassenger() {
     if (category === 'delivery') {
       if (!toText) { toast.error('Для доставки укажите адрес получателя'); return; }
       if (!extras.receiverPhone) { toast.error('Укажите телефон получателя'); return; }
+      if (!fromCoord) { toast.error('Выберите точку отправления на карте'); return; }
+      if (!toCoord) { toast.error('Выберите точку доставки на карте'); return; }
     }
-    if (category === 'courier' && !extras.itemDesc) { toast.error('Опишите, что доставить'); return; }
+    if (category === 'courier') {
+      if (!toText) { toast.error('Укажите адрес доставки'); return; }
+      if (!extras.itemDesc) { toast.error('Опишите, что доставить'); return; }
+      if (!extras.receiverName) { toast.error('Укажите имя получателя'); return; }
+      if (!extras.receiverPhone) { toast.error('Укажите телефон получателя'); return; }
+      if (!fromCoord) { toast.error('Выберите точку отправления на карте'); return; }
+      if (!toCoord) { toast.error('Выберите точку доставки на карте'); return; }
+    }
     if (category === 'intercity' && !toText) { toast.error('Для межгорода укажите пункт назначения'); return; }
     // собрать комментарий из тарифа + пользовательский
     const detailLines = [];
@@ -644,8 +653,16 @@ export default function TaxiPassenger() {
       if (extras.pets) detailLines.push('С питомцем');
     }
     if (category === 'minivan' && extras.childSeats) detailLines.push(`Кресел: ${extras.childSeats}`);
-    if (category === 'delivery') detailLines.push(`Тип: ${extras.parcelType || 'box'}, ${extras.weight || 1}кг${extras.fragile ? ', хрупкое' : ''}${extras.express ? ', экспресс' : ''}`, `Получатель: ${extras.receiverName || '—'} ${extras.receiverPhone || ''}`);
-    if (category === 'courier') detailLines.push(`${extras.itemDesc || 'Посылка'} · ${extras.weight || 0.5}кг${extras.urgent ? ' · срочно' : ''}${extras.signature ? ' · под подпись' : ''}`);
+    if (category === 'delivery') {
+      const typeLabel = { docs: 'Документы', box: 'Коробка', food: 'Еда' }[extras.parcelType] || 'Коробка';
+      detailLines.push(`Тип: ${typeLabel}, ${extras.weight || 1}кг${extras.fragile ? ', хрупкое' : ''}${extras.express ? ', экспресс' : ''}`);
+      detailLines.push(`Получатель: ${extras.receiverName || '—'} ${extras.receiverPhone || ''}`);
+    }
+    if (category === 'courier') {
+      const typeLabel = { docs: 'Документы', box: 'Коробка', food: 'Еда' }[extras.parcelType] || extras.itemDesc || 'Посылка';
+      detailLines.push(`${typeLabel} · ${extras.weight || 0.5}кг${extras.urgent ? ' · срочно' : ''}${extras.fragile ? ' · хрупкое' : ''}${extras.express ? ' · экспресс' : ''}${extras.signature ? ' · под подпись' : ''}${extras.photoProof ? ' · фото-подтв.' : ''}`);
+      detailLines.push(`Получатель: ${extras.receiverName || '—'} ${extras.receiverPhone || ''}`);
+    }
     if (category === 'intercity') detailLines.push(`Запланировано: ${extras.scheduledAt ? new Date(extras.scheduledAt).toLocaleString('ru') : 'сейчас'}${extras.returnTrip ? ' · обратно' : ''}`);
     if (extras.comment) detailLines.push(extras.comment);
     const tariffComment = detailLines.filter(Boolean).join(' | ') || undefined;
@@ -1278,9 +1295,9 @@ export default function TaxiPassenger() {
                 <button
                   type="button"
                   onClick={handleOrder}
-                  disabled={!fromText || selectedPrice == null}
+                  disabled={!fromText || selectedPrice == null || (['delivery', 'courier'].includes(category) && !toText)}
                   className={`flex h-12 w-full items-center justify-center gap-1 rounded-2xl text-sm font-bold ${
-                    fromText && selectedPrice != null
+                    fromText && selectedPrice != null && (!['delivery', 'courier'].includes(category) || toText)
                       ? 'bg-blue-600 text-white active:scale-[0.98]'
                       : 'cursor-not-allowed bg-slate-200 text-slate-400 dark:bg-slate-800'
                   }`}

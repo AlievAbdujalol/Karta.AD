@@ -449,6 +449,7 @@ export default function Home() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onFlyTo={(p) => setFlyTo(p)}
+        userPosition={nav.userPosition}
         onSelectFavDriver={async (driverId) => {
           const { data } = await supabase.from('vehicles').select('*').eq('driver_id', driverId).eq('is_active', true).maybeSingle();
           if (data) {

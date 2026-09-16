@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { projectOnPolyline, haversineM } from '@/lib/geo';
 
 const NavigationContext = createContext(null);
 
@@ -6,10 +7,12 @@ export function useNavigation() {
   return useContext(NavigationContext);
 }
 
-// манёвры, о которых стоит говорить голосом (о «прямо» молчим, чтобы не спамить)
 const ANNOUNCEABLE = new Set(['turn', 'roundabout', 'rotary', 'uturn', 'merge', 'end of road', 'depart', 'arrive', 'exit', 'fork', 'off ramp', 'on ramp']);
 
-// язык озвучки из настроек («Навигатор» → Голоса)
+const ARRIVAL_THRESHOLD_M = 30;
+const OFF_ROUTE_THRESHOLD_M = 35;
+const REROUTING_COOLDOWN_MS = 15000;
+
 function getNavLang() {
   try {
     const l = JSON.parse(localStorage.getItem('karta_nav_settings') || '{}')?.voice_language;
@@ -17,7 +20,6 @@ function getNavLang() {
   } catch { return 'ru'; }
 }
 
-// фразы манёвров на трёх языках
 const DIR_WORD = {
   ru: { left: 'налево', right: 'направо', 'sharp left': 'резко налево', 'sharp right': 'резко направо', 'slight left': 'слегка налево', 'slight right': 'слегка направо', straight: 'прямо', uturn: 'развернитесь' },
   tg: { left: 'ба чап', right: 'ба рост', 'sharp left': 'тез ба чап', 'sharp right': 'тез ба рост', 'slight left': 'каме ба чап', 'slight right': 'каме ба рост', straight: 'рост', uturn: 'бозгаштед' },
@@ -80,6 +82,12 @@ export function NavigationProvider({ children }) {
   const [summaryData, setSummaryData] = useState(null);
   const [tripStats, setTripStats] = useState({ distance: 0, duration: 0, avgSpeed: 0 });
 
+  const [routeProgress, setRouteProgress] = useState(0);
+  const [isOffRoute, setIsOffRoute] = useState(false);
+  const [isRerouting, setIsRerouting] = useState(false);
+  const [hasArrived, setHasArrived] = useState(false);
+  const [snappedPosition, setSnappedPosition] = useState(null);
+
   const watchIdRef = useRef(null);
   const lastAnnounceRef = useRef(0);
   const annKeyRef = useRef({ idx: -1, pre: false, final: false });
@@ -90,9 +98,15 @@ export function NavigationProvider({ children }) {
   const positionsRef = useRef([]);
   const isPausedRef = useRef(false);
   const voiceEnabledRef = useRef(false);
+  const lastRerouteRef = useRef(0);
+  const offRouteStartRef = useRef(null);
+  const routeProgressRef = useRef(0);
+  const routeLenRef = useRef(0);
+  const arrivalAnnouncedRef = useRef(false);
 
   useEffect(() => { isPausedRef.current = isPaused; }, [isPaused]);
   useEffect(() => { voiceEnabledRef.current = voiceEnabled; }, [voiceEnabled]);
+  useEffect(() => { routeProgressRef.current = routeProgress; }, [routeProgress]);
 
   const clearGps = useCallback(() => {
     if (watchIdRef.current != null) {
@@ -103,7 +117,6 @@ export function NavigationProvider({ children }) {
 
   const speak = useCallback((text) => {
     if (!voiceEnabledRef.current || !text) return;
-    // настройки из «Навигатор» (голоса): выкл/громкость/язык — читаем живьём, чтобы тумблер сразу работал
     let cfg = {};
     try { cfg = JSON.parse(localStorage.getItem('karta_nav_settings') || '{}'); } catch {}
     if (cfg.voice_enabled === false) return;
@@ -119,7 +132,6 @@ export function NavigationProvider({ children }) {
       u.rate = 1.1;
       u.pitch = 1;
       if (typeof cfg.voice_volume === 'number') u.volume = Math.max(0, Math.min(1, cfg.voice_volume));
-      // голос: сначала выбранный вручную, потом под язык настроек, потом любой русский
       try {
         const vs = synth.getVoices?.() || [];
         const prefix = wantLang.split('-')[0].toLowerCase();
@@ -182,15 +194,22 @@ export function NavigationProvider({ children }) {
     return steps;
   }, []);
 
+  const computeRouteLength = useCallback((geometry) => {
+    if (!geometry || geometry.length < 2) return 0;
+    let len = 0;
+    for (let i = 0; i < geometry.length - 1; i++) {
+      len += haversineM(geometry[i][0], geometry[i][1], geometry[i + 1][0], geometry[i + 1][1]);
+    }
+    return len;
+  }, []);
+
   const processPosition = useCallback((lat, lng, heading, speed) => {
-    // GPS smoothing: moving average last 3
     const hist = positionsRef.current.slice(-2);
     if (hist.length >= 2) {
       const avgLat = (hist[0].lat + hist[1].lat + lat) / 3;
       const avgLng = (hist[0].lng + hist[1].lng + lng) / 3;
       if (Math.hypot(avgLat - lat, avgLng - lng) * 111320 < 40) { lat = avgLat; lng = avgLng; }
     }
-    // jump filter >150m in <2s
     const last = positionsRef.current[positionsRef.current.length - 1];
     if (last) {
       const jump = Math.hypot(lat - last.lat, lng - last.lng) * 111320;
@@ -219,17 +238,60 @@ export function NavigationProvider({ children }) {
     if (positionsRef.current.length > 200) positionsRef.current = positionsRef.current.slice(-100);
 
     const route = routeRef.current;
-    if (!route || !route.steps || route.steps.length === 0) return;
+    if (!route || !route.geometry || route.geometry.length < 2) return;
+
+    const geometry = route.geometry;
+
+    const proj = projectOnPolyline(lat, lng, geometry);
+    setRouteProgress(proj.progress);
+    routeProgressRef.current = proj.progress;
+    setSnappedPosition([proj.snappedLat, proj.snappedLng]);
+
+    const offDist = proj.distToRoute;
+    const now = Date.now();
+    if (offDist > OFF_ROUTE_THRESHOLD_M) {
+      if (!offRouteStartRef.current) offRouteStartRef.current = now;
+      setIsOffRoute(true);
+    } else {
+      offRouteStartRef.current = null;
+      setIsOffRoute(false);
+    }
+
+    if (offDist > OFF_ROUTE_THRESHOLD_M && offRouteStartRef.current && (now - offRouteStartRef.current > 2000)) {
+      if (now - lastRerouteRef.current > REROUTING_COOLDOWN_MS && !isReroutingRef.current) {
+        lastRerouteRef.current = now;
+        offRouteStartRef.current = null;
+        triggerReroute();
+      }
+    }
+
+    if (proj.progress > 0.95 && offDist < ARRIVAL_THRESHOLD_M * 2) {
+      const toDest = haversineM(lat, lng, geometry[geometry.length - 1][0], geometry[geometry.length - 1][1]);
+      if (toDest < ARRIVAL_THRESHOLD_M && !arrivalAnnouncedRef.current) {
+        arrivalAnnouncedRef.current = true;
+        setHasArrived(true);
+        const arrivedText = (PHRASE[getNavLang()] || PHRASE.ru).arrived;
+        speak(arrivedText);
+        setNextInstruction(prev => ({
+          ...prev,
+          text: arrivedText,
+          instruction: 'arrive',
+          modifier: '',
+          distance: 0,
+        }));
+        return;
+      }
+    }
 
     const steps = ensureStepStarts(route.steps);
-    const stepIdx = findClosestStep(lat, lng, steps);
+    const stepIdx = findClosestStep(proj.snappedLat, proj.snappedLng, steps);
     stepIndexRef.current = stepIdx;
 
     const step = steps[stepIdx];
     const nextStep = steps[stepIdx + 1];
     const loc = step.start || [0, 0];
-    const distToStep = Math.hypot(lat - loc[0], lng - loc[1]) * 111320;
-    // авто-масштаб: приблизить перед поворотом
+    const distToStep = Math.hypot(proj.snappedLat - loc[0], proj.snappedLng - loc[1]) * 111320;
+
     try {
       const autoScale = JSON.parse(localStorage.getItem('karta_nav_settings')||'{}')?.auto_scale !== false;
       if (autoScale && nextStep && step.distance < 120) {
@@ -247,24 +309,22 @@ export function NavigationProvider({ children }) {
       modifier: step.modifier,
     });
 
-    // двухэтапные подсказки: за ~200 м предупреждаем, у поворота — командуем. По разу на шаг.
-    const now = Date.now();
+    const annNow = Date.now();
     if (annKeyRef.current.idx !== stepIdx) annKeyRef.current = { idx: stepIdx, pre: false, final: false };
     const ann = annKeyRef.current;
-    if (ANNOUNCEABLE.has(step.instruction) && !ann.pre && distToStep < 200 && distToStep >= 25 && now - lastAnnounceRef.current > 8000) {
+    if (ANNOUNCEABLE.has(step.instruction) && !ann.pre && distToStep < 200 && distToStep >= 25 && annNow - lastAnnounceRef.current > 8000) {
       speak(getManeuverText(step.instruction, step.modifier, Math.round(distToStep), navLang));
       ann.pre = true;
-      lastAnnounceRef.current = now;
+      lastAnnounceRef.current = annNow;
     }
-    if (ANNOUNCEABLE.has(step.instruction) && !ann.final && distToStep < 25 && now - lastAnnounceRef.current > 8000) {
+    if (ANNOUNCEABLE.has(step.instruction) && !ann.final && distToStep < 25 && annNow - lastAnnounceRef.current > 8000) {
       speak(step.instruction === 'arrive'
         ? arrivedText
         : getManeuverText(step.instruction, step.modifier, 0, navLang));
       ann.final = true;
-      lastAnnounceRef.current = now;
+      lastAnnounceRef.current = annNow;
     }
 
-    // осталось до конца маршрута (сумма оставшихся шагов)
     let totalRemaining = 0;
     for (let i = stepIdx; i < steps.length; i++) {
       totalRemaining += steps[i].distance || 0;
@@ -273,7 +333,6 @@ export function NavigationProvider({ children }) {
 
     const elapsed = startTimeRef.current ? (Date.now() - startTimeRef.current) / 1000 : 0;
     const avgSpd = traveledRef.current > 0 && elapsed > 15 ? traveledRef.current / elapsed : 0;
-    // ETA: пока мало проехали (<100м) или скорость нестабильна — используем OSRM duration пропорционально
     let etaSec = 0;
     if (route && route.duration && route.distance) {
       const progress = Math.max(0, Math.min(1, 1 - totalRemaining / route.distance));
@@ -281,15 +340,49 @@ export function NavigationProvider({ children }) {
       if (traveledRef.current < 100 || avgSpd < 1.2) etaSec = osrmRemaining;
       else etaSec = totalRemaining / avgSpd;
     } else if (avgSpd > 0) etaSec = totalRemaining / avgSpd;
-    // защита от 3524 мин бага — не показываем > 12ч
     if (etaSec > 43200) etaSec = route?.duration || 0;
     setEta(new Date(Date.now() + etaSec * 1000));
     setRemainingDuration(Math.round(etaSec));
     setTripStats({ distance: traveledRef.current, duration: elapsed, avgSpeed: avgSpd * 3.6 });
-  }, [findClosestStep, ensureStepStarts, getManeuverText, speak]);
+  }, [findClosestStep, ensureStepStarts, getManeuverText, speak, computeRouteLength]);
+
+  const isReroutingRef = useRef(false);
+
+  const triggerReroute = useCallback(async () => {
+    if (isReroutingRef.current) return;
+    const route = routeRef.current;
+    if (!route?.from || !route?.to) return;
+    const pos = positionsRef.current[positionsRef.current.length - 1];
+    if (!pos) return;
+    isReroutingRef.current = true;
+    setIsRerouting(true);
+    try {
+      const profile = route.mode === 'walking' ? 'walking' : 'driving';
+      const newRoute = await rerouteInternal(
+        { lat: pos.lat, lng: pos.lng },
+        route.to,
+        route.waypoints,
+        profile
+      );
+      if (newRoute) {
+        routeRef.current = { ...newRoute, from: { lat: pos.lat, lng: pos.lng }, to: route.to, mode: route.mode, waypoints: route.waypoints };
+        setRouteData(routeRef.current);
+        stepIndexRef.current = 0;
+        const newLen = computeRouteLength(newRoute.geometry);
+        routeLenRef.current = newLen;
+        speak('Маршрут обновлён');
+      }
+    } catch {}
+    finally {
+      isReroutingRef.current = false;
+      setIsRerouting(false);
+    }
+  }, [speak, computeRouteLength]);
 
   const processPositionRef = useRef(processPosition);
   useEffect(() => { processPositionRef.current = processPosition; }, [processPosition]);
+  const triggerRerouteRef = useRef(triggerReroute);
+  useEffect(() => { triggerRerouteRef.current = triggerReroute; }, [triggerReroute]);
 
   const startGps = useCallback(() => {
     clearGps();
@@ -320,6 +413,16 @@ export function NavigationProvider({ children }) {
     setRemainingDistance(0);
     setRemainingDuration(0);
     setEta(null);
+    setRouteProgress(0);
+    routeProgressRef.current = 0;
+    setIsOffRoute(false);
+    setIsRerouting(false);
+    setHasArrived(false);
+    setSnappedPosition(null);
+    offRouteStartRef.current = null;
+    lastRerouteRef.current = 0;
+    arrivalAnnouncedRef.current = false;
+    routeLenRef.current = 0;
   }, []);
 
   const startNavigationWithFromTo = useCallback((route, from, to) => {
@@ -330,11 +433,11 @@ export function NavigationProvider({ children }) {
     setIsPaused(false);
     isPausedRef.current = false;
     resetNavState();
+    routeLenRef.current = computeRouteLength(enriched.geometry);
     startGps();
-    // сохраняем С обогащением — иначе после перезагрузки ОТ/ДО пропадают с карты
     try { localStorage.setItem('karta_nav_active', JSON.stringify(enriched)); } catch {}
     speak('Начинаем навигацию');
-  }, [startGps, resetNavState, speak]);
+  }, [startGps, resetNavState, speak, computeRouteLength]);
 
   const startNavigation = useCallback((route) => {
     routeRef.current = route;
@@ -343,10 +446,11 @@ export function NavigationProvider({ children }) {
     setIsPaused(false);
     isPausedRef.current = false;
     resetNavState();
+    routeLenRef.current = computeRouteLength(route.geometry);
     startGps();
     try { localStorage.setItem('karta_nav_active', JSON.stringify(route)); } catch {}
     speak('Начинаем навигацию');
-  }, [startGps, resetNavState, speak]);
+  }, [startGps, resetNavState, speak, computeRouteLength]);
 
   const stopNavigation = useCallback(() => {
     clearGps();
@@ -384,16 +488,15 @@ export function NavigationProvider({ children }) {
   const toggleFollow = useCallback(() => setFollowUser(f => !f), []);
 
   const OSRM_ENDPOINTS = {
-  driving: 'https://router.project-osrm.org/route/v1/driving',
-  walking: 'https://routing.openstreetmap.de/routed-foot/route/v1/foot',
-  cycling: 'https://routing.openstreetmap.de/routed-bike/route/v1/bike',
-};
+    driving: 'https://router.project-osrm.org/route/v1/driving',
+    walking: 'https://routing.openstreetmap.de/routed-foot/route/v1/foot',
+    cycling: 'https://routing.openstreetmap.de/routed-bike/route/v1/bike',
+  };
 
-const reroute = useCallback(async (from, to, profile = 'driving') => {
+  const rerouteInternal = useCallback(async (from, to, waypoints, profile = 'driving') => {
     if (!from || !to) return null;
-    const rd = routeRef.current;
     try {
-      const wps = (rd?.waypoints || []).filter(Boolean);
+      const wps = (waypoints || []).filter(Boolean);
       const coords = [from, ...wps, to].map(p => `${p.lng},${p.lat}`).join(';');
       const endpoint = OSRM_ENDPOINTS[profile] || OSRM_ENDPOINTS.driving;
       const resp = await fetch(
@@ -421,18 +524,22 @@ const reroute = useCallback(async (from, to, profile = 'driving') => {
           });
         });
       });
-      const newRoute = {
-        distance: r.distance, duration: r.duration,
-        geometry: geom,
-        steps, mode: rd?.mode || profile,
-      };
-      routeRef.current = newRoute;
-      setRouteData(newRoute);
-      stepIndexRef.current = 0;
-      speak('Маршрут обновлён');
-      return newRoute;
+      return { distance: r.distance, duration: r.duration, geometry: geom, steps };
     } catch { return null; }
-  }, [speak]);
+  }, []);
+
+  const reroute = useCallback(async (from, to, profile = 'driving') => {
+    const rd = routeRef.current;
+    const newRoute = await rerouteInternal(from, to, rd?.waypoints, profile);
+    if (newRoute) {
+      routeRef.current = { ...newRoute, from, to, mode: rd?.mode || profile, waypoints: rd?.waypoints };
+      setRouteData(routeRef.current);
+      stepIndexRef.current = 0;
+      routeLenRef.current = computeRouteLength(newRoute.geometry);
+      speak('Маршрут обновлён');
+    }
+    return newRoute;
+  }, [rerouteInternal, speak, computeRouteLength]);
 
   const closeSummary = useCallback(() => {
     setShowSummary(false);
@@ -441,12 +548,29 @@ const reroute = useCallback(async (from, to, profile = 'driving') => {
     routeRef.current = null;
     setNextInstruction(null);
     setUserPosition(null);
+    setRouteProgress(0);
+    setIsOffRoute(false);
+    setIsRerouting(false);
+    setHasArrived(false);
+    setSnappedPosition(null);
   }, []);
 
   useEffect(() => {
-    try { const saved = localStorage.getItem('karta_nav_active'); if (saved) { const r = JSON.parse(saved); if (r?.geometry) { routeRef.current = r; setRouteData(r); setIsActive(true); startGps(); } } } catch {}
+    try {
+      const saved = localStorage.getItem('karta_nav_active');
+      if (saved) {
+        const r = JSON.parse(saved);
+        if (r?.geometry) {
+          routeRef.current = r;
+          setRouteData(r);
+          setIsActive(true);
+          routeLenRef.current = computeRouteLength(r.geometry);
+          startGps();
+        }
+      }
+    } catch {}
     return () => { clearGps(); try { window.speechSynthesis.cancel(); } catch {} };
-  }, [clearGps, startGps]);
+  }, [clearGps, startGps, computeRouteLength]);
 
   const value = useMemo(() => ({
     isActive, isPaused,
@@ -454,6 +578,7 @@ const reroute = useCallback(async (from, to, profile = 'driving') => {
     nextInstruction, remainingDistance, remainingDuration, eta, traveledDistance,
     startTime, voiceEnabled, followUser,
     showSummary, summaryData, tripStats,
+    routeProgress, isOffRoute, isRerouting, hasArrived, snappedPosition,
     startNavigation, startNavigationWithFromTo, stopNavigation,
     togglePause, toggleVoice, toggleFollow,
     reroute, closeSummary,
@@ -464,6 +589,7 @@ const reroute = useCallback(async (from, to, profile = 'driving') => {
     nextInstruction, remainingDistance, remainingDuration, eta, traveledDistance,
     startTime, voiceEnabled, followUser,
     showSummary, summaryData, tripStats,
+    routeProgress, isOffRoute, isRerouting, hasArrived, snappedPosition,
     startNavigation, startNavigationWithFromTo, stopNavigation,
     togglePause, toggleVoice, toggleFollow,
     reroute, closeSummary,

@@ -12,20 +12,13 @@ import StopInfoPopup, { collectUniqueStops } from './StopInfoPopup';
 import { useOverpassStops } from '@/hooks/useOverpassStops';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useNavigation } from '@/lib/NavigationContext';
+import { splitRouteByProgress } from '@/lib/geo';
 import { supabase } from '@/api/supabase';
 import { toast } from 'sonner';
 import { Heart, X, Crosshair, MapPin, Loader2, Check } from 'lucide-react';
 import { useLanguage } from '@/lib/useLanguage';
 import { TripLog } from '@/api/entities';
 
-// Haversine distance in meters
-function distM(lat1, lng1, lat2, lng2) {
-  const R = 6371000;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
 function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function safeColor(c){ return /^#[0-9a-fA-F]{6}$/.test(c||'') ? c : '#1565C0'; }
 function isValidLatLng(lat,lng){ return typeof lat==='number' && typeof lng==='number' && !isNaN(lat) && !isNaN(lng) && lat>=-90 && lat<=90 && lng>=-180 && lng<=180 && Math.abs(lat)>0.001 && Math.abs(lng)>0.001; }
@@ -484,47 +477,33 @@ async function snapToRoad(lat, lng) {
   return { lat, lng };
 }
 
-function NavigationCamera({ followUser, userPosition, reroute, routeData }) {
+function NavigationCamera({ followUser, userPosition, userHeading, routeData }) {
   const map = useMap();
-  const lastRerouteRef = useRef(0);
-  const lastPosRef = useRef(null);
+  const headingSmoothRef = useRef(0);
 
   useEffect(() => {
     if (!followUser || !userPosition) return;
-    map.setView(userPosition, Math.max(map.getZoom(), 17), { animate: true, duration: 0.5 });
-  }, [userPosition, followUser, map]);
+    const h = userHeading || 0;
+    const prev = headingSmoothRef.current;
+    let delta = h - prev;
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+    headingSmoothRef.current = prev + delta * 0.3;
 
-  // Режим «весь маршрут»: слежение выключено — показываем весь путь от и до
+    try {
+      map.setBearing(0);
+      map.setView(userPosition, Math.max(map.getZoom(), 17), { animate: true, duration: 0.3 });
+    } catch {}
+  }, [userPosition, followUser, userHeading, map]);
+
   useEffect(() => {
     if (followUser || !routeData?.geometry?.length) return;
     try {
+      map.setBearing(0);
       const b = L.latLngBounds(routeData.geometry);
       map.fitBounds(b, { paddingTopLeft: [50, 130], paddingBottomRight: [50, 190], animate: true });
     } catch {}
   }, [followUser, routeData, map]);
-
-  // Auto-reroute when deviated >30m
-  useEffect(() => {
-    if (!userPosition || !routeData?.from || !routeData?.to) return;
-    const now = Date.now();
-    if (now - lastRerouteRef.current < 30000) return;
-
-    const last = lastPosRef.current;
-    lastPosRef.current = userPosition;
-
-    if (!last || !routeData?.geometry?.length) return;
-
-    let minDist = Infinity;
-    for (const pt of routeData.geometry) {
-      const d = Math.hypot(userPosition[0] - pt[0], userPosition[1] - pt[1]) * 111320;
-      if (d < minDist) minDist = d;
-    }
-
-    if (minDist > 30) {
-      lastRerouteRef.current = now;
-      reroute?.(routeData.from, routeData.to, routeData.mode === 'walking' ? 'walking' : 'driving');
-    }
-  }, [userPosition, routeData, reroute]);
 
   return null;
 }
@@ -1155,9 +1134,18 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
           const navRoute = nav.isActive && nav.routeData ? nav.routeData : routingRoute;
           const positions = navRoute.geometry;
           const isPreview = !nav.isActive;
+          const isNavigating = nav.isActive;
+
+          let traveledPts = [];
+          let remainingPts = positions;
+          if (isNavigating && positions?.length >= 2 && nav.routeProgress > 0.005) {
+            const split = splitRouteByProgress(positions, nav.routeProgress);
+            traveledPts = split.traveled;
+            remainingPts = split.remaining;
+          }
+
           return (
             <>
-              {/* alternatives as per reference 2 — blue dashed, selectable */}
               {isPreview && routingRoute?.alternatives?.map((alt,i)=> (
                 <Polyline
                   key={`alt-${i}`}
@@ -1178,24 +1166,42 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
               {isPreview && routingRoute?.alternatives?.[0] && (
                 <Marker position={routingRoute.alternatives[0].geometry[Math.floor(routingRoute.alternatives[0].geometry.length/2)]} interactive={false} icon={L.divIcon({ html:`<div style="background:rgba(59,130,246,0.9);color:#fff;font-size:10px;font-weight:800;padding:2px 6px;border-radius:10px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.25);">то же время</div>`, className:'', iconSize:[70,18], iconAnchor:[35,9]})} />
               )}
-              <Polyline positions={positions} color="white" weight={10} opacity={0.95} lineCap="round" lineJoin="round" />
-              <Polyline
-                positions={positions}
-                color={navRoute.mode === 'walking' ? '#7C3AED' : navRoute.mode === 'cycling' ? '#059669' : isPreview ? '#22c55e' : '#2563EB'}
-                weight={6}
-                opacity={1}
-                lineCap="round"
-                lineJoin="round"
-              />
+
+              {isNavigating && traveledPts.length >= 2 && (
+                <>
+                  <Polyline positions={traveledPts} color="white" weight={10} opacity={0.5} lineCap="round" lineJoin="round" />
+                  <Polyline positions={traveledPts} color="#94a3b8" weight={5} opacity={0.5} lineCap="round" lineJoin="round" dashArray="8 6" />
+                </>
+              )}
+
+              {remainingPts?.length >= 2 && (
+                <>
+                  <Polyline positions={remainingPts} color="white" weight={10} opacity={0.95} lineCap="round" lineJoin="round" />
+                  <Polyline
+                    positions={remainingPts}
+                    color={navRoute.mode === 'walking' ? '#7C3AED' : navRoute.mode === 'cycling' ? '#059669' : isPreview ? '#22c55e' : '#2563EB'}
+                    weight={6}
+                    opacity={1}
+                    lineCap="round"
+                    lineJoin="round"
+                  />
+                </>
+              )}
+
+              {isNavigating && !remainingPts?.length && positions?.length >= 2 && (
+                <>
+                  <Polyline positions={positions} color="white" weight={10} opacity={0.95} lineCap="round" lineJoin="round" />
+                  <Polyline positions={positions} color="#2563EB" weight={6} opacity={1} lineCap="round" lineJoin="round" />
+                </>
+              )}
+
               {(() => {
-                // ОТ/ДО всегда видны: если точек нет в данных (транзит/рестарт) — берём концы геометрии
                 const fp = navRoute.from?.lat != null
                   ? navRoute.from
                   : (positions.length ? { lat: positions[0][0], lng: positions[0][1] } : null);
                 const tp = navRoute.to?.lat != null
                   ? navRoute.to
                   : (positions.length ? { lat: positions[positions.length - 1][0], lng: positions[positions.length - 1][1] } : null);
-                // подпись ПОД точкой — иначе плашка уезжает под верхнее меню (манёвр/скорость)
                 const endIcon = (label, bg, border) => L.divIcon({
                   html: `<div style="display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.45));">`
                     + `<div style="width:24px;height:24px;border-radius:50%;background:${bg};border:3.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.35);"></div>`
@@ -1242,7 +1248,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       )}
 
       {/* Navigation camera follow + arrow */}
-      {nav.isActive && <NavigationCamera followUser={nav.followUser} userPosition={nav.userPosition} reroute={nav.reroute} routeData={nav.routeData} />}
+      {nav.isActive && <NavigationCamera followUser={nav.followUser} userPosition={nav.userPosition} userHeading={nav.userHeading} routeData={nav.routeData} />}
 
       {/* Group route members — улучшенные маркеры с статусом и направлением */}
       {groupRouteMembers.filter(m => m.lat && m.lng).map((member) => {

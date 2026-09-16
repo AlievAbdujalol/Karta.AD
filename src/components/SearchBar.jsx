@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, X, MapPin, Bus, Route, Clock, Building2, Mic, MicOff, Navigation, Heart, Fuel, ShoppingBag, UtensilsCrossed, Hotel, ParkingCircle, Pill, Landmark as AtmIcon } from 'lucide-react';
-import { smartSearch, flattenResults, getSearchHistory, addToHistory, clearHistory } from '@/lib/searchUtils';
-import { requestRouteFromPhrase, speakText } from '@/lib/aiAssistant';
+import { Search, X, MapPin, Bus, Route, Clock, Building2, Mic, MicOff, Navigation, Heart, Fuel, ShoppingBag, UtensilsCrossed, Hotel, ParkingCircle, Pill, Landmark as AtmIcon, Sparkles, Loader2 } from 'lucide-react';
+import { smartSearch, flattenResults, groupResults, getSearchHistory, addToHistory, clearHistory } from '@/lib/searchUtils';
+import { requestRouteFromPhrase, speakText, askAssistant } from '@/lib/aiAssistant';
+import { isGeminiConfigured } from '@/lib/gemini';
 import { useLanguage } from '@/lib/useLanguage';
 import { supabase } from '@/api/supabase';
 
@@ -16,15 +17,20 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry, onSel
   const [selectedIdx, setSelectedIdx] = useState(-1);
   const [loading, setLoading] = useState(false);
   const [aiHint, setAiHint] = useState(null);
+  const [aiSuggestion, setAiSuggestion] = useState(null);
   const [aiRoute, setAiRoute] = useState(null);
   const [aiRouteBusy, setAiRouteBusy] = useState(false);
   const [aiRouteError, setAiRouteError] = useState(null);
   const voiceAskedRef = useRef(false);
   const [listening, setListening] = useState(false);
   const [favPlaces, setFavPlaces] = useState([]);
+  const [aiAnswer, setAiAnswer] = useState(null);
+  const [aiAnswerBusy, setAiAnswerBusy] = useState(false);
+  const [aiQuickActions, setAiQuickActions] = useState([]);
   const inputRef = useRef(null);
   const containerRef = useRef(null);
   const debounceRef = useRef(null);
+  const aiDebounceRef = useRef(null);
   const POI_CATS = [
     { q:'остановка', icon: MapPin, label:'Остановки' },
     { q:'парковка', icon: ParkingCircle, label:'Парковки' },
@@ -62,6 +68,7 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry, onSel
       setResults({ routes: [], stops: [], vehicles: [], addresses: [], pois: [] });
       setFlat([]);
       setAiHint(null);
+      setAiSuggestion(null);
       setOpen(false);
       setLoading(false);
       return;
@@ -69,8 +76,9 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry, onSel
     setLoading(true);
     debounceRef.current = setTimeout(async () => {
       // умный поиск: фразу понимает Gemini, короткое — обычный поиск
-      const res = await smartSearch(query, { cityId });
+      const res = await smartSearch(query, { cityId, mapCenter });
       setAiHint(res._aiIntent?.terms?.length ? res._aiIntent.terms : null);
+      setAiSuggestion(res._aiIntent?.suggestion || null);
       const intent = res._aiIntent;
       setAiRoute(intent?.from && intent?.to ? { from: intent.from, to: intent.to } : null);
       setAiRouteError(null);
@@ -79,7 +87,15 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry, onSel
         voiceAskedRef.current = false;
         const n = (res.routes?.length || 0) + (res.stops?.length || 0) + (res.addresses?.length || 0) + (res.pois?.length || 0);
         const first = res.routes?.[0] ? `Маршрут ${res.routes[0].number}` : res.stops?.[0]?.name || res.addresses?.[0]?.name || res.pois?.[0]?.name || '';
-        speakText(n > 0 ? `Найдено: ${n}. ${first}` : 'Ничего не найдено');
+        if (n > 0) {
+          const parts = [];
+          if (res.routes?.length) parts.push(`${res.routes.length} маршру${res.routes.length === 1 ? 'т' : 'тов'}`);
+          if (res.stops?.length) parts.push(`${res.stops.length} останов${res.stops.length === 1 ? 'ка' : 'ок'}`);
+          if (res.addresses?.length || res.pois?.length) parts.push(`${(res.addresses?.length || 0) + (res.pois?.length || 0)} мест`);
+          speakText(`Найдено: ${parts.join(', ')}. ${first ? 'Первое — ' + first : ''}`);
+        } else {
+          speakText('Ничего не найдено. Попробуй переформулировать.');
+        }
       }
       const pois = [];
       const seenCoords = new Set();
@@ -144,6 +160,45 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry, onSel
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, cityId]);
 
+  // AI answer for question-like queries
+  useEffect(() => {
+    if (aiDebounceRef.current) clearTimeout(aiDebounceRef.current);
+    const q = (query || '').trim();
+    const isQuestion = q.length >= 5 && (
+      q.includes('?') || /^(как|где|куда|откуда|сколько|какой|какая|какие|почему|что|чем|кто|когда|покажи|найди|подскажи|расскажи|объясни)/i.test(q)
+    );
+    if (!isQuestion || !isGeminiConfigured()) {
+      setAiAnswer(null);
+      return;
+    }
+    setAiAnswerBusy(true);
+    aiDebounceRef.current = setTimeout(async () => {
+      try {
+        const cityName = selectedCity?.name || '';
+        const answer = await askAssistant([{ role: 'user', text: q }], { city: cityName });
+        if (answer) setAiAnswer(answer);
+      } catch {}
+      setAiAnswerBusy(false);
+    }, 600);
+    return () => { if (aiDebounceRef.current) clearTimeout(aiDebounceRef.current); };
+  }, [query, selectedCity?.name]);
+
+  // Generate AI quick actions on focus
+  const generateQuickActions = useCallback(async () => {
+    if (!isGeminiConfigured() || aiQuickActions.length > 0) return;
+    try {
+      const cityName = selectedCity?.name || 'Таджикистан';
+      const raw = await import('@/lib/gemini').then(m => m.geminiJSON(
+        `Ты помощник Karta-AD (${cityName}). Придумай 4 коротких вопроса-действия для пользователя транспортного приложения.
+Верни СТРОГО JSON: {"actions":[{"label":"текст кнопки","query":"вопрос"}]}
+Примеры: "Какие автобусы ходят?", "Как добраться до вокзала?", "Где ближайшая остановка?", "Сколько стоит такси?".
+Больше про ${cityName}.`,
+        { maxTokens: 256, timeoutMs: 8000 }
+      ));
+      if (raw?.actions?.length) setAiQuickActions(raw.actions.slice(0, 4));
+    } catch {}
+  }, [selectedCity?.name, aiQuickActions.length]);
+
   const handleSelect = (item) => {
     setQuery('');
     setOpen(false);
@@ -189,6 +244,7 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry, onSel
     if (!query.trim() && (history.length || favPlaces.length)) {
       setShowHistory(true);
     }
+    generateQuickActions();
   };
   const startVoice = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -307,8 +363,44 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry, onSel
             </div>
           )}
 
+          {!loading && showHistory && !query.trim() && aiQuickActions.length > 0 && (
+            <div className="px-3 pb-2">
+              <p className="text-[10px] font-black uppercase tracking-widest text-violet-400 px-1 pb-1 flex items-center gap-1"><Sparkles size={10}/> ИИ-помощник</p>
+              <div className="flex flex-wrap gap-1.5">
+                {aiQuickActions.map((a, i) => (
+                  <button key={i} onClick={() => { setQuery(a.query); setShowHistory(false); }}
+                    className="px-2.5 py-1.5 rounded-xl bg-violet-50 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/20 text-[11px] font-medium text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-500/20 transition-colors text-left">
+                    {a.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!loading && aiAnswerBusy && query.trim() && (
+            <div className="px-4 py-3 flex items-center gap-2 text-violet-600 dark:text-violet-400">
+              <Loader2 size={14} className="animate-spin" />
+              <span className="text-[11px] font-medium">ИИ думает…</span>
+            </div>
+          )}
+
+          {!loading && !aiAnswerBusy && aiAnswer && query.trim() && (
+            <div className="px-3 pt-2 pb-1">
+              <div className="p-3 rounded-xl bg-gradient-to-br from-violet-50 to-indigo-50 dark:from-violet-500/10 dark:to-indigo-500/10 border border-violet-200/50 dark:border-violet-500/20">
+                <div className="flex items-start gap-2">
+                  <Sparkles size={14} className="text-violet-500 shrink-0 mt-0.5" />
+                  <p className="text-[12px] text-slate-700 dark:text-slate-300 leading-relaxed">{aiAnswer}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {!loading && aiHint && (
             <p className="px-4 pt-2.5 pb-1 text-[11px] font-semibold text-violet-600 dark:text-violet-400 truncate">✨ Понял как: {aiHint.join(' · ')}</p>
+          )}
+
+          {!loading && aiSuggestion && (
+            <p className="px-4 pb-1 text-[10px] text-amber-600 dark:text-amber-400 italic">💡 {aiSuggestion}</p>
           )}
 
           {!loading && aiRoute && (
@@ -331,40 +423,53 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry, onSel
 
           {!loading && open && query.trim() && flat.length > 0 && (
             <div>
-              {flat.map((item, i) => {
-                const Icon = typeIcons[item._type] || MapPin;
-                const label = typeLabels[item._type] || '';
-                const colorCls = typeColors[item._type] || 'text-slate-600 bg-slate-100';
-                return (
-                  <button
-                    key={`${item._type}-${item.id || item.lat}-${i}`}
-                    onClick={() => handleSelect(item)}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-slate-100/50 dark:border-slate-800/30 last:border-0 ${selectedIdx === i ? 'bg-slate-100 dark:bg-slate-800' : ''}`}
-                  >
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${colorCls}`}>
-                      <Icon size={14} />
+              {(() => {
+                const groups = groupResults(results);
+                return groups.map(g => (
+                  <div key={g.type}>
+                    <div className="px-4 pt-2.5 pb-1 flex items-center gap-1.5">
+                      {(() => { const I = typeIcons[g.type] || MapPin; return <I size={11} className="text-slate-400" />; })()}
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{g.label} · {g.items.length}</span>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
-                        {item._type === 'route' && `#${item.number}`}
-                        {item._type === 'route' && item.name ? ` ${item.name}` : ''}
-                        {item._type === 'stop' && item.name}
-                        {item._type === 'vehicle' && (item.driver_name || `№${item.vehicle_number}`)}
-                        {item._type === 'address' && item.name}
-                        {item._type === 'poi' && item.name}
-                      </p>
-                      <p className="text-[11px] text-slate-400 truncate">
-                        {item._type === 'stop' && t('search.stopLabel')}
-                        {item._type === 'vehicle' && `${item.route_number ? `#${item.route_number} · ` : ''}${item.vehicle_number || ''}`}
-                        {item._type === 'address' && (item.fullAddress || '')}
-                        {item._type === 'route' && `${item.type === 'bus' ? t('search.busLabel') : t('search.minibusLabel')} · ${item.city_name || ''}`}
-                        {item._type === 'poi' && (item.source ? `${item.source} · ` : '') + (item.fullAddress || '')}
-                      </p>
-                    </div>
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${colorCls}`}>{label}</span>
-                  </button>
-                );
-              })}
+                    {g.items.slice(0, 5).map((item, i) => {
+                      const Icon = typeIcons[item._type] || MapPin;
+                      const label = typeLabels[item._type] || '';
+                      const colorCls = typeColors[item._type] || 'text-slate-600 bg-slate-100';
+                      const dist = item._dist != null ? (item._dist < 1 ? `${Math.round(item._dist * 1000)} м` : `${item._dist.toFixed(1)} км`) : null;
+                      return (
+                        <button
+                          key={`${item._type}-${item.id || item.lat}-${i}`}
+                          onClick={() => handleSelect(item)}
+                          className={`w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-slate-100/50 dark:border-slate-800/30 last:border-0 ${selectedIdx === i ? 'bg-slate-100 dark:bg-slate-800' : ''}`}
+                        >
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${colorCls}`}>
+                            <Icon size={14} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
+                              {item._type === 'route' && `#${item.number}`}
+                              {item._type === 'route' && item.name ? ` ${item.name}` : ''}
+                              {item._type === 'stop' && item.name}
+                              {item._type === 'vehicle' && (item.driver_name || `№${item.vehicle_number}`)}
+                              {item._type === 'address' && item.name}
+                              {item._type === 'poi' && item.name}
+                            </p>
+                            <p className="text-[11px] text-slate-400 truncate">
+                              {item._type === 'stop' && t('search.stopLabel')}
+                              {item._type === 'vehicle' && `${item.route_number ? `#${item.route_number} · ` : ''}${item.vehicle_number || ''}`}
+                              {item._type === 'address' && (item.fullAddress || '')}
+                              {item._type === 'route' && `${item.type === 'bus' ? t('search.busLabel') : t('search.minibusLabel')} · ${item.city_name || ''}`}
+                              {item._type === 'poi' && (item.source ? `${item.source} · ` : '') + (item.fullAddress || '')}
+                            </p>
+                          </div>
+                          {dist && <span className="text-[10px] font-bold text-slate-400 shrink-0">{dist}</span>}
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${colorCls}`}>{label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ));
+              })()}
             </div>
           )}
         </div>

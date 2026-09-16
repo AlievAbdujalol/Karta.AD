@@ -125,13 +125,13 @@ export default function StopInfoPopup({ stop, routes, routeGeometries, routingOp
   const handleAiInfo = async () => {
     if (aiBusy) return;
     if (aiText) { setAiText(null); return; }
-    if (!isGeminiConfigured()) { setAiText('ИИ не настроен: добавь VITE_GEMINI_API_KEY в .env.local.'); return; }
+    if (!isGeminiConfigured()) { setAiText('ИИ не настроен. Добавь ключ в .env.local.'); return; }
     setAiBusy(true);
     try {
       const txt = await describeStop(stopName, passingRoutes.map(r => ({ number: r.number, name: r.name })));
-      setAiText(txt || 'Не получилось, попробуй позже.');
-    } catch {
-      setAiText('Ошибка сети, попробуй позже.');
+      setAiText(txt || 'Не удалось получить справку. Попробуй позже.');
+    } catch (err) {
+      setAiText(err?.type === 'auth' ? 'Ошибка ключа API.' : 'Ошибка сети, попробуй позже.');
     } finally {
       setAiBusy(false);
     }
@@ -141,6 +141,15 @@ export default function StopInfoPopup({ stop, routes, routeGeometries, routingOp
     <div style={S.card}>
       <div style={S.title}>{stopName}</div>
       <div style={S.suggestRow}>✎ {t('stopPopup.suggestName') || 'Предложить народное название'}</div>
+
+      {passingRoutes.length > 0 && (
+        <div style={{ fontSize: 10.5, color: '#8892b0', marginBottom: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {buses.length > 0 && <span>🚌 {buses.length} автобус{buses.length === 1 ? '' : 'ов'}</span>}
+          {minibuses.length > 0 && <span>🚐 {minibuses.length} маршрут{minibuses.length === 1 ? 'ка' : 'ок'}</span>}
+          {passingRoutes.length > buses.length + minibuses.length && <span>🚍 {passingRoutes.length - buses.length - minibuses.length} друг.</span>}
+        </div>
+      )}
+
       <button
         onClick={handleAiInfo}
         style={{ width: '100%', marginBottom: 10, background: aiText ? 'rgba(139,92,246,0.15)' : 'linear-gradient(135deg,#7c3aed,#d946ef)', color: '#fff', border: '1px solid rgba(167,139,250,0.4)', borderRadius: 10, padding: '7px 0', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}

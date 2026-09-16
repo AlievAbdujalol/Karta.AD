@@ -117,8 +117,17 @@ export default function TaxiTariffPanel({ category, extras, setExtras, routeInfo
       <div className="space-y-2">
         <div className="px-1 py-1 rounded-xl bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 text-[11px] text-teal-700 dark:text-teal-300 font-medium">Курьер · быстро, до 5 кг</div>
         <div className="flex gap-1.5">
-          <button onClick={() => update({ urgent: false })} className={`flex-1 py-2 rounded-xl text-xs font-bold border ${!extras.urgent ? 'bg-teal-600 text-white border-teal-600' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>Стандарт 60м</button>
+          <button onClick={() => update({ urgent: false })} className={`flex-1 py-2 rounded-xl text-xs font-bold border ${!extras.urgent ? 'bg-teal-600 text-white border-teal-600' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>Стандарт 80м</button>
           <button onClick={() => update({ urgent: true })} className={`flex-1 py-2 rounded-xl text-xs font-bold border ${extras.urgent ? 'bg-amber-500 text-white border-amber-500' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>Срочно 30м +5</button>
+        </div>
+        <div className="grid grid-cols-3 gap-1.5">
+          {[
+            { id: 'docs', label: 'Документы' },
+            { id: 'box', label: 'Коробка' },
+            { id: 'food', label: 'Еда' },
+          ].map(o => (
+            <button key={o.id} onClick={() => update({ parcelType: o.id, itemDesc: o.label })} className={`px-2 py-2 rounded-xl text-xs font-bold border ${extras.parcelType === o.id ? 'bg-teal-600 text-white border-teal-600' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>{o.label}</button>
+          ))}
         </div>
         <div className="flex items-center gap-2">
           <Package size={14} className="text-slate-400" />
@@ -128,6 +137,12 @@ export default function TaxiTariffPanel({ category, extras, setExtras, routeInfo
           <Weight size={14} className="text-slate-400" />
           <input type="number" min="0.1" max="5" step="0.5" value={extras.weight ?? 0.5} onChange={e => update({ weight: e.target.value })} className="flex-1 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs outline-none" />
           <span className="text-xs text-slate-500">кг</span>
+        </div>
+        <input value={extras.receiverName || ''} onChange={e => update({ receiverName: e.target.value })} placeholder="Имя получателя" className="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs outline-none" />
+        <input value={extras.receiverPhone || ''} onChange={e => update({ receiverPhone: e.target.value })} placeholder="Телефон получателя" className="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs outline-none" />
+        <div className="flex gap-1.5">
+          <Toggle label="Хрупкое +4" value={!!extras.fragile} onChange={v => update({ fragile: v })} icon={Shield} />
+          <Toggle label="Экспресс +6" value={!!extras.express} onChange={v => update({ express: v })} icon={Clock} />
         </div>
         <div className="flex gap-1.5">
           <Toggle label="Подпись" value={!!extras.signature} onChange={v => update({ signature: v })} icon={Shield} />

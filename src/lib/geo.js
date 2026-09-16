@@ -72,3 +72,101 @@ export function smoothPositions(positions, windowSize = 3) {
   }
   return out;
 }
+
+/**
+ * Найти ближайшую точку на полилинии и вернуть progress (0..1) и snapped координаты.
+ * @param {number} lat - текущая широта
+ * @param {number} lng - текущая долгота
+ * @param {Array<[number,number]>} geometry - [[lat,lng], ...]
+ * @returns {{ progress: number, snappedLat: number, snappedLng: number, segIndex: number, distToRoute: number }}
+ */
+export function projectOnPolyline(lat, lng, geometry) {
+  if (!geometry || geometry.length < 2) {
+    return { progress: 0, snappedLat: lat, snappedLng: lng, segIndex: 0, distToRoute: 0 };
+  }
+
+  let bestDist = Infinity;
+  let bestProgress = 0;
+  let bestLat = geometry[0][0];
+  let bestLng = geometry[0][1];
+  let bestSeg = 0;
+  let totalDist = 0;
+  let accumulated = 0;
+
+  for (let i = 0; i < geometry.length - 1; i++) {
+    const [aLat, aLng] = geometry[i];
+    const [bLat, bLng] = geometry[i + 1];
+    const segLen = haversineM(aLat, aLng, bLat, bLng);
+
+    if (segLen < 0.01) {
+      accumulated += segLen;
+      continue;
+    }
+
+    const cosLat = Math.cos((lat * Math.PI) / 180);
+    const px = lng * cosLat, py = lat;
+    const p1x = aLng * cosLat, p1y = aLat;
+    const p2x = bLng * cosLat, p2y = bLat;
+    const dx = p2x - p1x, dy = p2y - p1y;
+    const t = Math.max(0, Math.min(1, ((px - p1x) * dx + (py - p1y) * dy) / (dx * dx + dy * dy)));
+    const projLat = aLat + t * (bLat - aLat);
+    const projLng = aLng + t * (bLng - aLng);
+    const d = haversineM(lat, lng, projLat, projLng);
+
+    if (d < bestDist) {
+      bestDist = d;
+      bestLat = projLat;
+      bestLng = projLng;
+      bestSeg = i;
+      bestProgress = (accumulated + t * segLen);
+    }
+    accumulated += segLen;
+    totalDist = accumulated;
+  }
+
+  if (totalDist < 1) totalDist = 1;
+
+  return {
+    progress: bestProgress / totalDist,
+    snappedLat: bestLat,
+    snappedLng: bestLng,
+    segIndex: bestSeg,
+    distToRoute: bestDist,
+  };
+}
+
+/**
+ * Разбить полилинию на пройденную и оставшуюся части по progress (0..1).
+ * @returns {{ traveled: Array, remaining: Array }}
+ */
+export function splitRouteByProgress(geometry, progress) {
+  if (!geometry || geometry.length < 2) return { traveled: [], remaining: geometry || [] };
+  const p = Math.max(0, Math.min(1, progress));
+
+  let totalLen = 0;
+  const segLens = [];
+  for (let i = 0; i < geometry.length - 1; i++) {
+    const sl = haversineM(geometry[i][0], geometry[i][1], geometry[i + 1][0], geometry[i + 1][1]);
+    segLens.push(sl);
+    totalLen += sl;
+  }
+  if (totalLen < 1) return { traveled: [], remaining: geometry };
+
+  const targetDist = p * totalLen;
+  let accum = 0;
+
+  for (let i = 0; i < segLens.length; i++) {
+    if (accum + segLens[i] >= targetDist) {
+      const frac = segLens[i] > 0 ? (targetDist - accum) / segLens[i] : 0;
+      const splitLat = geometry[i][0] + frac * (geometry[i + 1][0] - geometry[i][0]);
+      const splitLng = geometry[i][1] + frac * (geometry[i + 1][1] - geometry[i][1]);
+      const traveled = geometry.slice(0, i + 1);
+      if (i + 1 < geometry.length) traveled.push([splitLat, splitLng]);
+      const remaining = [[splitLat, splitLng], ...geometry.slice(i + 1)];
+      return { traveled, remaining };
+    }
+    accum += segLens[i];
+  }
+
+  return { traveled: geometry, remaining: [] };
+}
