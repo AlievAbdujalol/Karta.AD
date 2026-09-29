@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import {
   Plus, Store, MapPin, Phone, Users, ChevronRight, Home, Map, ShoppingBag,
   Truck, ClipboardList, Bot, BarChart3, CreditCard, MessageSquare, Settings,
-  Package, TrendingUp, ExternalLink, MoreHorizontal, Crown, Bell, Search
+  Package, TrendingUp, ExternalLink, MoreHorizontal, Crown, Bell
 } from 'lucide-react';
 
 const ROLE_LABELS = {

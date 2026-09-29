@@ -3,7 +3,7 @@ import { supabase } from '@/api/supabase';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
-import { ClipboardList, Search, Filter, ChevronRight, Package, MapPin, Phone, Clock } from 'lucide-react';
+import { ClipboardList, Search, ChevronRight, Package, MapPin, Phone, Clock } from 'lucide-react';
 
 const STATUS_LABELS = {
   pending: { ru: 'Ожидает', tg: 'Интизор', en: 'Pending' },

@@ -3,7 +3,7 @@ import { supabase } from '@/api/supabase';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
-import { BarChart3, TrendingUp, TrendingDown, DollarSign, ShoppingCart, Users, Clock, Calendar } from 'lucide-react';
+import { BarChart3, DollarSign, ShoppingCart } from 'lucide-react';
 
 export default function BusinessAnalytics() {
   const { user } = useCurrentUser();

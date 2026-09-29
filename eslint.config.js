@@ -7,7 +7,7 @@ import pluginUnusedImports from "eslint-plugin-unused-imports";
 export default [
   {
     files: ["src/**/*.{js,mjs,cjs,jsx,ts,tsx}"],
-    ignores: ["src/components/ui/chart.jsx", "src/components/ui/sidebar.jsx"],
+    ignores: ["src/components/ui/chart.jsx", "src/components/ui/sidebar.jsx", "src/types/**"],
     ...pluginJs.configs.recommended,
     ...pluginReact.configs.flat.recommended,
     languageOptions: {

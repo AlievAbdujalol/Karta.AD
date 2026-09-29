@@ -3,7 +3,7 @@ import { supabase } from '@/api/supabase';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
-import { Truck, MapPin, Phone, Clock, Navigation, Filter, Search } from 'lucide-react';
+import { Truck, Phone, Navigation, Search } from 'lucide-react';
 
 const DELIVERY_LABELS = {
   courier: { ru: 'Курьер', tg: 'Курьер', en: 'Courier' },

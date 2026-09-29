@@ -3,7 +3,7 @@ import { supabase } from '@/api/supabase';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
-import { Store, User, Shield, Settings, Users, Mail, Phone, Lock, LogOut, ExternalLink, Package, Truck, BarChart3, CreditCard, Calendar } from 'lucide-react';
+import { Store } from 'lucide-react';
 
 const ROLE_LABELS = {
   owner: { ru: 'Владелец', tg: 'Соҳиб', en: 'Owner' },

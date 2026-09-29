@@ -3,7 +3,7 @@ import { supabase } from '@/api/supabase';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
-import { Package, Plus, Search, Edit2, Trash2, ImageOff, CheckCircle2, XCircle } from 'lucide-react';
+import { Package, Plus, Search, Edit2, Trash2 } from 'lucide-react';
 
 export default function BusinessProducts() {
   const { user } = useCurrentUser();
