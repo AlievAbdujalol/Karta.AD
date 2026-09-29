@@ -61,21 +61,23 @@ await delivery.cancelOrder(order.id, "Клиент передумал");
 
 ## Статусы заказа
 
-`pending` → `searching` → `assigned` → `picked_up` → `delivered` | `cancelled`
+`pending` → `confirmed` → `searching_courier` → `courier_assigned` → `courier_to_pickup` → `arrived_pickup` → `picked_up` → `courier_to_customer` → `arrived_customer` → `delivered` | `cancelled` | `failed`
 
 ## Вебхуки
 
-Настройте URL в панели Karta-AD. События:
+Настройте URL в панели Karta-AD. События (§18) + `courier.location` (не-спецификационное):
 
-- `order.created`
-- `order.accepted`
-- `order.started`
-- `order.completed`
-- `order.cancelled`
+- `delivery.created`
+- `courier.assigned`
+- `courier.arrived_pickup`
+- `delivery.picked_up`
+- `courier.arrived_customer`
+- `delivery.delivered`
+- `delivery.cancelled`
+- `delivery.failed`
 - `courier.location`
-- `payment.completed`
 
-Каждый запрос подписан: `X-Karta-Signature: sha256=HMAC-SHA256(secret, body)`.
+Каждый запрос подписан: `X-Karta-Signature: sha256=` + HMAC-SHA256(body, secret). В payload также приходят `timestamp`, `nonce`, `event_id` (§19).
 
 ```ts
 const valid = await Delivery.verifyWebhookSignature(

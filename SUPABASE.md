@@ -122,7 +122,7 @@ See `src/types/database.ts` for TypeScript interfaces matching the live schema.
 
 ### Статусы заказа
 
-`pending` → `assigned` → `picked_up` → `delivered` | `cancelled` (плюс `searching` для taxi)
+`pending` → `confirmed` → `searching_courier` → `courier_assigned` → `courier_to_pickup` → `arrived_pickup` → `picked_up` → `courier_to_customer` → `arrived_customer` → `delivered` | `cancelled` | `failed` (12 статусов)
 
 ### RPC Functions (доставка)
 
@@ -131,11 +131,11 @@ See `src/types/database.ts` for TypeScript interfaces matching the live schema.
 | `create_delivery_order_v2(api_key, ...)` | Создать заказ (проверяет ключ, считает цену) | Edge Function |
 | `calculate_delivery_price(lat, lng, lat, lng, weight)` | Цена + ETA (min 6с., 4с. + 1.8с./км) | Edge Function |
 | `get_delivery_order(order_id)` | Заказ + позиции + трекинг | Edge Function |
-| `cancel_delivery_order(api_key, order_id, reason)` | Отмена заказа | Edge Function |
+| `cancel_delivery_order(api_key, order_id, reason)` | Отмена заказа (эмитит `delivery.cancelled`) | Edge Function |
 | `validate_delivery_api_key(api_key)` | Проверка ключа | — |
 | `find_nearest_delivery_courier(lat, lng, km)` | Поиск свободного курьера | — |
-| `courier_accept_delivery(order_id)` | Курьер принимает заказ (auth.uid) | Приложение курьера |
-| `courier_update_delivery_status(order_id, status, note)` | `picked_up` / `delivered` | Приложение курьера |
+| `courier_accept_delivery(order_id)` | Курьер принимает заказ (auth.uid), эмитит `courier.assigned` | Приложение курьера |
+| `courier_update_delivery_status(order_id, status, note)` | `arrived_pickup` / `picked_up` / `arrived_customer` / `delivered` / `failed` | Приложение курьера |
 | `courier_update_location(lat, lng)` | Геопозиция + трекинг | Приложение курьера |
 | `queue_delivery_webhooks(order_id, event, payload)` | Поставить событие webhook | Edge Function / RPC |
 | `delivery_notify_new_order(order_id)` | Уведомить онлайн-курьеров | Edge Function |
@@ -143,9 +143,10 @@ See `src/types/database.ts` for TypeScript interfaces matching the live schema.
 
 ### Webhooks
 
-- События: `order.created`, `order.accepted`, `order.started`, `order.completed`, `order.cancelled`, `courier.location`, `payment.completed`
-- Отправка: триггер `trg_delivery_webhook_dispatch` на INSERT в `delivery_webhook_events` → `net.http_post` (pg_net), асинхронно
-- Подпись: `X-Karta-Signature: sha256=HMAC-SHA256(secret, body)` (pgcrypto `hmac()`)
+- События (§18): `delivery.created`, `courier.assigned`, `courier.arrived_pickup`, `delivery.picked_up`, `courier.arrived_customer`, `delivery.delivered`, `delivery.cancelled`, `delivery.failed` (+ не-спецификационное `courier.location`)
+- `payment.completed` удалён (не эмитился); legacy `order.*` переименованы без dual-run
+- Постановка: RPC `queue_delivery_webhooks(order_id, event, payload)` → INSERT в `delivery_webhook_events`; триггер `trg_delivery_webhook_dispatch` → `net.http_post` (pg_net), асинхронно
+- Подпись (§19): `X-Karta-Signature: sha256=` + HMAC-SHA256(body, secret); payload содержит `timestamp`, `nonce`, `event_id`
 - Sandbox-заказы не шлют webhooks
 
 ### Edge Function: `delivery-api`
@@ -265,6 +266,10 @@ All migrations are in `supabase/migrations/`:
 11. `20260801000000_delivery_api_keys.sql` — ключи + заказы доставки (v1)
 12. `20260801010000_delivery_platform.sql` — полная схема платформы (items, tracking, webhooks, logs, sandbox, RPC)
 13. `20260801020000_delivery_courier_workflow.sql` — курьерский цикл + pg_net webhook dispatch
+14. `20260923000000_delivery_phase_a.sql` — Phase A: статусы, merchants, merchant_api_keys, admin UI
+15. `20260924000000_delivery_tracking_tokens.sql` — публичный трекинг по токену (`/track/:token`)
+16. `20260925000000_merchant_dashboard.sql` — merchant dashboard RPC + export
+17. `20260926000000_webhook_taxonomy_hmac.sql` — §18 rename событий + §19 HMAC nonce/event_id
 
 ### Applying Migrations
 

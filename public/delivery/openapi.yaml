@@ -18,6 +18,8 @@ security:
   - apiKey: []
 
 tags:
+  - name: Deliveries
+    description: Создание доставок (v1, идемпотентность)
   - name: Orders
     description: Управление заказами доставки
   - name: Status
@@ -34,6 +36,75 @@ paths:
       responses:
         "200":
           description: Сервис работает
+
+  /v1/deliveries:
+    post:
+      tags: [Deliveries]
+      summary: Создать доставку (v1, идемпотентный)
+      operationId: createDeliveryV1
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 255
+          description: Ключ идемпотентности; повтор с тем же ключом вернёт исходный заказ (200 + idempotent_replay)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDeliveryV1Request"
+      responses:
+        "201":
+          description: Доставка создана (статус searching_courier)
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+              description: Идентификатор запроса для поддержки
+            X-Sandbox:
+              schema:
+                type: string
+                enum: ["true", "false"]
+            X-Idempotent-Replay:
+              schema:
+                type: string
+                enum: ["true"]
+              description: Присутствует только при идемпотентном повторе
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateDeliveryV1Response"
+        "200":
+          description: Идемпотентный повтор — заказ уже существует
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateDeliveryV1Response"
+        "400":
+          description: Ошибка валидации (INVALID_JSON, INVALID_BODY, MISSING_COORDINATES)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Неверный или отсутствующий API-ключ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Конфликт идемпотентности (IDEMPOTENCY_CONFLICT)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Превышен rate limit
+        "502":
+          description: Не удалось рассчитать цену (PRICE_CALC_FAILED)
 
   /api/v1/orders:
     post:
@@ -214,7 +285,143 @@ components:
   schemas:
     DeliveryStatus:
       type: string
-      enum: [pending, searching, assigned, picked_up, delivered, cancelled]
+      enum:
+        [
+          pending,
+          confirmed,
+          searching_courier,
+          courier_assigned,
+          courier_to_pickup,
+          arrived_pickup,
+          picked_up,
+          courier_to_customer,
+          arrived_customer,
+          delivered,
+          cancelled,
+          failed,
+        ]
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: UNAUTHORIZED
+            message:
+              type: string
+              example: "Missing API key (Authorization: Bearer or x-api-key)"
+            request_id:
+              type: string
+              example: req_a1b2c3d4
+
+    CreateDeliveryV1Request:
+      type: object
+      required: [pickup_lat, pickup_lng, dropoff_lat, dropoff_lng]
+      properties:
+        external_order_id:
+          type: string
+          description: ID заказа в системе магазина (сохраняется в external_id)
+        idempotency_key:
+          type: string
+          description: Альтернатива заголовку Idempotency-Key (тело запроса)
+          maxLength: 255
+        pickup_lat:
+          type: number
+          example: 38.545
+        pickup_lng:
+          type: number
+          example: 68.779
+        pickup_address:
+          type: string
+          example: ул. Рудаки, 10
+        dropoff_lat:
+          type: number
+          example: 38.555
+        dropoff_lng:
+          type: number
+          example: 68.789
+        dropoff_address:
+          type: string
+          example: ул. Сафарова, 5
+        recipient_name:
+          type: string
+          example: Иван
+        recipient_phone:
+          type: string
+          example: "+992900000000"
+        customer:
+          $ref: "#/components/schemas/Customer"
+        pickup:
+          $ref: "#/components/schemas/AddressPoint"
+        dropoff:
+          $ref: "#/components/schemas/AddressPoint"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+        weight_kg:
+          type: number
+          description: Общий вес; если не задан — сумма weight_kg по items
+          example: 0.5
+        item_description:
+          type: string
+        notes:
+          type: string
+
+    DeliverySummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        external_order_id:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/DeliveryStatus"
+        public_id:
+          type: string
+          nullable: true
+          example: del_a1b2c3d4e5f6
+        price:
+          type: number
+        total:
+          type: number
+        distance_km:
+          type: number
+          nullable: true
+        eta_min:
+          type: integer
+          nullable: true
+        order_number:
+          type: integer
+        tracking:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              example: true
+        created_at:
+          type: string
+          format: date-time
+
+    CreateDeliveryV1Response:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        delivery:
+          $ref: "#/components/schemas/DeliverySummary"
+        idempotent_replay:
+          type: boolean
+          description: true, если заказ уже существовал с этим Idempotency-Key
 
     Coordinates:
       type: object

@@ -2,11 +2,17 @@ import { createClient } from "@supabase/supabase-js";
 
 export type DeliveryStatus =
   | "pending"
-  | "searching"
-  | "assigned"
+  | "confirmed"
+  | "searching_courier"
+  | "courier_assigned"
+  | "courier_to_pickup"
+  | "arrived_pickup"
   | "picked_up"
+  | "courier_to_customer"
+  | "arrived_customer"
   | "delivered"
-  | "cancelled";
+  | "cancelled"
+  | "failed";
 
 export interface Coordinates {
   lat: number;

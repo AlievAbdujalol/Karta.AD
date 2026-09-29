@@ -19,6 +19,26 @@
       }
     },
     {
+      "name": "Создать доставку v1",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "X-API-Key", "value": "{{API_KEY}}" },
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "{{IDEMPOTENCY_KEY}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"external_order_id\": \"order-12345\",\n  \"idempotency_key\": \"{{IDEMPOTENCY_KEY}}\",\n  \"customer\": {\n    \"name\": \"Иван\",\n    \"phone\": \"+992900000000\"\n  },\n  \"pickup\": {\n    \"lat\": 38.545,\n    \"lng\": 68.779,\n    \"address\": \"Магазин\"\n  },\n  \"dropoff\": {\n    \"lat\": 38.555,\n    \"lng\": 68.789,\n    \"address\": \"Клиент\"\n  },\n  \"items\": [\n    { \"name\": \"Пицца\", \"qty\": 2, \"price\": 90, \"weight_kg\": 0.5 }\n  ],\n  \"notes\": \"Позвонить за 5 минут\"\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/v1/deliveries",
+          "host": ["{{BASE_URL}}"],
+          "path": ["v1", "deliveries"]
+        }
+      }
+    },
+    {
       "name": "Создать заказ",
       "request": {
         "method": "POST",

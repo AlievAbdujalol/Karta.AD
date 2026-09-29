@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
-import { Map, User, Bus, CalendarDays, ShieldCheck, Square, MessageSquare, Car } from 'lucide-react';
+import { Map, User, Bus, CalendarDays, ShieldCheck, Square, MessageSquare, Car, Store } from 'lucide-react';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useTrip } from '@/lib/TripContext';
 import { useLanguage, LANG_KEY } from '@/lib/useLanguage';
@@ -33,6 +33,7 @@ export default function Layout() {
       { to: '/admin', icon: ShieldCheck, label: t('nav.admin') },
     ] : []),
     { to: isTaxiDriver ? '/taxi/driver' : '/taxi', icon: Car, label: 'Такси' },
+    { to: '/business', icon: Store, label: t('nav.business') },
     ...(!isTaxiDriver ? [
       { to: '/reviews', icon: MessageSquare, label: t('nav.reviews') },
     ] : []),

@@ -7,7 +7,7 @@ const MAX_REQUESTS_PER_MIN = 60;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, x-api-key, x-signature, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, x-api-key, x-signature, content-type, idempotency-key",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
@@ -64,6 +64,14 @@ async function logRequest(apiKeyId: string | null, method: string, path: string,
   } catch { /* журнал не должен ломать запрос */ }
 }
 
+function makeRequestId() {
+  return "req_" + Math.random().toString(36).slice(2, 10);
+}
+
+function errorJson(code: string, message: string, status: number, requestId: string) {
+  return json({ success: false, error: { code, message, request_id: requestId } }, status);
+}
+
 async function queueWebhookEvent(apiKeyId: string, orderId: string, event: string, payload: unknown) {
   // Вставка в delivery_webhook_events (status pending) — отправку выполняет триггер через pg_net
   try {
@@ -74,6 +82,32 @@ async function queueWebhookEvent(apiKeyId: string, orderId: string, event: strin
     });
     if (error) console.error("queueWebhookEvent:", error.message);
   } catch (err) { console.error("queueWebhookEvent:", err); }
+}
+
+function mapDelivery(o: Record<string, unknown>) {
+  return {
+    id: o.id,
+    external_order_id: o.external_id ?? null,
+    status: o.status,
+    public_id: o.public_id ?? null,
+    price: o.price,
+    total: o.total ?? 0,
+    distance_km: o.distance_km ?? null,
+    eta_min: o.eta_min ?? null,
+    order_number: o.order_number ?? null,
+    tracking: { enabled: true },
+    created_at: o.created_at,
+  };
+}
+
+async function bodyIdempotencyKey(req: Request): Promise<string | null> {
+  try {
+    const clone = req.clone();
+    const body = await clone.json();
+    return typeof body?.idempotency_key === "string" ? body.idempotency_key.trim() : null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------- Handler ----------------
@@ -99,6 +133,7 @@ serve(async (req: Request) => {
         service: "Karta-AD Delivery API",
         version: "2.0.0",
         endpoints: [
+          "POST /v1/deliveries",
           "POST /api/v1/orders",
           "GET  /api/v1/orders/:id",
           "GET  /api/v1/status/:id",
@@ -109,13 +144,22 @@ serve(async (req: Request) => {
     }
 
     // ---------- Auth ----------
-    const apiKeyHeader = req.headers.get("x-api-key") || req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-    const apiKey = apiKeyHeader || "";
+    const isV1 = path.startsWith("/v1/");
+    let apiKey =
+      req.headers.get("x-api-key")?.trim() ||
+      (req.headers.get("authorization")?.startsWith("Bearer ")
+        ? req.headers.get("authorization")!.slice(7).trim()
+        : "");
+    if (!apiKey) {
+      const rid = makeRequestId();
+      if (isV1) return errorJson("UNAUTHORIZED", "Missing API key (Authorization: Bearer or x-api-key)", 401, rid);
+      return json({ error: "MISSING_API_KEY" }, 401);
+    }
     const key = await authenticate(apiKey);
     if (!key) {
-      const ms = Date.now() - start;
-      await logRequest(null, req.method, path, 401, ms, ip, ua, null);
-      return json({ error: "INVALID_API_KEY", message: "Invalid or inactive API key" }, 401);
+      const rid = makeRequestId();
+      if (isV1) return errorJson("UNAUTHORIZED", "Invalid or inactive API key", 401, rid);
+      return json({ error: "INVALID_API_KEY" }, 401);
     }
 
     // ---------- Rate limit ----------
@@ -131,6 +175,148 @@ serve(async (req: Request) => {
 
     // ---------- Sandbox ----------
     const isSandbox = key.is_sandbox === true;
+
+    // ---------- POST /v1/deliveries ----------
+    if (req.method === "POST" && path === "/v1/deliveries") {
+      const rid = makeRequestId();
+      const idemHeader = req.headers.get("idempotency-key")?.trim() || "";
+      const idemKey = idemHeader || (await bodyIdempotencyKey(req));
+
+      let body: Record<string, unknown>;
+      try {
+        body = await req.json();
+      } catch {
+        return errorJson("INVALID_JSON", "Request body is not valid JSON", 400, rid);
+      }
+      if (!body || typeof body !== "object") {
+        return errorJson("INVALID_BODY", "Request body must be a JSON object", 400, rid);
+      }
+
+      const pickupLat = Number(body.pickup_lat ?? body.pickup?.lat);
+      const pickupLng = Number(body.pickup_lng ?? body.pickup?.lng);
+      const dropoffLat = Number(body.dropoff_lat ?? body.dropoff?.lat);
+      const dropoffLng = Number(body.dropoff_lng ?? body.dropoff?.lng);
+      if (![pickupLat, pickupLng, dropoffLat, dropoffLng].every(Number.isFinite)) {
+        return errorJson("MISSING_COORDINATES", "pickup and dropoff lat/lng are required", 400, rid);
+      }
+
+      // Idempotent replay (app-level; legacy NULL merchant_id rows never conflict in unique indexes)
+      if (idemKey) {
+        const { data: existing } = await supabase
+          .from("delivery_orders")
+          .select("*")
+          .eq("api_key_id", key.id)
+          .eq("idempotency_key", idemKey)
+          .maybeSingle();
+        if (existing) {
+          await logRequest(key.id, req.method, path, 200, Date.now() - start, ip, ua, null);
+          return json(
+            { success: true, delivery: mapDelivery(existing), idempotent_replay: true },
+            200,
+            { "X-Request-Id": rid, "X-Idempotent-Replay": "true", "X-Sandbox": isSandbox ? "true" : "false" },
+          );
+        }
+      }
+
+      const itemsRaw = Array.isArray(body.items) ? body.items : [];
+      let totalWeight = 0;
+      let totalPrice = 0;
+      const items: Array<{ name: string; qty: number; price: number; weight_kg: number }> = [];
+      for (const it of itemsRaw) {
+        const name = String(it?.name ?? "").trim() || "item";
+        const qty = Math.max(1, Number(it?.qty ?? it?.quantity ?? 1) || 1);
+        const price = Number(it?.price ?? 0) || 0;
+        const weightKg = Number(it?.weight_kg ?? 0) || 0;
+        items.push({ name, qty, price, weight_kg: weightKg });
+        totalWeight += qty * weightKg;
+        totalPrice += qty * price;
+      }
+      const bodyWeight = Number(body.weight_kg ?? body.item_weight_kg ?? 0) || 0;
+      const weightKg = bodyWeight > 0 ? bodyWeight : totalWeight;
+
+      const { data: priceData, error: priceErr } = await supabase.rpc("calculate_delivery_price", {
+        p_pickup_lat: pickupLat,
+        p_pickup_lng: pickupLng,
+        p_dropoff_lat: dropoffLat,
+        p_dropoff_lng: dropoffLng,
+        p_weight_kg: weightKg,
+      });
+      if (priceErr || priceData?.error) {
+        console.error("calculate_delivery_price:", priceErr?.message || priceData?.error);
+        return errorJson("PRICE_CALC_FAILED", priceErr?.message || String(priceData?.error), 502, rid);
+      }
+
+      const { data: created, error: insErr } = await supabase
+        .from("delivery_orders")
+        .insert({
+          api_key_id: key.id,
+          external_id: typeof body.external_order_id === "string" && body.external_order_id
+            ? body.external_order_id
+            : (typeof body.external_id === "string" && body.external_id ? body.external_id : null),
+          idempotency_key: idemKey || null,
+          pickup_lat: pickupLat,
+          pickup_lng: pickupLng,
+          pickup_address: body.pickup?.address ?? body.pickup_address ?? null,
+          dropoff_lat: dropoffLat,
+          dropoff_lng: dropoffLng,
+          dropoff_address: body.dropoff?.address ?? body.dropoff_address ?? null,
+          recipient_name: body.customer?.name ?? body.recipient_name ?? null,
+          recipient_phone: body.customer?.phone ?? body.recipient_phone ?? null,
+          item_description: body.item_description ?? body.notes ?? null,
+          notes: body.notes ?? null,
+          price: priceData.price,
+          total: totalPrice || priceData.price,
+          distance_km: priceData.distance_km,
+          eta_min: priceData.eta_min,
+          item_weight_kg: weightKg,
+          status: "searching_courier",
+          payment_status: "unpaid",
+        })
+        .select()
+        .single();
+
+      if (insErr) {
+        if (insErr.code === "23505") {
+          return errorJson("IDEMPOTENCY_CONFLICT", "Idempotency key already used", 409, rid);
+        }
+        console.error("insert delivery_orders:", insErr.message);
+        return errorJson("CREATE_FAILED", insErr.message, 500, rid);
+      }
+
+      if (items.length > 0) {
+        const { error: itemsErr } = await supabase.from("delivery_order_items").insert(
+          items.map((it) => ({
+            order_id: created.id,
+            name: it.name,
+            qty: it.qty,
+            price: it.price,
+            weight_kg: it.weight_kg,
+          })),
+        );
+        if (itemsErr) console.error("insert delivery_order_items:", itemsErr.message);
+      }
+
+      try {
+        await supabase.from("delivery_tracking").insert({
+          order_id: created.id,
+          status: "searching_courier",
+          note: "Заказ создан",
+        });
+      } catch (e) { console.error("delivery_tracking:", e); }
+
+      if (!isSandbox) {
+        await queueWebhookEvent(key.id, created.id, "delivery.created", mapDelivery(created));
+        try {
+          await supabase.rpc("delivery_notify_new_order", { p_order_id: created.id });
+        } catch (e) { console.error("delivery_notify_new_order:", e); }
+      }
+
+      await logRequest(key.id, req.method, path, 201, Date.now() - start, ip, ua, body);
+      return json({ success: true, delivery: mapDelivery(created) }, 201, {
+        "X-Request-Id": rid,
+        "X-Sandbox": isSandbox ? "true" : "false",
+      });
+    }
 
     // ---------- POST /api/v1/calculate-price ----------
     if (req.method === "POST" && (path === "/api/v1/calculate-price" || path === "/calculate-price")) {
@@ -182,8 +368,8 @@ serve(async (req: Request) => {
         return json({ success: true, order: { ...data, is_sandbox: true } }, 201);
       }
 
-      // Webhook: order.created
-      await queueWebhookEvent(key.id, data.id, "order.created", data);
+      // Webhook: delivery.created (create_delivery_order_v2 не эмитит сам)
+      await queueWebhookEvent(key.id, data.id, "delivery.created", data);
 
       // Уведомить онлайн-курьеров о новом заказе
       try {
@@ -196,7 +382,7 @@ serve(async (req: Request) => {
         channel.subscribe();
         channel.send({
           type: "broadcast",
-          event: "order.created",
+          event: "delivery.created",
           payload: data,
         });
       } catch { /* не критично */ }
@@ -231,8 +417,7 @@ serve(async (req: Request) => {
       const ms = Date.now() - start;
       await logRequest(key.id, req.method, path, error ? 400 : 200, ms, ip, ua, body);
       if (error || data?.error) return json({ error: error?.message || data.error, message: data?.message }, 400);
-
-      await queueWebhookEvent(key.id, body.order_id ?? body.id, "order.cancelled", data);
+      // delivery.cancelled уже эмитится внутри cancel_delivery_order (RPC)
       return json({ success: true, ...data }, 200);
     }
 

@@ -24,6 +24,9 @@ const OfflineMaps = lazy(() => import('./pages/OfflineMaps'));
 const NavigatorSettings = lazy(() => import('./pages/NavigatorSettings'));
 const VehicleSettings = lazy(() => import('./pages/VehicleSettings'));
 const TruckSettings = lazy(() => import('./pages/TruckSettings'));
+const DeliveryTracking = lazy(() => import('./pages/DeliveryTracking'));
+const MerchantDashboard = lazy(() => import('./pages/MerchantDashboard'));
+const BusinessDashboard = lazy(() => import('./pages/BusinessDashboard'));
 
 import ErrorBoundary, { BusMapErrorFallback } from '@/components/ErrorBoundary';
 import { TripProvider } from '@/lib/TripContext';
@@ -68,6 +71,7 @@ const AuthenticatedApp = () => {
           <Route path="/taxi/driver" element={<ErrorBoundary><TaxiDriverDashboard /></ErrorBoundary>} />
           <Route path="/taxi/history" element={<ErrorBoundary><TaxiHistory /></ErrorBoundary>} />
           <Route path="/taxi/finance" element={<ErrorBoundary><TaxiFinance /></ErrorBoundary>} />
+          <Route path="/business" element={<ErrorBoundary><BusinessDashboard /></ErrorBoundary>} />
           <Route path="/offline-maps" element={<ErrorBoundary><OfflineMaps /></ErrorBoundary>} />
           <Route path="/settings/navigator" element={<ErrorBoundary><NavigatorSettings /></ErrorBoundary>} />
           <Route path="/settings/vehicle" element={<ErrorBoundary><VehicleSettings /></ErrorBoundary>} />
@@ -91,7 +95,37 @@ function App() {
         <NotificationProvider>
           <QueryClientProvider client={queryClientInstance}>
             <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-              <AuthenticatedApp />
+              <Routes>
+                <Route
+                  path="/track/:token"
+                  element={
+                    <Suspense
+                      fallback={
+                        <div className="fixed inset-0 flex items-center justify-center">
+                          <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin" />
+                        </div>
+                      }
+                    >
+                      <DeliveryTracking />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/merchant"
+                  element={
+                    <Suspense
+                      fallback={
+                        <div className="fixed inset-0 flex items-center justify-center">
+                          <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin" />
+                        </div>
+                      }
+                    >
+                      <MerchantDashboard />
+                    </Suspense>
+                  }
+                />
+                <Route path="*" element={<AuthenticatedApp />} />
+              </Routes>
             </Router>
             <Toaster />
           </QueryClientProvider>
