@@ -1,3 +1,5 @@
+import { saveRouteCache, loadRouteCache } from './indexedDbCache';
+
 export const OSRM_ENDPOINTS = {
   driving: 'https://router.project-osrm.org/route/v1/driving',
   walking: 'https://routing.openstreetmap.de/routed-foot/route/v1/foot',
@@ -12,6 +14,11 @@ export function getEndpoint(profile) {
 
 export async function buildOsrmRoute(from, to, profile = 'driving', opts = {}) {
   const { waypoints = [], alternatives = false, exclude = null } = opts;
+  const cacheKey = `${profile}-${from.lat}-${from.lng}-${to.lat}-${to.lng}-${JSON.stringify(waypoints)}`;
+  
+  const cached = await loadRouteCache(cacheKey);
+  if (cached) return cached;
+
   const endpoint = getEndpoint(profile);
   const coords = [from, ...waypoints.filter(Boolean), to].map((p) => `${p.lng},${p.lat}`).join(';');
   let url = `${endpoint}/${coords}?overview=full&geometries=geojson&steps=true`;
@@ -48,13 +55,14 @@ export async function buildOsrmRoute(from, to, profile = 'driving', opts = {}) {
           cursor = Math.min(cursor + 1, geometry.length - 1);
         });
       });
-      const result = { distance: r.distance, duration: r.duration, geometry, steps };
+      const result = { distance: r.distance, duration: r.duration, geometry, steps, legs: r.legs };
       if (data.routes.length > 1 && alternatives) {
         result.alternatives = data.routes.slice(1).map((alt) => ({
           distance: alt.distance, duration: alt.duration,
           geometry: alt.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
         }));
       }
+      await saveRouteCache(cacheKey, result);
       return result;
     } catch {
       if (attempt === 0) { await new Promise((r) => setTimeout(r, 500)); continue; }

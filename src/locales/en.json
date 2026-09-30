@@ -1,0 +1,22 @@
+{
+  "planner": {
+    "title": "Multi-stop Route",
+    "addPoint": "+ Add Point",
+    "plan": "Plan",
+    "recent": "Recent",
+    "price": "Price (public transport)",
+    "share": "Share",
+    "fav": "Favorite",
+    "tabSchedule": "Schedule"
+  },
+  "connectivity": {
+    "online": "Online",
+    "offline": "Offline",
+    "syncing": "Syncing..."
+  },
+  "feedback": {
+    "title": "Rate the trip",
+    "discrepancy": "Time discrepancy (min)",
+    "send": "Send"
+  }
+}

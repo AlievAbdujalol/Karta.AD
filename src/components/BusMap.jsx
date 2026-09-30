@@ -1,4 +1,4 @@
-﻿import 'leaflet/dist/leaflet.css';
+import 'leaflet/dist/leaflet.css';
 import { getNextStopEta } from '@/utils/eta';
 import L from 'leaflet';
 import { useEffect, useMemo, useRef, useState, useCallback, Fragment } from 'react';
@@ -6,7 +6,7 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, ScaleControl,
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'react-leaflet-cluster/lib/assets/MarkerCluster.css';
 import 'react-leaflet-cluster/lib/assets/MarkerCluster.Default.css';
-import MapControls, { TILE_LAYERS, LABEL_OVERLAY_URL } from './MapControls';
+import MapControls, { TILE_LAYERS, LABEL_OVERLAY_URL, TRANSPORT_OVERLAY_URL } from './MapControls';
 import RoutingPanel from './RoutingPanel';
 import StopInfoPopup, { collectUniqueStops } from './StopInfoPopup';
 import { useOverpassStops } from '@/hooks/useOverpassStops';
@@ -75,6 +75,13 @@ if(style) style.textContent = `
   }
   .stop-info-popup .leaflet-popup-close-button:hover {
     color: #fff !important;
+  }
+  @keyframes k-breathe {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+  }
+  .k-breathe {
+    animation: k-breathe 3s ease-in-out infinite;
   }
 `;
 if(style && typeof document !== 'undefined' && !document.getElementById('karta-leaflet-style')){
@@ -258,7 +265,7 @@ function createBusIcon(routeNumber, type, t) {
   const glow = type === 'minibus' ? 'rgba(46,125,50,0.3)' : 'rgba(21,101,192,0.3)';
 
   return L.divIcon({
-    html: `<div style="position:relative;display:flex;flex-direction:column;align-items:center;">
+    html: `<div style="position:relative;display:flex;flex-direction:column;align-items:center;" class="k-breathe">
       <div style="
         background:${color};
         border-radius:14px;
@@ -285,22 +292,46 @@ function createBusIcon(routeNumber, type, t) {
   });
 }
 
+import { distanceM } from '@/lib/transitRouter';
+// ...
 function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
-  const { user, refreshUser } = useCurrentUser();
+  const { user } = useCurrentUser();
   const { t } = useLanguage();
   const [pos, setPos] = useState([vehicle.lat, vehicle.lng]);
   const [paying, setPaying] = useState(false);
   const [isFav, setIsFav] = useState(false);
+  const [notified, setNotified] = useState(false);
+  
+  // Simulated occupancy level: low, medium, high
+  const occupancy = vehicle.occupancy || 'low'; // low, medium, high
+  const occupancyColor = occupancy === 'high' ? '#ef4444' : occupancy === 'medium' ? '#f59e0b' : '#10b981';
+
   const targetRef = useRef([vehicle.lat, vehicle.lng]);
   const currentRef = useRef([vehicle.lat, vehicle.lng]);
   const rafRef = useRef(null);
   const DURATION = 4000;
 
   useEffect(() => {
+    // Proximity monitoring
+    const watchedStop = JSON.parse(localStorage.getItem('karta_watched_stop') || 'null');
+    if (watchedStop && vehicle.route_id === route?.id) {
+      const dist = distanceM(vehicle.lat, vehicle.lng, watchedStop.lat, watchedStop.lng);
+      if (dist < 500 && !notified) {
+        if (Notification.permission === 'granted') {
+          new Notification(`Автобус близко!`, { body: `Ваш автобус в 500м от остановки ${watchedStop.name}` });
+        }
+        setNotified(true);
+      } else if (dist > 600) {
+        setNotified(false);
+      }
+    }
+
+    // Animation logic
     const pos = [vehicle.lat, vehicle.lng];
     setPos(pos);
     currentRef.current = pos;
     targetRef.current = pos;
+    
     snapToRoad(vehicle.lat, vehicle.lng).then(snapped => {
       const snappedPos = [snapped.lat, snapped.lng];
       if (snappedPos[0] === targetRef.current[0] && snappedPos[1] === targetRef.current[1]) return;
@@ -395,7 +426,51 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
     } catch { toast.error(t('error')); }
   };
 
-  const icon = createBusIcon(vehicle.route_number || '?', vehicle.type, t);
+  const createOccupancyIcon = (routeNumber, type, t, occupancy, color) => {
+    const baseColor = type === 'minibus' ? '#2e7d32' : '#1565c0';
+    const glow = type === 'minibus' ? 'rgba(46,125,50,0.3)' : 'rgba(21,101,192,0.3)';
+
+    return L.divIcon({
+      html: `<div style="position:relative;display:flex;flex-direction:column;align-items:center;" class="k-breathe">
+        <div style="
+          background:${baseColor};
+          border-radius:14px;
+          width:46px;
+          height:36px;
+          display:flex;
+          flex-direction:column;
+          align-items:center;
+          justify-content:center;
+          box-shadow:0 4px 16px ${glow}, 0 1px 4px rgba(0,0,0,0.2);
+          border:2.5px solid rgba(255,255,255,0.9);
+          position:relative;
+          z-index:1;
+          gap:1px;
+        ">
+          <span style="color:#fff;font-size:11px;font-weight:800;line-height:1;letter-spacing:-0.5px;">#${esc(routeNumber)}</span>
+          <span style="color:rgba(255,255,255,0.75);font-size:8px;font-weight:500;">${esc(type === 'minibus' ? t('busmap.minibusAbbr') : t('busmap.busLabel'))}</span>
+        </div>
+        <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid ${baseColor};margin-top:-1px;"></div>
+        <div style="
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: ${color};
+            border: 2px solid white;
+            box-shadow: 0 0 4px rgba(0,0,0,0.3);
+            z-index: 2;
+        "></div>
+      </div>`,
+      className: '',
+      iconSize: [52, 56],
+      iconAnchor: [26, 50],
+    });
+  };
+
+  const icon = createOccupancyIcon(vehicle.route_number || '?', vehicle.type, t, occupancy, occupancyColor);
   const eta = getEtaLabel(vehicle);
 
   return (
@@ -574,7 +649,6 @@ function OsmStopMarkers({ routes, routeGeometries, routingOpen, onPickResult }) 
 }
 
 const TILE_KEY = 'karta_tile_index';
-
 export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute, panelVisible, onLocate, tiltEnabled: _tiltEnabled = false, autoCenter = true, routeMeta = null, onPlaceSelect, onCenterChange, onMapClick, eventPos, eventLine=[], roadDir=0, hideEvents=false }) {
   const [tileIndex, setTileIndex] = useState(() => {
     try {
@@ -586,8 +660,15 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
     } catch {}
     return 2;
   });
-  const [showLabels, setShowLabels] = useState(true);
-  const [routingOpen, setRoutingOpen] = useState(false);
+  const [showTraffic, setShowTraffic] = useState(true); // Default to true
+  const [showTransport, setShowTransport] = useState(false);
+  const [trafficData, setTrafficData] = useState([]);
+
+  // Fetch or mock real-time traffic data (example: density heatmap)
+  useEffect(() => {
+    const heatmapPoints = vehicles.map(v => [v.lat, v.lng, v.speed ? (1 - Math.min(v.speed / 60, 1)) : 0.5]);
+    setTrafficData(heatmapPoints);
+  }, [vehicles]);
   // зеркало для обработчиков: апдейтеры setState обязаны быть чистыми,
   // сайд-эффекты (колбэки родителя) внутри них дают setState в рендере
   const routingOpenRef = useRef(false);
@@ -614,7 +695,20 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
   const { user } = useCurrentUser();
   const mapRef = useRef(null);
   const nav = useNavigation();
-  // 2D/3D удалён — всегда плоская карта
+  function HeatmapLayer({ points }) {
+  const map = useMap();
+  useEffect(() => {
+    const heat = L.heatLayer(points, {
+      radius: 25,
+      blur: 15,
+      maxZoom: 17,
+      gradient: { 0.4: 'green', 0.6: 'yellow', 0.8: 'red' }
+    }).addTo(map);
+    return () => map.removeLayer(heat);
+  }, [map, points]);
+  return null;
+}
+
   useEffect(()=>{ try{ localStorage.removeItem('karta_tilt'); }catch{}
     if(mapRef.current){
       const c=mapRef.current.getContainer();
@@ -977,18 +1071,37 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         url={TILE_LAYERS[tileIndex].url}
         tms={TILE_LAYERS[tileIndex].tms || false}
       />
+      {showTransport && (
+        <TileLayer
+          url={TRANSPORT_OVERLAY_URL}
+          opacity={0.6}
+          zIndex={10}
+        />
+      )}
       <MapController center={center} mapRef={mapRef} />
       <CenterWatcher onCenterChange={onCenterChange} />
       {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
       <FlyToHandler flyTo={flyTo} onDone={onFlyDone} />
       <ScaleControl position="bottomleft" imperial={false} metric={true} />
-      {!mapPickTarget && <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={routingOpen} onFinderToggle={handleFinderToggle} onShareTrip={onShareTrip} rightOffset={routingOpen ? 400 : panelVisible ? 360 : 0} isNavigating={nav.isActive} onLocate={onLocate} autoCenter={autoCenter} onToggleAutoCenter={()=>{ const v=!autoCenter; window.dispatchEvent(new CustomEvent('karta_autocenter',{detail:v})); }} overviewActive={!nav.followUser} onToggleOverview={()=>nav.toggleFollow()} />}
+      {!mapPickTarget && <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={routingOpen} onFinderToggle={handleFinderToggle} onShareTrip={onShareTrip} rightOffset={routingOpen ? 400 : panelVisible ? 360 : 0} isNavigating={nav.isActive} onLocate={onLocate} autoCenter={autoCenter} onToggleAutoCenter={()=>{ const v=!autoCenter; window.dispatchEvent(new CustomEvent('karta_autocenter',{detail:v})); }} overviewActive={!nav.followUser} onToggleOverview={()=>nav.toggleFollow()} showTraffic={showTraffic} onToggleTraffic={()=>setShowTraffic(prev=>!prev)} showTransport={showTransport} onToggleTransport={()=>setShowTransport(prev=>!prev)} />}
 
-      {showLabels && (
+      {showTraffic && (
         <TileLayer
           url={LABEL_OVERLAY_URL}
           opacity={0.95}
           zIndex={400}
+        />
+      )}
+
+      {showTraffic && trafficData.length > 0 && (
+        <HeatmapLayer points={trafficData} />
+      )}
+
+      {showTraffic && (
+        <TileLayer
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          zIndex={300}
+          opacity={0.6}
         />
       )}
 

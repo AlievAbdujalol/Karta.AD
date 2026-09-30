@@ -2,11 +2,12 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   MapPin, Bus, Heart, History, ChevronLeft, ChevronRight, User, GripHorizontal,
   Search, ArrowUpRight, Eye, EyeOff, Star, Clock3, Filter, Inbox, SearchX, Navigation,
-  X,
+  X, Clock,
 } from 'lucide-react';
 import { TripLog } from '@/api/entities';
 import { supabase } from '@/api/supabase';
 import { useLanguage } from '@/lib/useLanguage';
+import SchedulePanel from './SchedulePanel';
 
 const STOPS_PAGE_SIZE = 15;
 const SORT_OPTIONS = [
@@ -152,6 +153,7 @@ export default function BottomSheet({
   const tabs = [
     { id: 'stops', icon: MapPin, label: t('bottomsheet.tabStops'), count: counts.stops },
     { id: 'routes', icon: Bus, label: t('bottomsheet.tabRoutes'), count: counts.routes },
+    { id: 'schedule', icon: Clock, label: t('planner.tabSchedule'), count: 0 },
     { id: 'favorites', icon: Heart, label: t('bottomsheet.tabFavorites'), count: counts.favorites },
     { id: 'history', icon: History, label: t('bottomsheet.tabHistory'), count: counts.history },
   ];
@@ -606,6 +608,10 @@ function TabContent({ activeTab, filteredStops, visibleStopsCount, onShowMore, f
         )}
       </div>
     );
+  }
+
+  if (activeTab === 'schedule') {
+    return <SchedulePanel route={selectedRoute} isTab={true} />;
   }
 
   if (activeTab === 'history') {
