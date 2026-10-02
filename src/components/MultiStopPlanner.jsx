@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, X, MapPin, Navigation, Loader2, Crosshair, Clock, History, Mic, MicOff, Star, Banknote, Share2 } from 'lucide-react';
+import { X, MapPin, Navigation, Loader2, Crosshair, Clock, History, Mic, MicOff, Star, Banknote, Share2 } from 'lucide-react';
 import { buildOsrmRoute } from '@/lib/osrmClient';
 import { toast } from 'sonner';
 import { getSearchHistory, addToSearchHistory } from '@/lib/searchHistory';

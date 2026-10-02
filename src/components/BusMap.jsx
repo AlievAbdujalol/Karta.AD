@@ -297,7 +297,7 @@ function createBusIcon(routeNumber, type, t) {
 import { distanceM } from '@/lib/transitRouter';
 // ...
 function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
-  const { user } = useCurrentUser();
+  const { user, refreshUser } = useCurrentUser();
   const { t } = useLanguage();
   const [pos, setPos] = useState([vehicle.lat, vehicle.lng]);
   const [paying, setPaying] = useState(false);
@@ -685,6 +685,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
   }, [vehicles]);
   // зеркало для обработчиков: апдейтеры setState обязаны быть чистыми,
   // сайд-эффекты (колбэки родителя) внутри них дают setState в рендере
+  const [routingOpen, setRoutingOpen] = useState(false);
   const routingOpenRef = useRef(false);
   useEffect(() => { routingOpenRef.current = routingOpen; }, [routingOpen]);
   // маршрут фразой от ИИ: событие karta_ai_route {from, to} → открываем панель и отдаём точки
@@ -1015,11 +1016,6 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
     iconAnchor: [12, 12],
   });
 
-  const isHybrid = TILE_LAYERS[tileIndex].isHybrid;
-  useEffect(() => {
-    if (isHybrid) setShowLabels(true);
-  }, [isHybrid]);
-
   // Fetch OSRM geometry for all routes — строго road geometry, без fallback прямых линий
   useEffect(() => {
     const routesWithCoords = (routes || []).filter(r => {
@@ -1189,7 +1185,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         if (!route && allStops.length > 55) {
           return (
             <MarkerClusterGroup
-              key={`stops-cluster-${markers.length}-${(selectedRoute?.id) || 'all'}`}
+              key={`stops-cluster-${markers.length}-${(route?.id) || 'all'}`}
               chunkedLoading={false}
               maxClusterRadius={38}
               spiderfyOnMaxZoom

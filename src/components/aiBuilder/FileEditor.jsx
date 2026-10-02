@@ -23,7 +23,7 @@ export default function FileEditor({ path, content, onSave, busy }) {
   useEffect(() => {
     setDraft(content ?? '');
     setSavedFlash(false);
-  }, [path]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [path]);  
 
   const dirty = draft !== (content ?? '');
   const check = highlightBrackets(draft);

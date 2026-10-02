@@ -4,6 +4,7 @@ import {
   buildTree,
   resolveEntry,
   rewriteRefs,
+  buildInlineDoc,
   applyFileEdits,
   extractFileEdits,
   isTextFile,
@@ -49,6 +50,24 @@ describe('rewriteRefs', () => {
   it('учитывает подпапку entry', () => {
     const out = rewriteRefs('<script src="../js/a.js">', { 'js/a.js': 'blob:9' }, 'pages/index.html');
     expect(out).toContain('blob:9');
+  });
+});
+
+describe('buildInlineDoc', () => {
+  const files = {
+    'index.html': '<html><head><link rel="stylesheet" href="css/a.css"></head><body><script src="js/b.js"></script><img src="https://x/y.png"></body></html>',
+    'css/a.css': 'body{color:red}',
+    'js/b.js': 'console.log(1)',
+  };
+  it('инлайнит локальные css/js, внешние не трогает', () => {
+    const out = buildInlineDoc(files, 'index.html');
+    expect(out).toContain('<style>\nbody{color:red}\n</style>');
+    expect(out).toContain('<script>\nconsole.log(1)\n</script>');
+    expect(out).toContain('https://x/y.png');
+    expect(out).not.toContain('blob:');
+  });
+  it('нет entry — пусто', () => {
+    expect(buildInlineDoc({}, 'index.html')).toBe('');
   });
 });
 

@@ -1,8 +1,27 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
+import i18n from 'i18next';
+import { I18nextProvider, initReactI18next } from 'react-i18next';
 import fc from 'fast-check';
 import ErrorBoundary from '../components/ErrorBoundary';
+
+if (!i18n.isInitialized) {
+  i18n.use(initReactI18next).init({
+    lng: 'ru',
+    fallbackLng: 'ru',
+    resources: {
+      ru: {
+        translation: {
+          'errorBoundary.defaultTitle': 'Что-то пошло не так',
+          'errorBoundary.defaultMessage': 'Попробуйте обновить страницу',
+          'errorBoundary.reloadButton': 'Перезагрузить страницу',
+        },
+      },
+    },
+    interpolation: { escapeValue: false },
+  });
+}
 
 function ThrowingChild({ msg }) {
   throw new Error(msg);
@@ -18,9 +37,11 @@ describe('ErrorBoundary - Property Based Testing', () => {
         (errorMsg) => {
           document.body.innerHTML = '';
           const { unmount } = render(
-            <ErrorBoundary key={errorMsg}>
-              <ThrowingChild msg={errorMsg} />
-            </ErrorBoundary>
+            <I18nextProvider i18n={i18n}>
+              <ErrorBoundary key={errorMsg}>
+                <ThrowingChild msg={errorMsg} />
+              </ErrorBoundary>
+            </I18nextProvider>
           );
 
           expect(screen.getByText('Что-то пошло не так')).toBeInTheDocument();

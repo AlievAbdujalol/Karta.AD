@@ -1,10 +1,8 @@
-import { Layers, Crosshair, Plus, Minus, Navigation, Share2, LocateFixed, Route, Car } from 'lucide-react';
+import { Layers, Crosshair, Plus, Minus, Navigation, Share2, LocateFixed, Route, Car, Bus } from 'lucide-react';
 import { useMap } from 'react-leaflet';
 import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
 import { cartoRaster, withCartoKey, OSM_URL, CARTO_KEY, googleTiles } from '@/lib/tiles';
-
-const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 const TILE_LAYERS = [
   { labelKey: 'mapControls.layerStandard', url: cartoRaster('rastertiles/voyager'), isHybrid: false, needsKey: true },
@@ -14,7 +12,6 @@ const TILE_LAYERS = [
   { labelKey: 'mapControls.layerOsm', url: OSM_URL, isHybrid: false },
   { labelKey: 'mapControls.layerEsriStreet', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', isHybrid: false },
   { labelKey: 'mapControls.layerEsriTopo', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', isHybrid: false },
-  { labelKey: 'mapControls.layerGoogle', url: googleTiles('m'), isHybrid: false },
   { labelKey: 'mapControls.layerGoogleSat', url: googleTiles('s'), isHybrid: true },
   { labelKey: 'mapControls.layerGoogleHybrid', url: googleTiles('y'), isHybrid: true },
 ];

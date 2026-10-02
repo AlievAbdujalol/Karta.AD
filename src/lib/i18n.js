@@ -17,6 +17,12 @@ i18n
       tg: { translation: tg },
     },
     fallbackLng: 'tg',
+    // useLanguage пишет выбор в bustrack_lang — читаем/пишем туда же
+    detection: {
+      order: ['localStorage', 'navigator'],
+      lookupLocalStorage: 'bustrack_lang',
+      caches: ['localStorage'],
+    },
     interpolation: { escapeValue: false },
   });
 

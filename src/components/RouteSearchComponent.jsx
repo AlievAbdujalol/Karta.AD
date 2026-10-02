@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { MapPin, X, Loader2, Crosshair, ArrowLeftRight, Navigation, History, Clock, Star } from 'lucide-react';
+import { MapPin, Loader2, Crosshair, ArrowLeftRight, Navigation, History, Clock, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { buildOsrmRoute } from '@/lib/osrmClient';
 

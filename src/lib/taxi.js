@@ -123,6 +123,32 @@ export const DRIVER_STATUS_CONFIG = {
 // Порядок шагов заказа для водителя
 export const ORDER_STEPS = ['found', 'arrived', 'riding', 'completed', 'payment', 'rated'];
 
+// Доплаты за опции (зеркало логики тарифов; используется и доставкой).
+export function priceSurcharge(category, extras = {}, baseDistance = 0) {
+  // категория-специфичный дополнительный сбор
+  let add = 0;
+  if (['economy', 'comfort', 'comfort_plus', 'business', 'minivan', 'intercity'].includes(category)) {
+    if (extras.childSeat) add += 3;
+    if (extras.childSeats) add += Number(extras.childSeats) * 3;
+    if (extras.pets) add += 3;
+    if (extras.luggage) add += 2;
+  }
+  if (category === 'delivery') {
+    const w = Number(extras.weight) || 0;
+    if (w > 5) add += (w - 5) * 1.2;
+    if (extras.fragile) add += 4;
+    if (extras.express) add += 6;
+  }
+  if (category === 'courier') {
+    if (extras.urgent) add += 5;
+    if (extras.signature) add += 1;
+    const w = Number(extras.weight) || 0;
+    if (w > 2) add += (w - 2) * 1.5;
+  }
+  if (category === 'intercity' && extras.returnTrip) add += baseDistance > 0 ? Math.round(baseDistance * 0.6) : 0;
+  return Math.round(add * 2) / 2;
+}
+
 // ─── ЦЕНА ДОСТАВКИ / КУРЬЕРА ──────────────────────────────────────────────────
 // Единая функция расчёта цены для доставки и курьера.
 export function calculateDeliveryPrice({ distanceKm = 0, durationMin = 0, category = 'delivery', extras = {}, demandCoef = 1, night = false }) {

@@ -6,13 +6,11 @@ import pluginUnusedImports from "eslint-plugin-unused-imports";
 
 export default [
   {
-  {
     ignores: ["dist/**", "node_modules/**", ".kilo/**", ".kiro/**", "chunk*.jsx"],
   },
   {
-    files: ["src/**/*.{js,mjs,cjs,jsx,ts,tsx}"],
-    ignores: ["src/components/ui/chart.jsx", "src/components/ui/sidebar.jsx", "src/types/**"],
-  },
+    files: ["src/**/*.{js,mjs,cjs,jsx}"],
+    ignores: ["src/components/ui/chart.jsx", "src/components/ui/sidebar.jsx"],
     ...pluginJs.configs.recommended,
     ...pluginReact.configs.flat.recommended,
     languageOptions: {
@@ -37,8 +35,10 @@ export default [
     },
     rules: {
       "no-unused-vars": "off",
+      "no-undef": "error",
       "react/jsx-uses-vars": "error",
       "react/jsx-uses-react": "error",
+      "react/jsx-no-undef": "error",
       "unused-imports/no-unused-imports": "error",
       "unused-imports/no-unused-vars": [
         "warn",

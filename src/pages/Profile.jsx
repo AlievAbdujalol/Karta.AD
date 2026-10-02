@@ -76,7 +76,7 @@ function CountryCodePicker({ value, onChange, t }) {
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder={t('search')}
+                placeholder={t('searchBox')}
                 className="bg-transparent text-xs outline-none w-full text-slate-800 dark:text-slate-100"
               />
             </div>

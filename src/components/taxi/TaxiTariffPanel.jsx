@@ -1,4 +1,7 @@
 import { Users, Package, Baby, Briefcase, Dog, Wind, Clock, Weight, Shield, Calendar, ArrowLeftRight } from 'lucide-react';
+import { priceSurcharge } from '@/lib/taxi';
+
+export { priceSurcharge };
 
 function Counter({ value, onChange, min = 1, max = 7, label }) {
   return (
@@ -19,31 +22,6 @@ function Toggle({ label, value, onChange, icon: Icon }) {
       {Icon && <Icon size={14} />} {label} {value ? '✓' : ''}
     </button>
   );
-}
-
-export function priceSurcharge(category, extras, baseDistance) {
-  // категория-специфичный дополнительный сбор
-  let add = 0;
-  if (['economy', 'comfort', 'comfort_plus', 'business', 'minivan', 'intercity'].includes(category)) {
-    if (extras.childSeat) add += 3;
-    if (extras.childSeats) add += Number(extras.childSeats) * 3;
-    if (extras.pets) add += 3;
-    if (extras.luggage) add += 2;
-  }
-  if (category === 'delivery') {
-    const w = Number(extras.weight) || 0;
-    if (w > 5) add += (w - 5) * 1.2;
-    if (extras.fragile) add += 4;
-    if (extras.express) add += 6;
-  }
-  if (category === 'courier') {
-    if (extras.urgent) add += 5;
-    if (extras.signature) add += 1;
-    const w = Number(extras.weight) || 0;
-    if (w > 2) add += (w - 2) * 1.5;
-  }
-  if (category === 'intercity' && extras.returnTrip) add += baseDistance > 0 ? Math.round(baseDistance * 0.6) : 0;
-  return Math.round(add * 2) / 2;
 }
 
 export default function TaxiTariffPanel({ category, extras, setExtras, routeInfo }) {

@@ -271,6 +271,28 @@ describe('validateOpenRouterKey — проверка ключа без трат'
   });
 });
 
+describe('buildFileModuleMessages — модули в файлы', () => {
+  let buildFileModuleMessages;
+  beforeEach(async () => {
+    ({ buildFileModuleMessages } = await import('../lib/openrouter'));
+  });
+
+  it('db-модуль несёт REST-конфиг', () => {
+    const msgs = buildFileModuleMessages(['index.html'], { 'index.html': '<h1>x</h1>' }, 'db', {
+      supabaseUrl: 'https://x.supabase.co', anonKey: 'anon', businessId: 'b1',
+    });
+    const body = msgs[1].content;
+    expect(body).toContain('/rest/v1/orders');
+    expect(body).toContain('b1');
+    expect(body).toContain('index.html');
+  });
+
+  it('неизвестный модуль не даёт undefined', () => {
+    const msgs = buildFileModuleMessages([], {}, 'zzz', {});
+    expect(msgs[1].content).not.toContain('undefined');
+  });
+});
+
 describe('buildFileEditMessages — промпт правок по файлам', () => {
   let buildFileEditMessages;
   beforeEach(async () => {

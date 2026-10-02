@@ -1,22 +1,13 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import path from 'path'
-import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   plugins: [
     react(),
-    VitePWA({
-      strategies: 'injectManifest',
-      srcDir: 'src',
-      filename: 'sw.js',
-      registerType: 'autoUpdate',
-      injectRegister: 'inline',
-    })
   ],
   server: {
-    host: '0.0.0.0',
-    port: 3000,
+    port: 5173,
     allowedHosts: true,
   },
   resolve: {

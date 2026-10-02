@@ -10,7 +10,6 @@ import {
   Package, TrendingUp, TrendingDown, ExternalLink, MoreHorizontal, Crown, Bell,
   Globe, Pencil,
 } from 'lucide-react';
-} from 'lucide-react';
 import { revenueTrend } from '@/lib/business';
 
 const ROLE_LABELS = {

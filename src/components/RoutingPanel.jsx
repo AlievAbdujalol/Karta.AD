@@ -16,9 +16,10 @@ import {
   ChevronDown, Play, Car, Bike, PersonStanding, Clock3, ArrowLeftRight,
   LocateFixed, Share2, Check, Bus, Truck, Volume2, VolumeX, Timer,
   ArrowRight, Footprints, CheckCircle2, CircleDot, Radio, WifiOff,
-  CreditCard, Package, Plus, Upload, Settings2, Sparkles, List,
+  CreditCard, Package, Plus, Upload, Settings2, List,
 } from 'lucide-react';
 import AiRouteExplainer from './AiRouteExplainer';
+import PublicTransportSheet from './PublicTransportSheet';
 import { useNavigate } from 'react-router-dom';
 import { useNavigation } from '@/lib/NavigationContext';
 import {
@@ -1111,12 +1112,12 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
           <AiRouteExplainer routeData={osrmRoute || {}} />
           
           {osrmRoute?.steps && (
-            <button onClick={() => setShowInstructions(!showInstructions)} className="w-full py-2 text-xs text-slate-500 font-bold flex items-center justify-center gap-1.5 border rounded-xl hover:bg-slate-50">
-              {showInstructions ? <X size={14}/> : <List size={14}/>} {showInstructions ? 'Скрыть инструкции' : 'Показать инструкции'}
+            <button onClick={() => setShowSteps(!showSteps)} className="w-full py-2 text-xs text-slate-500 font-bold flex items-center justify-center gap-1.5 border rounded-xl hover:bg-slate-50">
+              {showSteps ? <X size={14}/> : <List size={14}/>} {showSteps ? 'Скрыть инструкции' : 'Показать инструкции'}
             </button>
           )}
 
-          {showInstructions && (
+          {showSteps && (
             <div className="max-h-40 overflow-y-auto p-2 space-y-1 text-xs border rounded-xl">
               {osrmRoute.steps.map((step, i) => (
                 <div key={i} className="flex gap-2">

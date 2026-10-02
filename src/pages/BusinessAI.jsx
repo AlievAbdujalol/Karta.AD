@@ -14,7 +14,7 @@ import {
 } from '@/lib/aiModels';
 import {
   openRouterChat, OpenRouterError, buildEditMessages, extractHtml,
-  buildFileEditMessages,
+  buildFileEditMessages, buildFileModuleMessages, SITE_MODULES,
 } from '@/lib/openrouter';
 import {
   validateStructure, extractSiteJson, compileSite,
@@ -26,7 +26,7 @@ import SectionsPanel from '@/components/aiBuilder/SectionsPanel';
 import FileExplorer from '@/components/aiBuilder/FileExplorer';
 import FileEditor from '@/components/aiBuilder/FileEditor';
 import {
-  normalizePath, resolveEntry, buildPreviewDoc,
+  normalizePath, resolveEntry,
   applyFileEdits, extractFileEdits, isTextFile,
   MAX_FILES, MAX_FILE_SIZE, MAX_TOTAL_SIZE,
 } from '@/lib/projectFiles';
@@ -83,7 +83,7 @@ export default function BusinessAI() {
 
   const isMulti = Object.keys(files).length > 0;
 
-  // Preview из файлов (blob-URL, живёт пока открыта страница)
+  // Preview из файлов: инлайн-сборка (работает и в sandbox, и на /s/:id)
   useEffect(() => {
     if (!isMulti) {
       setPreviewDoc('');
@@ -94,9 +94,11 @@ export default function BusinessAI() {
       setPreviewDoc('');
       return;
     }
-    const { doc, revoke } = buildPreviewDoc(files, entry);
-    setPreviewDoc(doc);
-    return revoke;
+    try {
+      setPreviewDoc(buildInlineDoc(files, entry));
+    } catch {
+      setPreviewDoc('');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files]);
 
@@ -474,7 +476,7 @@ export default function BusinessAI() {
     refreshModels(false);
     const timer = setInterval(() => refreshModels(true), 10 * 60 * 1000);
     return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   // ─── версии ────────────────────────────────────────────────
@@ -658,15 +660,15 @@ export default function BusinessAI() {
   };
 
   // ─── AI-правки мультифайлового проекта (diff-JSON) ───────────
-  const runFileEdit = async (q) => {
-    if (!isMulti || busy) return;
+  const runFileEdit = async (q, messagesOverride = null, titleOverride = null, attempt = 1) => {
+    if (!isMulti || (busy && attempt === 1)) return;
     setBusy(true);
     setLastError(null);
     setStage('Analyzing request…');
     if (saveTimer.current) clearTimeout(saveTimer.current);
     try {
       const tree = Object.keys(files).sort();
-      const messages = buildFileEditMessages(tree, files, q);
+      const messages = messagesOverride || buildFileEditMessages(tree, files, q);
       let text;
       if (proxyReady) {
         const res = await chatWithFallback(models, {
@@ -678,6 +680,11 @@ export default function BusinessAI() {
       } else {
         toast.info('Backend недоступен — иду напрямую личным ключом');
         text = await openRouterChat(messages, { model, temperature: 0.3, maxTokens: 8000, timeoutMs: 120000 });
+      }
+      if (!text?.trim() && attempt < 2) {
+        // Пустой ответ — частая заминка бесплатных моделей: одна повторная попытка
+        setStage('Пустой ответ, повторяю…');
+        return runFileEdit(q, messagesOverride, titleOverride, attempt + 1);
       }
       setStage('Применяю правки…');
       const edits = extractFileEdits(text);
@@ -706,7 +713,7 @@ export default function BusinessAI() {
       setStage('Сохраняю версию…');
       await pushVersion({
         projectId: activeProjectId,
-        title: q.slice(0, 50),
+        title: (titleOverride || q).slice(0, 50),
         promptText: q,
         structure: currentStructure || importedSkeleton(activeProject?.name || 'Проект'),
         filesSnapshot: next,
@@ -809,6 +816,27 @@ export default function BusinessAI() {
     });
   };
 
+  // ─── модули для мультифайл-проекта: БД, доставка, оплата ──
+  const runFileModule = (moduleId) => {
+    if (!isMulti || busy) return;
+    const b = selectedBusiness || {};
+    const messages = buildFileModuleMessages(Object.keys(files).sort(), files, moduleId, {
+      businessName: b.name || activeProject?.name || '',
+      phone: b.phone || '',
+      address: b.address || '',
+      city: b.city || '',
+      products,
+      supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+      anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      businessId: activeProject?.business_id || b.id || '',
+    });
+    const label = SITE_MODULES.find((m) => m.id === moduleId);
+    return runFileEdit(
+      `Подключить: ${label ? label.label : moduleId}`,
+      messages,
+      `Модуль: ${moduleId}`,
+    );
+  };
   // ─── проект ────────────────────────────────────────────────
   const openProject = (id) => {
     setActiveProjectId(id);
@@ -1282,6 +1310,27 @@ export default function BusinessAI() {
                 onAddSection={addSection}
                 onAskAi={askAiSection}
               />
+            )}
+
+            {isMulti && (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden">
+                <p className="px-3 py-2 text-[11px] font-black uppercase tracking-wide text-slate-400 border-b border-slate-800">
+                  AI-модули: база, доставка, оплата
+                </p>
+                <div className="p-2.5 grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                  {SITE_MODULES.map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => runFileModule(m.id)}
+                      disabled={busy}
+                      className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 text-[11px] font-bold text-violet-300 disabled:opacity-50 transition-colors text-left"
+                    >
+                      <span>{m.icon}</span>
+                      <span className="truncate">{m.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
 
             {isMulti && (

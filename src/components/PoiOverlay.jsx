@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Marker, Popup, useMap } from 'react-leaflet';
 import { useLanguage } from '@/lib/useLanguage';
 
-const CATEGORIES = {
+export const CATEGORIES = {
   hospital:    { color: '#ef4444', icon: '🏥', zoom: 14, osmKey: 'amenity', osmVal: 'hospital' },
   clinic:      { color: '#f97316', icon: '🏥', zoom: 14, osmKey: 'amenity', osmVal: 'clinic' },
   pharmacy:    { color: '#22c55e', icon: '💊', zoom: 15, osmKey: 'amenity', osmVal: 'pharmacy' },
@@ -101,7 +101,8 @@ export default function PoiOverlay({ enabled }) {
         const items = (data.elements || []).map(el => {
           const tags = el.tags || {};
           const catKey = getCategory(tags);
-          const cat = CATEGORIES[catKey] || { icon: '📍', color: '#6b7280', label: 'busmap.poiOther' };
+          const cat = CATEGORIES[catKey] || { icon: '📍', color: '#6b7280' };
+          const labelKey = `busmap.poi.${catKey in CATEGORIES ? catKey : 'other'}`;
           return {
             lat: el.lat || el.center?.lat || (el.bounds ? (el.bounds.minlat + el.bounds.maxlat) / 2 : null),
             lng: el.lon || el.center?.lon || (el.bounds ? (el.bounds.minlon + el.bounds.maxlon) / 2 : null),
@@ -109,7 +110,7 @@ export default function PoiOverlay({ enabled }) {
             category: catKey,
             color: cat.color,
             icon: cat.icon,
-            label: cat.label,
+            label: labelKey,
             addrStreet: tags['addr:street'] || '',
             addrHouse: tags['addr:housenumber'] || '',
             addrCity: tags['addr:city'] || '',

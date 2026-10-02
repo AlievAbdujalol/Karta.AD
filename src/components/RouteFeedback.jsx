@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Star, Send, X } from 'lucide-react';
+import { Star, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/api/supabase';
 

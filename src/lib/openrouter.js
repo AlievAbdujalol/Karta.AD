@@ -177,6 +177,9 @@ export const SITE_MODULES = [
   { id: 'cart', icon: '🛒', label: 'Корзина и заказы' },
   { id: 'contacts', icon: '📞', label: 'Контакты бизнеса' },
   { id: 'dark', icon: '🎨', label: 'Тёмная тема' },
+  { id: 'db', icon: '🗄️', label: 'База данных' },
+  { id: 'delivery', icon: '🚚', label: 'Доставка' },
+  { id: 'payment', icon: '💳', label: 'Оплата' },
 ];
 
 /** Промпт подключения модуля к чужому HTML. */
@@ -187,10 +190,14 @@ export function buildModuleMessages(html, moduleId, ctx = {}) {
     cart: `Добавь корзину и оформление заказа. Товары на сайте (кнопки/карточки) сделай добавляемыми в корзину (localStorage или переменная). Добавь липкую панель корзины с суммой и форму: имя, телефон, адрес, доставка/самовывоз. Отправка заказа: POST ${ctx.supabaseUrl}/rest/v1/orders с заголовками apikey и Authorization: Bearer ${ctx.anonKey} (это публичный anon-ключ, так и нужно), тело: {business_id:"${ctx.businessId}", customer_name, customer_phone, delivery_type, delivery_address, total, status:"pending"}, затем POST позиций в /rest/v1/order_items {order_id, product_name, quantity, price, total}. Покажи номер заказа из ответа. Всё инлайн, без внешних библиотек.`,
     contacts: `Добавь или обнови блок контактов: название «${ctx.businessName || ''}», телефон ссылкой tel:, кнопка WhatsApp https://wa.me/<цифры телефона>, адрес.`,
     dark: `Сделай тёмную тему сайта (тёмный фон, светлый текст), сохранив структуру и контент.`,
+    db: `Подключи базу данных Karta-AD (Supabase): корзина и оформление заказа как в задаче корзины — POST ${ctx.supabaseUrl}/rest/v1/orders (apikey + Authorization: Bearer ${ctx.anonKey}), тело {business_id:"${ctx.businessId}", customer_name, customer_phone, delivery_type, delivery_address, total, status:"pending"}, затем позиции в /rest/v1/order_items. Товары бери с витрины. Покажи номер заказа. Всё инлайн, без внешних библиотек.`,
+    delivery: `Добавь блок «Доставка Karta-AD»: варианты доставки/самовывоз (radio), поле адреса, выбор влияет на поле delivery_type заказа (delivery/pickup). Стиль — как остальной сайт, всё инлайн.`,
+    payment: `Добавь блок оплаты: варианты «Наличными», «Картой курьеру», «Переводом» (radio) + поле комментария; выбранный способ сохраняй в примечание заказа (notes). Онлайн-эквайринг подключается позже отдельно — оставь пометку в коде.`,
   };
+  const task = tasks[moduleId] || String(moduleId);
   return [
     { role: 'system', content: SITE_EDIT_SYSTEM },
-    { role: 'user', content: `${base}\n\nЗАДАЧА: ${tasks[moduleId] || moduleId}\n\nТЕКУЩИЙ САЙТ:\n${html.slice(0, 20000)}` },
+    { role: 'user', content: `${base}\n\nЗАДАЧА: ${task}\n\nТЕКУЩИЙ САЙТ:\n${html.slice(0, 20000)}` },
   ];
 }
 
@@ -209,5 +216,35 @@ export function buildFileEditMessages(tree, files, prompt) {
   return [
     { role: 'system', content: FILE_EDIT_SYSTEM },
     { role: 'user', content: `ФАЙЛЫ:\n${listing}\n\nСОДЕРЖИМОЕ:\n${packed}\n\nПРАВКА: ${prompt}` },
+  ];
+}
+
+/** Промпт модуля для мультифайлового проекта (тот же diff-JSON формат). */
+export function buildFileModuleMessages(tree, files, moduleId, ctx = {}) {
+  const names = {
+    cart: 'корзину и оформление заказа',
+    contacts: 'блок контактов бизнеса',
+    dark: 'тёмную тему',
+    db: 'подключение базы данных Karta-AD (корзина → заказы)',
+    delivery: 'блок доставки Karta-AD',
+    payment: 'блок оплаты',
+  };
+  const base = `Бизнес: «${ctx.businessName || ''}», телефон: ${ctx.phone || ''}, адрес: ${[ctx.city, ctx.address].filter(Boolean).join(', ') || ''}.`;
+  const details = {
+    cart: `Добавь корзину и оформление заказа с отправкой: POST ${ctx.supabaseUrl}/rest/v1/orders (apikey + Authorization: Bearer ${ctx.anonKey}), тело {business_id:"${ctx.businessId}", customer_name, customer_phone, delivery_type, delivery_address, total, status:"pending"}, затем позиции в /rest/v1/order_items.`,
+    db: `Подключи базу данных: корзина и оформление заказа через POST ${ctx.supabaseUrl}/rest/v1/orders (apikey + Authorization: Bearer ${ctx.anonKey}), тело {business_id:"${ctx.businessId}", customer_name, customer_phone, delivery_type, delivery_address, total, status:"pending"}, затем позиции в /rest/v1/order_items {order_id, product_name, quantity, price, total}. Покажи номер заказа из ответа.`,
+    delivery: `Добавь блок «Доставка Karta-AD»: radio доставка/самовывоз, поле адреса, влияет на delivery_type заказа.`,
+    payment: `Добавь блок оплаты: radio «Наличными»/«Картой курьеру»/«Переводом» + комментарий; способ пиши в notes заказа. Онлайн-эквайринг — позже, оставь пометку в коде.`,
+    contacts: `Добавь/обнови контакты: «${ctx.businessName || ''}», tel:, WhatsApp https://wa.me/<цифры>, адрес. Товары: ${(ctx.products || []).slice(0, 8).map((p) => `${p.name} — ${p.price}`).join('; ') || 'нет'}.`,
+    dark: `Тёмная тема, структуру и контент сохранить.`,
+  };
+  const listing = tree.join('\n');
+  const packed = Object.entries(files)
+    .map(([p, c]) => `--- ${p} ---\n${String(c).slice(0, 6000)}`)
+    .join('\n')
+    .slice(0, 16000);
+  return [
+    { role: 'system', content: FILE_EDIT_SYSTEM },
+    { role: 'user', content: `${base}\n\nЗАДАЧА: подключи ${names[moduleId] || moduleId}. ${details[moduleId] || ''}\nВерни СТРОГО JSON {"edits":[...]} — меняй только нужные файлы.\n\nФАЙЛЫ:\n${listing}\n\nСОДЕРЖИМОЕ:\n${packed}` },
   ];
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/api/supabase';
-import { resolveEntry, buildPreviewDoc } from '@/lib/projectFiles';
+import { resolveEntry, buildInlineDoc } from '@/lib/projectFiles';
 
 /** Публичная страница AI-сайта: /s/:id (только опубликованные). */
 export default function SiteView() {
@@ -10,7 +10,6 @@ export default function SiteView() {
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    let revoke = null;
     if (!id) {
       setFailed(true);
       return;
@@ -26,14 +25,14 @@ export default function SiteView() {
         if (!error && data) {
           const snap = data.files && Object.keys(data.files).length ? data.files : null;
           if (snap) {
-            // Мультифайл: собираем preview из снапшота версии
-            const entry = resolveEntry(snap);
-            if (entry && snap[entry]) {
-              const built = buildPreviewDoc(snap, entry);
-              revoke = built.revoke;
-              setHtml(built.doc);
-              return;
-            }
+            // Мультифайл: инлайн-сборка (без blob — они мертвы вне сессии)
+            try {
+              const entry = resolveEntry(snap);
+              if (entry && snap[entry]) {
+                setHtml(buildInlineDoc(snap, entry));
+                return;
+              }
+            } catch {}
           }
           setHtml(data.html);
           return;
@@ -49,11 +48,6 @@ export default function SiteView() {
             else setHtml(legacy.html);
           });
       });
-    return () => {
-      try {
-        revoke?.();
-      } catch {}
-    };
   }, [id]);
 
   if (failed) {

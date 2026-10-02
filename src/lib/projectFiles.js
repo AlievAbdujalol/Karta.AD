@@ -90,6 +90,8 @@ export function rewriteRefs(html, blobByPath, entryPath) {
 /**
  * Собрать srcDoc для preview: entry + blob-URL остальных файлов.
  * Возвращает { doc, revoke } — revoke() чистит blob-URL.
+ * ВНИМАНИЕ: blob: режет sandbox без allow-same-origin — для preview
+ * и публикации используй buildInlineDoc() ниже.
  */
 export function buildPreviewDoc(files, entryPath) {
   const urls = [];
@@ -110,6 +112,43 @@ export function buildPreviewDoc(files, entryPath) {
   }
   const doc = rewriteRefs(files[entryPath] || '', blobByPath, entryPath);
   return { doc, revoke: () => urls.forEach((u) => { try { URL.revokeObjectURL(u); } catch {} }) };
+}
+
+/**
+ * Собрать самодостаточный srcDoc: локальные css/js инлайнятся прямо
+ * в entry. Работает в sandbox БЕЗ allow-same-origin (blob: там заблокирован)
+ * и на опубликованной странице. Внешние URL и картинки не трогаем.
+ */
+export function buildInlineDoc(files, entryPath) {
+  const entry = files[entryPath];
+  if (typeof entry !== 'string') return '';
+  const baseDir = entryPath.includes('/') ? entryPath.slice(0, entryPath.lastIndexOf('/')) : '';
+  const pick = (ref) => {
+    if (!ref || /^(https?:|data:|blob:|#|mailto:|tel:)/i.test(ref)) return null;
+    const clean = ref.split('#')[0].split('?')[0];
+    if (!clean) return null;
+    const full = normalizePath(baseDir ? `${baseDir}/${clean}` : clean);
+    const content = files[full];
+    return typeof content === 'string' ? content : null;
+  };
+  let doc = entry.replace(
+    /<link\b[^>]*rel\s*=\s*["']stylesheet["'][^>]*>/gi,
+    (tag) => {
+      const m = tag.match(/href\s*=\s*["']([^"']+)["']/i);
+      const css = m && pick(m[1].trim());
+      return css != null ? `<style>\n${css}\n</style>` : tag;
+    },
+  );
+  doc = doc.replace(
+    /<script\b([^>]*)>\s*<\/script\s*>/gi,
+    (tag, attrs) => {
+      const m = attrs.match(/src\s*=\s*["']([^"']+)["']/i);
+      if (!m) return tag;
+      const js = pick(m[1].trim());
+      return js != null ? `<script>\n${js}\n</script>` : tag;
+    },
+  );
+  return doc;
 }
 
 /**

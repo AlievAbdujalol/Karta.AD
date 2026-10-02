@@ -47,7 +47,7 @@ export default function AdminPanel() {
   if (user.role !== 'admin') return (
     <div className="p-8 text-center space-y-4">
       <div className="text-5xl">🔒</div>
-      <p className="text-gray-600 text-sm">{t('role')}: <strong>{t('admin')}</strong></p>
+      <p className="text-gray-600 text-sm">{t('role')}: <strong>{t('profile.roleAdmin')}</strong></p>
       <Link to="/profile" className="inline-block bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold">
         {t('editProfile')}
       </Link>

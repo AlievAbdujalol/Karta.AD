@@ -36,6 +36,9 @@ LLM returns **structured JSON**, never raw HTML. A deterministic compiler builds
    `products` section renders cart (+ В корзину), sticky cart bar, checkout → POST `orders` + `order_items`
    via anon REST (RLS `orders_insert_public` / `order_items_insert_public`, active businesses only).
    `preview:true` disables submit (demo notice). Without config — static cards only.
+   Multi-file: preview and `/s/:id` use `buildInlineDoc()` (local css/js inlined — blob: is blocked
+   in sandbox without allow-same-origin). Published multi sites appear on the map
+   (`get_public_sites()` RPC → marker with «Открыть сайт» link).
 5. Save appends a version row. Undo/redo = pointer over versions, never mutate history.
 6. Manual section edits use a draft + 1.2s debounce (never save per keystroke).
 7. Publish sets `is_published` on one version, unpublishes siblings.
