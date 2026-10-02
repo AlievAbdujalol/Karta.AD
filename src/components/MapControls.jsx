@@ -1,8 +1,10 @@
-import { Layers, Crosshair, Plus, Minus, Navigation, Share2, LocateFixed, Route } from 'lucide-react';
+import { Layers, Crosshair, Plus, Minus, Navigation, Share2, LocateFixed, Route, Car } from 'lucide-react';
 import { useMap } from 'react-leaflet';
 import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
 import { cartoRaster, withCartoKey, OSM_URL, CARTO_KEY, googleTiles } from '@/lib/tiles';
+
+const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 const TILE_LAYERS = [
   { labelKey: 'mapControls.layerStandard', url: cartoRaster('rastertiles/voyager'), isHybrid: false, needsKey: true },
@@ -12,13 +14,15 @@ const TILE_LAYERS = [
   { labelKey: 'mapControls.layerOsm', url: OSM_URL, isHybrid: false },
   { labelKey: 'mapControls.layerEsriStreet', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', isHybrid: false },
   { labelKey: 'mapControls.layerEsriTopo', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', isHybrid: false },
+  { labelKey: 'mapControls.layerGoogle', url: googleTiles('m'), isHybrid: false },
   { labelKey: 'mapControls.layerGoogleSat', url: googleTiles('s'), isHybrid: true },
   { labelKey: 'mapControls.layerGoogleHybrid', url: googleTiles('y'), isHybrid: true },
 ];
 
 const LABEL_OVERLAY_URL = withCartoKey('https://{s}.basemaps.cartocdn.com/rastertiles/light_only_labels/{z}/{x}/{y}{r}.png');
+const TRANSPORT_OVERLAY_URL = 'https://tile.memomaps.de/tilegen/{z}/{x}/{y}.png';
 
-export default function MapControls({ tileIndex, setTileIndex, finderActive, onFinderToggle, onShareTrip, rightOffset, isNavigating, onLocate, tiltEnabled, onToggleTilt, autoCenter, onToggleAutoCenter, overviewActive, onToggleOverview }) {
+export default function MapControls({ tileIndex, setTileIndex, finderActive, onFinderToggle, onShareTrip, rightOffset, isNavigating, onLocate, tiltEnabled, onToggleTilt, autoCenter, onToggleAutoCenter, overviewActive, onToggleOverview, showTraffic, onToggleTraffic, showTransport, onToggleTransport }) {
   const map = useMap();
   const { t } = useLanguage();
 
@@ -80,6 +84,12 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
         <button onClick={() => map.zoomOut()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90`} title={t('mapControls.zoomOut')}>
           <Minus size={18} className="stroke-[2.2]" />
         </button>
+        <button onClick={() => onToggleTraffic?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${showTraffic ? '!bg-orange-500 !text-white' : ''}`} title="Трафик">
+          <Car size={18} className="stroke-[2.2]" />
+        </button>
+        <button onClick={() => onToggleTransport?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${showTransport ? '!bg-blue-600 !text-white' : ''}`} title="Транспорт">
+          <Bus size={18} className="stroke-[2.2]" />
+        </button>
         <button onClick={() => onToggleAutoCenter?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${autoCenter ? '!bg-emerald-600 !text-white' : ''}`} title="Авто-центр">
           <LocateFixed size={18} className="stroke-[2.2]" />
         </button>
@@ -119,6 +129,12 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
         <button onClick={() => map.zoomOut()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90`}>
           <Minus size={15} className="stroke-[2.2]" />
         </button>
+        <button onClick={() => onToggleTraffic?.()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${showTraffic ? '!bg-orange-500 !text-white' : ''}`}>
+          <Car size={15} className="stroke-[2.2]" />
+        </button>
+        <button onClick={() => onToggleTransport?.()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${showTransport ? '!bg-blue-600 !text-white' : ''}`}>
+          <Bus size={15} className="stroke-[2.2]" />
+        </button>
         <button onClick={cycleLayer} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 relative`}>
           <Layers size={15} className="stroke-[2.2]" />
           <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-600 text-white rounded-full flex items-center justify-center text-[8px] font-black border-2 border-white dark:border-slate-900">{tileIndex + 1}</span>
@@ -133,4 +149,5 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
   );
 }
 
-export { TILE_LAYERS, LABEL_OVERLAY_URL };
+export { TILE_LAYERS, LABEL_OVERLAY_URL, TRANSPORT_OVERLAY_URL };
+

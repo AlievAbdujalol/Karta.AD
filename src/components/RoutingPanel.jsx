@@ -1,4 +1,4 @@
-﻿/**
+/**
  * RoutingPanel.jsx
  * Full routing panel:
  *   - Driving / Taxi / Walking / Cycling via OSRM
@@ -16,9 +16,9 @@ import {
   ChevronDown, Play, Car, Bike, PersonStanding, Clock3, ArrowLeftRight,
   LocateFixed, Share2, Check, Bus, Truck, Volume2, VolumeX, Timer,
   ArrowRight, Footprints, CheckCircle2, CircleDot, Radio, WifiOff,
-  CreditCard, Package, Plus, Upload, Settings2,
+  CreditCard, Package, Plus, Upload, Settings2, Sparkles, List,
 } from 'lucide-react';
-import PublicTransportSheet from '@/components/PublicTransportSheet';
+import AiRouteExplainer from './AiRouteExplainer';
 import { useNavigate } from 'react-router-dom';
 import { useNavigation } from '@/lib/NavigationContext';
 import {
@@ -1107,6 +1107,26 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
       {/* Sticky footer — кнопка «Поехать» всегда видна */}
       {!loading && hasResult && (
         <div className="flex-shrink-0 px-4 pb-4 pt-3 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2">
+          {/* AI Explanation Placeholder */}
+          <AiRouteExplainer routeData={osrmRoute || {}} />
+          
+          {osrmRoute?.steps && (
+            <button onClick={() => setShowInstructions(!showInstructions)} className="w-full py-2 text-xs text-slate-500 font-bold flex items-center justify-center gap-1.5 border rounded-xl hover:bg-slate-50">
+              {showInstructions ? <X size={14}/> : <List size={14}/>} {showInstructions ? 'Скрыть инструкции' : 'Показать инструкции'}
+            </button>
+          )}
+
+          {showInstructions && (
+            <div className="max-h-40 overflow-y-auto p-2 space-y-1 text-xs border rounded-xl">
+              {osrmRoute.steps.map((step, i) => (
+                <div key={i} className="flex gap-2">
+                  <span className="font-mono text-slate-400">{i+1}.</span>
+                  <p>{step.instruction} {step.name}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
           <button
             onClick={handleStartNavigation}
             className="w-full py-3.5 rounded-2xl font-black text-sm bg-gradient-to-br from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-xl shadow-emerald-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2.5"

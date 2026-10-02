@@ -28,6 +28,9 @@ import MapEventsSheet from '@/components/MapEventsSheet';
 import BluetoothSheet from '@/components/BluetoothSheet';
 import MiniMap from '@/components/MiniMap';
 import AiChat from '@/components/AiChat';
+import AlertBanner from '@/components/AlertBanner';
+import ConnectivityIndicator from '@/components/ConnectivityIndicator';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 
 export default function Home() {
   const { t, lang, setLang } = useLanguage();
@@ -85,6 +88,23 @@ export default function Home() {
   const [eventLine, setEventLine] = useState([]);
   const [roadDir, setRoadDir] = useState(0);
   const [eventType, setEventType] = useState('closure');
+  
+  useKeyboardShortcuts({
+    onEscape: () => {
+      if (routingOpen) {
+        setRoutingOpen(false);
+      } else if (sheetState !== 'collapsed') {
+        setSheetState('collapsed');
+      } else if (eventsOpen) {
+        setEventsOpen(false);
+        setEventPos(null);
+        setEventLine([]);
+      } else if (placeCard) {
+        setPlaceCard(null);
+      }
+    }
+  });
+
   useEffect(()=>{ const h=(e)=>setTiltEnabled(!!e.detail); window.addEventListener('karta_tilt_change', h); return ()=>window.removeEventListener('karta_tilt_change', h); },[]);
   useEffect(()=>{ const h=(e)=>setAutoCenter(!!e.detail); window.addEventListener('karta_autocenter', h); return ()=>window.removeEventListener('karta_autocenter', h); },[]);
 
@@ -340,6 +360,8 @@ export default function Home() {
 
   return (
     <div className="relative w-full h-full bg-slate-50 dark:bg-slate-950 overflow-hidden select-none">
+      <AlertBanner />
+      <ConnectivityIndicator />
       <div className="absolute inset-0 w-full h-full z-0">
         <ErrorBoundary fallback={(error) => <BusMapErrorFallback error={error} />}>
           <BusMap vehicles={vehicles} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} flyTo={flyTo} onFlyDone={() => setFlyTo(null)} routes={routes} onRoutingOpen={() => setSheetState('collapsed')} onRoutingStateChange={(open, meta)=>{setRoutingOpen(open); if(meta) setRouteMeta(meta);}} contactLocations={contactLocations} groupRouteMembers={onlineMembers} onShareTrip={handleShareTrip} groupRoute={groupRoute} panelVisible={panelVisible} onLocate={handleLocateUser} tiltEnabled={tiltEnabled} autoCenter={autoCenter} routeMeta={routeMeta} onPlaceSelect={setPlaceCard} onCenterChange={setLiveCenter} hideEvents={eventsOpen} onMapClick={eventsOpen ? (latlng)=> {

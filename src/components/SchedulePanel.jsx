@@ -21,10 +21,10 @@ function getNextTimes(times, count = 3) {
   return result.map(t => t.label);
 }
 
-export default function SchedulePanel({ route, hidden }) {
+export default function SchedulePanel({ route, hidden, isTab = false }) {
   const { t } = useLanguage();
   const [schedule, setSchedule] = useState(null);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(isTab);
 
   useEffect(() => {
     if (!route?.id) { setSchedule(null); return; }
@@ -33,75 +33,75 @@ export default function SchedulePanel({ route, hidden }) {
 
   if (hidden) return null;
   if (!route) return null;
-  if (!schedule || !schedule.stops_schedule?.length) return null;
+  if (!schedule || !schedule.stops_schedule?.length) return isTab ? <div className="p-4 text-center text-sm text-gray-500">{t('schedulePanel.noData')}</div> : null;
   const stopsWithTimes = schedule.stops_schedule.filter(s => s.times?.length > 0);
-  if (!stopsWithTimes.length) return null;
+  if (!stopsWithTimes.length) return isTab ? <div className="p-4 text-center text-sm text-gray-500">{t('schedulePanel.noData')}</div> : null;
 
   const totalPrice = schedule.stops_schedule.reduce((sum, s) => sum + (parseFloat(s.price_from_prev) || 0), 0);
+  
+  const content = (
+    <div className={`rounded-[20px] overflow-hidden ${isTab ? 'bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800' : 'bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/50 dark:border-slate-800/80 shadow-[0_8px_32px_rgba(15,23,42,0.06)]'} dark:text-gray-100`}>
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="w-full flex items-center justify-between px-4 py-3"
+      >
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-gradient-to-br from-[#1a3f8f] to-[#1e56d0]">
+            <Clock size={13} className="text-white" />
+          </div>
+          <div className="text-left">
+            <p className="text-xs font-bold text-gray-800 dark:text-gray-100">{t('schedulePanel.title')}</p>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500">{t('schedulePanel.routePrefix')}{route.number}{totalPrice > 0 ? ` · ${totalPrice.toFixed(2)} ${t('schedulePanel.somoni')}` : ''}</p>
+          </div>
+        </div>
+        <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
+          {expanded
+            ? <ChevronUp size={14} className="text-gray-500 dark:text-gray-400" />
+            : <ChevronDown size={14} className="text-gray-500 dark:text-gray-400" />}
+        </div>
+      </button>
 
-  return (
-    <div className="absolute bottom-20 md:bottom-6 left-4 md:left-[400px] z-[200] w-[min(300px,calc(100vw-2rem))] md:w-[min(300px,calc(100vw-420px))]">
-      <div className="rounded-[20px] overflow-hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/50 dark:border-slate-800/80 shadow-[0_8px_32px_rgba(15,23,42,0.06)] dark:text-gray-100">
-
-        <button
-          onClick={() => setExpanded(e => !e)}
-          className="w-full flex items-center justify-between px-4 py-3"
-        >
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-gradient-to-br from-[#1a3f8f] to-[#1e56d0]">
-              <Clock size={13} className="text-white" />
-            </div>
-            <div className="text-left">
-                    <p className="text-xs font-bold text-gray-800 dark:text-gray-100">{t('schedulePanel.title')}</p>
-                    <p className="text-[10px] text-gray-400 dark:text-gray-500">{t('schedulePanel.routePrefix')}{route.number}{totalPrice > 0 ? ` · ${totalPrice.toFixed(2)} ${t('schedulePanel.somoni')}` : ''}</p>
+      {expanded && (
+        <div className="border-t border-gray-100 dark:border-gray-700 px-3 py-2 max-h-56 overflow-y-auto space-y-1.5">
+          {stopsWithTimes.map(stop => {
+            const next = getNextTimes(stop.times, 3);
+            return (
+              <div key={stop.stop_index} className="flex items-start gap-2.5 py-1.5 border-b border-gray-50 dark:border-gray-700 last:border-0">
+                <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 bg-gradient-to-br from-[#1a3f8f] to-[#1e56d0]">
+                  <span className="text-white text-[9px] font-bold">{stop.stop_index + 1}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-semibold text-gray-700 dark:text-gray-200 truncate">{stop.stop_name}</p>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {next.map((t, i) => (
+                      <span
+                        key={i}
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${
+                          i === 0
+                            ? 'bg-gradient-to-br from-[#1a3f8f] to-[#1e56d0] text-white'
+                            : 'bg-slate-100 text-slate-500 dark:bg-gray-700 dark:text-gray-300'
+                        }`}
+                      >
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {stop.price_from_prev > 0 && (
+                      <span className="text-[9px] text-green-600 dark:text-green-400 font-medium">
+                        +{Number(stop.price_from_prev).toFixed(2)} {t('schedulePanel.somAbbr')}
+                      </span>
+                    )}
                   </div>
                 </div>
-          <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
-            {expanded
-              ? <ChevronUp size={14} className="text-gray-500 dark:text-gray-400" />
-              : <ChevronDown size={14} className="text-gray-500 dark:text-gray-400" />}
-          </div>
-        </button>
-
-        {expanded && (
-          <div className="border-t border-gray-100 dark:border-gray-700 px-3 py-2 max-h-56 overflow-y-auto space-y-1.5">
-            {stopsWithTimes.map(stop => {
-              const next = getNextTimes(stop.times, 3);
-              return (
-                <div key={stop.stop_index} className="flex items-start gap-2.5 py-1.5 border-b border-gray-50 dark:border-gray-700 last:border-0">
-                  <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 bg-gradient-to-br from-[#1a3f8f] to-[#1e56d0]">
-                    <span className="text-white text-[9px] font-bold">{stop.stop_index + 1}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[11px] font-semibold text-gray-700 dark:text-gray-200 truncate">{stop.stop_name}</p>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {next.map((t, i) => (
-                        <span
-                          key={i}
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${
-                            i === 0
-                              ? 'bg-gradient-to-br from-[#1a3f8f] to-[#1e56d0] text-white'
-                              : 'bg-slate-100 text-slate-500 dark:bg-gray-700 dark:text-gray-300'
-                          }`}
-                        >
-                          {t}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {stop.price_from_prev > 0 && (
-                        <span className="text-[9px] text-green-600 dark:text-green-400 font-medium">
-                          +{Number(stop.price_from_prev).toFixed(2)} {t('schedulePanel.somAbbr')}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
+
+  if (isTab) return content;
+  return <div className="absolute bottom-20 md:bottom-6 left-4 md:left-[400px] z-[200] w-[min(300px,calc(100vw-2rem))] md:w-[min(300px,calc(100vw-420px))]">{content}</div>;
 }
