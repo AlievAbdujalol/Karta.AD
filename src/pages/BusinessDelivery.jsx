@@ -3,7 +3,12 @@ import { supabase } from '@/api/supabase';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
-import { Truck, MapPin, Phone, Clock, Navigation, Filter, Search } from 'lucide-react';
+import { Truck, Phone, Navigation, Search } from 'lucide-react';
+import BusinessSubHeader from '@/components/BusinessSubHeader';
+import {
+  nextStatuses, NEXT_STATUS_LABEL, setOrderStatus,
+  formatCurrency, formatTimeAgo,
+} from '@/lib/business';
 
 const DELIVERY_LABELS = {
   courier: { ru: 'Курьер', tg: 'Курьер', en: 'Courier' },
@@ -23,19 +28,21 @@ const STATUS_LABELS = {
 
 export default function BusinessDelivery() {
   const { user } = useCurrentUser();
-  const { t, lang } = useLanguage();
-  const [businesses, setBusinesses] = useState([]);
+  const { lang } = useLanguage();
   const [selectedBusiness, setSelectedBusiness] = useState(null);
-  [orders, setOrders] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(null);
   const [expandedOrder, setExpandedOrder] = useState(null);
+  const [updatingId, setUpdatingId] = useState(null);
+
+  /** Тип доставки: из RPC, иначе выводим по наличию адреса. */
+  const deliveryTypeOf = (o) => o.delivery_type || (o.delivery_address ? 'delivery' : 'pickup');
 
   const loadBusinesses = async () => {
     const { data, error } = await supabase.rpc('get_my_businesses');
     if (!error && data && data.length > 0) {
-      setBusinesses(data);
       setSelectedBusiness(data[0]);
     }
   };
@@ -50,9 +57,32 @@ export default function BusinessDelivery() {
       return;
     }
     const deliveryOrders = (data || []).filter(
-      (o) => o.status === 'in_transit' || o.status === 'picked_up' || o.status === 'assigned' || o.status === 'pending'
+      (o) => ['pending', 'ready', 'picked_up', 'in_transit'].includes(o.status)
+        && deliveryTypeOf(o) !== 'pickup'
     );
     setOrders(deliveryOrders);
+  };
+
+  const handleStatus = async (order, status) => {
+    if (status === 'cancelled' && !confirm('Отменить заказ?')) return;
+    setUpdatingId(order.id);
+    try {
+      const ok = await setOrderStatus(order.id, status);
+      if (!ok) {
+        toast.error('Переход запрещён или нет доступа');
+        return;
+      }
+      toast.success(`Заказ → ${STATUS_LABELS[status]?.ru || status}`);
+      if (['delivered', 'cancelled', 'completed'].includes(status)) {
+        setOrders((prev) => prev.filter((o) => o.id !== order.id));
+      } else {
+        setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status } : o)));
+      }
+    } catch (e) {
+      toast.error(e.message || 'Не удалось сменить статус');
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
   useEffect(() => {
@@ -74,30 +104,15 @@ export default function BusinessDelivery() {
     );
   });
 
-  const formatCurrency = (n) => {
-    if (!n) return '0';
-    return `${new Intl.NumberFormat('ru-RU').format(n)} сом`;
-  };
-
-  const formatTime = (dateStr) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    const diff = Date.now() - d.getTime();
-    if (diff < 60000) return 'только что';
-    if (diff < 3600000) return `${Math.floor(diff / 60000)} мин назад`;
-    return `${Math.floor(diff / 3600000)} ч назад`;
-  };
-
   return (
     <div className="h-full overflow-y-auto bg-slate-50 dark:bg-slate-950">
       <div className="max-w-4xl mx-auto p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <Truck size={22} className="text-orange-500" />
-            Доставка
-          </h1>
-          <span className="text-xs text-slate-400">{orders.length} активных</span>
-        </div>
+        <BusinessSubHeader
+          title="Доставка"
+          icon={Truck}
+          iconClassName="text-orange-500 flex items-center"
+          right={<span className="text-xs text-slate-400">{orders.length} активных</span>}
+        />
 
         {/* Search */}
         <div className="relative">
@@ -116,7 +131,7 @@ export default function BusinessDelivery() {
           {[
             { value: null, label: { ru: 'Все', tg: 'Ҳама', en: 'All' } },
             { value: 'pending', label: { ru: 'Создан', tg: 'Сохта', en: 'Created' } },
-            { value: 'assigned', label: { ru: 'Назначен', tg: 'Таъин', en: 'Assigned' } },
+            { value: 'ready', label: { ru: 'Готов', tg: 'Тайёр', en: 'Ready' } },
             { value: 'picked_up', label: { ru: 'Забран', tg: 'Гирифта', en: 'Picked up' } },
             { value: 'in_transit', label: { ru: 'В пути', tg: 'Роҳ', en: 'In transit' } },
             { value: 'delivered', label: { ru: 'Доставлен', tg: 'Расонда', en: 'Delivered' } },
@@ -176,7 +191,7 @@ export default function BusinessDelivery() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-bold text-slate-800 dark:text-slate-100">#{order.id.slice(0, 8)}</span>
                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 dark:bg-blue-500/10">
-                        {DELIVERY_LABELS[order.delivery_type]?.[lang] || order.delivery_type}
+                        {DELIVERY_LABELS[deliveryTypeOf(order)]?.[lang] || deliveryTypeOf(order)}
                       </span>
                     </div>
                     <p className="text-xs text-slate-400 truncate mt-0.5">{order.delivery_address || '—'}</p>
@@ -189,7 +204,7 @@ export default function BusinessDelivery() {
                     }`}>
                       {STATUS_LABELS[order.status]?.[lang] || order.status}
                     </span>
-                    <p className="text-[11px] text-slate-400 mt-1">{formatTime(order.created_at)}</p>
+                    <p className="text-[11px] text-slate-400 mt-1">{formatTimeAgo(order.created_at)}</p>
                   </div>
                 </button>
 
@@ -207,6 +222,24 @@ export default function BusinessDelivery() {
                       <span className="text-slate-400">Итого:</span>
                       <span className="font-bold text-slate-800 dark:text-slate-100">{formatCurrency(order.total)}</span>
                     </div>
+                    {nextStatuses(order.status).length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {nextStatuses(order.status).map((st) => (
+                          <button
+                            key={st}
+                            onClick={() => handleStatus(order, st)}
+                            disabled={updatingId === order.id}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition active:scale-95 disabled:opacity-50 ${
+                              st === 'cancelled'
+                                ? 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/20'
+                                : 'bg-orange-500 hover:bg-orange-600 text-white'
+                            }`}
+                          >
+                            {NEXT_STATUS_LABEL[st] || st}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

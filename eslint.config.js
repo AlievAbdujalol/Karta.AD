@@ -6,7 +6,10 @@ import pluginUnusedImports from "eslint-plugin-unused-imports";
 
 export default [
   {
-    files: ["src/**/*.{js,mjs,cjs,jsx,ts,tsx}"],
+    ignores: ["dist/**", "node_modules/**", ".kilo/**", ".kiro/**", "chunk*.jsx"],
+  },
+  {
+    files: ["src/**/*.{js,mjs,cjs,jsx}"],
     ignores: ["src/components/ui/chart.jsx", "src/components/ui/sidebar.jsx"],
     ...pluginJs.configs.recommended,
     ...pluginReact.configs.flat.recommended,

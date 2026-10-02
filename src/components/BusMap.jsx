@@ -7,7 +7,9 @@ import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'react-leaflet-cluster/lib/assets/MarkerCluster.css';
 import 'react-leaflet-cluster/lib/assets/MarkerCluster.Default.css';
 import MapControls, { TILE_LAYERS, LABEL_OVERLAY_URL } from './MapControls';
+import { CARTO_KEY } from '@/lib/tiles';
 import RoutingPanel from './RoutingPanel';
+import BusinessMarkers from './BusinessMarkers';
 import StopInfoPopup, { collectUniqueStops } from './StopInfoPopup';
 import { useOverpassStops } from '@/hooks/useOverpassStops';
 import { useCurrentUser } from '@/lib/useCurrentUser';
@@ -577,14 +579,26 @@ const TILE_KEY = 'karta_tile_index';
 
 export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute, panelVisible, onLocate, tiltEnabled: _tiltEnabled = false, autoCenter = true, routeMeta = null, onPlaceSelect, onCenterChange, onMapClick, eventPos, eventLine=[], roadDir=0, hideEvents=false }) {
   const [tileIndex, setTileIndex] = useState(() => {
+    const fallback = () => {
+      // Без CARTO-ключа слои CARTO показывают водяной знак —
+      // откатываемся на Google улицы (VITE_GOOGLE_MAPS_KEY уже в .env.local).
+      const google = TILE_LAYERS.findIndex((l) => l.labelKey === 'mapControls.layerGoogle');
+      if (google >= 0) return google;
+      const free = TILE_LAYERS.findIndex((l) => !l.needsKey);
+      return free >= 0 ? free : 0;
+    };
     try {
       const v = localStorage.getItem(TILE_KEY);
       if (v != null) {
         const n = parseInt(v, 10);
-        if (!isNaN(n) && n >= 0 && n < TILE_LAYERS.length) return n;
+        if (!isNaN(n) && n >= 0 && n < TILE_LAYERS.length) {
+          if (TILE_LAYERS[n].needsKey && !CARTO_KEY) return fallback();
+          return n;
+        }
       }
     } catch {}
-    return 2;
+    if (!CARTO_KEY) return fallback();
+    return 0;
   });
   const [showLabels, setShowLabels] = useState(true);
   const [routingOpen, setRoutingOpen] = useState(false);
@@ -1206,18 +1220,18 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
                   html: `<div style="display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.45));">`
                     + `<div style="width:24px;height:24px;border-radius:50%;background:${bg};border:3.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.35);"></div>`
                     + `<div style="width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:9px solid ${border};margin-top:1px;"></div>`
-                    + `<div style="background:#fff;color:${bg};font-size:11px;font-weight:900;padding:3px 10px;border-radius:12px;border:2.5px solid ${border};white-space:nowrap;max-width:150px;overflow:hidden;text-overflow:ellipsis;font-family:Inter,sans-serif;margin-top:-1px;">${label}</div></div>`,
-                  className: '', iconSize: [150, 64], iconAnchor: [75, 12],
+                    + `<div style="background:#fff;color:${bg};font-size:10px;font-weight:900;padding:2px 8px;border-radius:12px;border:2.5px solid ${border};white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis;font-family:Inter,sans-serif;margin-top:-1px;">${label}</div></div>`,
+                  className: '', iconSize: [120, 60], iconAnchor: [60, 12],
                 });
                 const escName = (s) => String(s ?? '').replace(/[<>&"]/g, '');
                 return (<>
                   {fp && (
-                    <Marker position={[fp.lat, fp.lng]} icon={endIcon(`ОТ · ${escName(fp.shortName || navRoute.fromText || 'Старт').slice(0, 18)}`, '#15803d', '#22c55e')} zIndexOffset={1000}>
+                    <Marker position={[fp.lat, fp.lng]} icon={endIcon(`ОТ · ${escName(fp.shortName || navRoute.fromText || 'Старт').slice(0, 14)}`, '#15803d', '#22c55e')} zIndexOffset={1000}>
                       <Popup><div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>📍 ОТ: {fp.shortName || navRoute.fromText || 'Старт'}</div></Popup>
                     </Marker>
                   )}
                   {tp && (
-                    <Marker position={[tp.lat, tp.lng]} icon={endIcon(`ДО · ${escName(tp.shortName || navRoute.toText || 'Финиш').slice(0, 18)}`, '#b91c1c', '#ef4444')} zIndexOffset={1000}>
+                    <Marker position={[tp.lat, tp.lng]} icon={endIcon(`ДО · ${escName(tp.shortName || navRoute.toText || 'Финиш').slice(0, 14)}`, '#b91c1c', '#ef4444')} zIndexOffset={1000}>
                       <Popup><div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 600 }}>🏁 ДО: {tp.shortName || navRoute.toText || 'Финиш'}</div></Popup>
                     </Marker>
                   )}
@@ -1246,6 +1260,9 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       ) : (
         <UserLocationMarker transportMode={routeMeta?.mode || nav.routeData?.mode} />
       )}
+
+      {/* Публичные точки бизнесов (адреса магазинов) */}
+      <BusinessMarkers />
 
       {/* Navigation camera follow + arrow */}
       {nav.isActive && <NavigationCamera followUser={nav.followUser} userPosition={nav.userPosition} userHeading={nav.userHeading} routeData={nav.routeData} />}

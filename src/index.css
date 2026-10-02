@@ -171,3 +171,10 @@
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-6px); }
 }
+
+/* Нативные option: всегда тёмный текст на белом фоне.
+   Иначе в dark mode список наследует светлый текст на белом — не читается. */
+select option {
+  background-color: #ffffff;
+  color: #0f172a;
+}

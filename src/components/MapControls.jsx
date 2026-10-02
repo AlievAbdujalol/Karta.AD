@@ -2,20 +2,21 @@ import { Layers, Crosshair, Plus, Minus, Navigation, Share2, LocateFixed, Route 
 import { useMap } from 'react-leaflet';
 import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
+import { cartoRaster, withCartoKey, OSM_URL, CARTO_KEY, googleTiles } from '@/lib/tiles';
 
 const TILE_LAYERS = [
-  { labelKey: 'mapControls.layerStandard', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_2m2c_1_fd237f9c15572ee356a4aa42', isHybrid: false },
-  { labelKey: 'mapControls.layerDark', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', isHybrid: false },
+  { labelKey: 'mapControls.layerStandard', url: cartoRaster('rastertiles/voyager'), isHybrid: false, needsKey: true },
+  { labelKey: 'mapControls.layerDark', url: cartoRaster('dark_all'), isHybrid: false, needsKey: true },
+  { labelKey: 'mapControls.layerGoogle', url: googleTiles('m'), isHybrid: false },
   { labelKey: 'mapControls.layerHybrid', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', isHybrid: true },
-  { labelKey: 'mapControls.layerOsm', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', isHybrid: false },
+  { labelKey: 'mapControls.layerOsm', url: OSM_URL, isHybrid: false },
   { labelKey: 'mapControls.layerEsriStreet', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', isHybrid: false },
   { labelKey: 'mapControls.layerEsriTopo', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', isHybrid: false },
-  { labelKey: 'mapControls.layerGoogle', url: 'https://mt0.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', isHybrid: false },
-  { labelKey: 'mapControls.layerGoogleSat', url: 'https://mt0.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', isHybrid: true },
-  { labelKey: 'mapControls.layerGoogleHybrid', url: 'https://mt0.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', isHybrid: true },
+  { labelKey: 'mapControls.layerGoogleSat', url: googleTiles('s'), isHybrid: true },
+  { labelKey: 'mapControls.layerGoogleHybrid', url: googleTiles('y'), isHybrid: true },
 ];
 
-const LABEL_OVERLAY_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/light_only_labels/{z}/{x}/{y}{r}.png';
+const LABEL_OVERLAY_URL = withCartoKey('https://{s}.basemaps.cartocdn.com/rastertiles/light_only_labels/{z}/{x}/{y}{r}.png');
 
 export default function MapControls({ tileIndex, setTileIndex, finderActive, onFinderToggle, onShareTrip, rightOffset, isNavigating, onLocate, tiltEnabled, onToggleTilt, autoCenter, onToggleAutoCenter, overviewActive, onToggleOverview }) {
   const map = useMap();
@@ -40,7 +41,14 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
     );
   };
 
-  const cycleLayer = () => setTileIndex((i) => (i + 1) % TILE_LAYERS.length);
+  const cycleLayer = () => setTileIndex((i) => {
+    // Слои CARTO без ключа показывают водяной знак — пропускаем их.
+    for (let k = 1; k <= TILE_LAYERS.length; k++) {
+      const n = (i + k) % TILE_LAYERS.length;
+      if (!TILE_LAYERS[n].needsKey || CARTO_KEY) return n;
+    }
+    return i;
+  });
 
   const btnBase = "flex items-center justify-center rounded-2xl shadow-[0_4px_16px_rgba(15,23,42,0.1)] border border-slate-200/60 dark:border-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer select-none backdrop-blur-xl";
 
@@ -48,7 +56,7 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
     <>
       {/* ===== DESKTOP: Right side vertical ===== */}
       <div
-        className={`hidden md:flex absolute top-1/2 -translate-y-1/2 z-[999] flex-col gap-2 pointer-events-auto transition-all duration-300`}
+        className={`hidden md:flex absolute z-[999] flex-col gap-2 pointer-events-auto transition-all duration-300 ${isNavigating ? 'top-[64%] -translate-y-1/2' : 'top-1/2 -translate-y-1/2'}`}
         style={{ right: `${(rightOffset || 0) + 16}px` }}
         onMouseDown={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
@@ -88,7 +96,7 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
 
       {/* ===== MOBILE: Compact bottom-right cluster ===== */}
       <div
-        className="md:hidden absolute right-3 bottom-[90px] z-[999] flex flex-col gap-2 pointer-events-auto"
+        className={`md:hidden absolute right-3 z-[999] flex flex-col gap-2 pointer-events-auto transition-all duration-300 ${isNavigating ? 'bottom-[220px]' : 'bottom-[90px]'}`}
         onMouseDown={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >

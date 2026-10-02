@@ -7,6 +7,9 @@ import { useNavigate } from 'react-router-dom';
 import { User, Save, Heart, History, Camera, Loader2, LogOut, ChevronDown, Search, Wallet, Car, PlusCircle, CheckCircle2, X, Pencil, Trash2 } from 'lucide-react';
 import FavoriteRoutes from '@/components/profile/FavoriteRoutes';
 import TripHistory from '@/components/profile/TripHistory';
+import InstallAppButton from '@/components/InstallAppButton';
+import UserApiKeys from '@/components/profile/UserApiKeys';
+import { loadUserKeys } from '@/lib/userKeys';
 import { toast } from 'sonner';
 import { supabase } from '@/api/supabase';
 import { CATEGORY_LABELS as TAXI_CATEGORIES } from '@/lib/taxi';
@@ -138,6 +141,10 @@ export default function Profile() {
   useEffect(() => {
     if (user?.id) refreshUser();
   }, []);
+
+  useEffect(() => {
+    if (user?.id) loadUserKeys(user.id).catch(() => {});
+  }, [user?.id]);
 
   useEffect(() => {
     if (user?.id && user?.role === 'taxi_driver') {
@@ -1355,6 +1362,10 @@ export default function Profile() {
             <button onClick={()=>navigate('/settings/vehicle')} className="py-2.5 rounded-xl bg-white dark:bg-slate-800 border font-bold text-xs">Авто</button>
             <button onClick={()=>navigate('/settings/truck')} className="py-2.5 rounded-xl bg-white dark:bg-slate-800 border font-bold text-xs">Грузовик</button>
           </div>
+
+          <InstallAppButton />
+
+          <UserApiKeys userId={user?.id} />
 
           <button
             onClick={() => logout()}

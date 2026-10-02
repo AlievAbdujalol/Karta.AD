@@ -3,7 +3,8 @@ import { supabase } from '@/api/supabase';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
-import { BarChart3, TrendingUp, TrendingDown, DollarSign, ShoppingCart, Users, Clock, Calendar } from 'lucide-react';
+import { BarChart3, DollarSign, ShoppingCart } from 'lucide-react';
+import BusinessSubHeader from '@/components/BusinessSubHeader';
 
 export default function BusinessAnalytics() {
   const { user } = useCurrentUser();
@@ -30,7 +31,7 @@ export default function BusinessAnalytics() {
     const { data: o, error: oErr } = await supabase.rpc('get_business_orders', { p_business_id: businessId });
     setLoading(false);
     if (sErr) toast.error('Ошибка статистики');
-    else setStats(s?.[0] || null);
+    else setStats(s && typeof s === 'object' ? s : null);
     if (oErr) toast.error('Ошибка заказов');
     else setOrders(o || []);
   };
@@ -74,12 +75,11 @@ export default function BusinessAnalytics() {
   return (
     <div className="h-full overflow-y-auto bg-slate-50 dark:bg-slate-950">
       <div className="max-w-4xl mx-auto p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <BarChart3 size={22} className="text-blue-500" />
-            Аналитика
-          </h1>
-        </div>
+        <BusinessSubHeader
+          title="Аналитика"
+          icon={BarChart3}
+          iconClassName="text-blue-500 flex items-center"
+        />
 
         {businesses.length > 1 && (
           <div className="flex gap-2 overflow-x-auto pb-1">
@@ -102,6 +102,22 @@ export default function BusinessAnalytics() {
           ))}
         </div>
 
+        {/* Server totals */}
+        {stats && (
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: 'Заказов всего', value: String(stats.total_orders ?? 0) },
+              { label: 'Активных', value: String(stats.active_orders ?? 0) },
+              { label: 'Сегодня', value: `${stats.orders_today ?? 0} · ${Number(stats.revenue_today ?? 0).toLocaleString('ru-RU')} сом` },
+            ].map((s) => (
+              <div key={s.label} className="bg-blue-600/[0.06] dark:bg-blue-500/10 rounded-xl px-3 py-2.5">
+                <p className="text-[10px] text-slate-400">{s.label}</p>
+                <p className="text-sm font-extrabold text-slate-800 dark:text-slate-100">{s.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
         {loading ? (
           <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-4 border-slate-200 border-t-blue-500 rounded-full animate-spin" /></div>
         ) : (
@@ -122,7 +138,7 @@ export default function BusinessAnalytics() {
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
               <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-3">Выручка за период</p>
               <div className="flex items-end gap-1.5 h-32">
-                {periodOrders.slice(0, 14).map((o, i) => {
+                {periodOrders.slice(0, 14).map((o) => {
                   const h = Math.max(4, (Number(o.total) / (totalRevenue || 1)) * 100);
                   return (
                     <div key={o.id} className="flex-1 flex flex-col items-center gap-1">

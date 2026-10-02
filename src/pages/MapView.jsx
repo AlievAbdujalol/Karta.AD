@@ -6,6 +6,7 @@ import 'leaflet/dist/leaflet.css';
 import { Route, Vehicle } from '@/api/entities';
 import { useLanguage } from '@/lib/useLanguage';
 import { ArrowLeft, Bus, RefreshCw } from 'lucide-react';
+import { cartoRaster } from '@/lib/tiles';
 
 // Fix leaflet icon
 delete L.Icon.Default.prototype._getIconUrl;
@@ -105,7 +106,7 @@ export default function MapView() {
       <div className="flex-1" style={{ paddingTop: '70px' }}>
         <MapContainer center={center} zoom={13} style={{ height: '100%', width: '100%' }}>
           <TileLayer
-            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_2m2c_1_fd237f9c15572ee356a4aa42"
+            url={cartoRaster('rastertiles/voyager')}
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
           />
 

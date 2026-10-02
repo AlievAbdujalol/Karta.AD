@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { projectOnPolyline, haversineM } from '@/lib/geo';
+import { toast } from 'sonner';
 
 const NavigationContext = createContext(null);
 
@@ -284,6 +285,31 @@ export function NavigationProvider({ children }) {
     }
 
     const steps = ensureStepStarts(route.steps);
+
+    // Маршрут без пошаговки (общественный транспорт, steps: []):
+    // остаток считаем по прогрессу геометрии, иначе здесь падал TypeError
+    // и HUD навсегда оставался на нулях.
+    if (!steps.length) {
+      const navLang = getNavLang();
+      const totalLen = routeLenRef.current || computeRouteLength(geometry);
+      const totalRemaining = Math.max(0, totalLen * (1 - proj.progress));
+      setRemainingDistance(totalRemaining);
+      const baseDur = route.duration ?? route.totalDuration ?? 0;
+      const etaSec = baseDur > 0 ? baseDur * (1 - proj.progress) : 0;
+      if (etaSec > 0) {
+        setEta(new Date(Date.now() + etaSec * 1000));
+        setRemainingDuration(Math.round(etaSec));
+      }
+      setNextInstruction({
+        text: (PHRASE[navLang] || PHRASE.ru).continue,
+        streetName: '',
+        distance: totalRemaining,
+        instruction: 'continue',
+        modifier: '',
+      });
+      return;
+    }
+
     const stepIdx = findClosestStep(proj.snappedLat, proj.snappedLng, steps);
     stepIndexRef.current = stepIdx;
 
@@ -386,15 +412,35 @@ export function NavigationProvider({ children }) {
 
   const startGps = useCallback(() => {
     clearGps();
+    if (!('geolocation' in navigator)) {
+      toast.error('Геолокация недоступна в этом браузере');
+      return;
+    }
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const { latitude, longitude, heading, speed } = pos.coords;
         processPositionRef.current(latitude, longitude, heading, speed || 0);
       },
-      () => {},
+      (err) => {
+        if (err?.code === 1) toast.error('Разрешите доступ к геолокации — без неё навигация не следит за вами', { id: 'nav-geo-denied' });
+        else toast.error('Не удаётся получить GPS-позицию', { id: 'nav-geo-error' });
+      },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
     );
   }, [clearGps]);
+
+  // Стартовые значения HUD: полный маршрут, а не нули — обновятся первым GPS-фиксом.
+  // Работает и для транзитных маршрутов (totalDistance/totalDuration).
+  const initStatsFromRoute = useCallback((route) => {
+    if (!route) return;
+    const dist = route.distance ?? route.totalDistance ?? computeRouteLength(route.geometry);
+    const dur = route.duration ?? route.totalDuration ?? 0;
+    if (dist > 0) setRemainingDistance(dist);
+    if (dur > 0) {
+      setRemainingDuration(Math.round(dur));
+      setEta(new Date(Date.now() + dur * 1000));
+    }
+  }, [computeRouteLength]);
 
   const resetNavState = useCallback(() => {
     setStartTime(Date.now());
@@ -434,10 +480,11 @@ export function NavigationProvider({ children }) {
     isPausedRef.current = false;
     resetNavState();
     routeLenRef.current = computeRouteLength(enriched.geometry);
+    initStatsFromRoute(enriched);
     startGps();
     try { localStorage.setItem('karta_nav_active', JSON.stringify(enriched)); } catch {}
     speak('Начинаем навигацию');
-  }, [startGps, resetNavState, speak, computeRouteLength]);
+  }, [startGps, resetNavState, speak, computeRouteLength, initStatsFromRoute]);
 
   const startNavigation = useCallback((route) => {
     routeRef.current = route;
@@ -447,10 +494,11 @@ export function NavigationProvider({ children }) {
     isPausedRef.current = false;
     resetNavState();
     routeLenRef.current = computeRouteLength(route.geometry);
+    initStatsFromRoute(route);
     startGps();
     try { localStorage.setItem('karta_nav_active', JSON.stringify(route)); } catch {}
     speak('Начинаем навигацию');
-  }, [startGps, resetNavState, speak, computeRouteLength]);
+  }, [startGps, resetNavState, speak, computeRouteLength, initStatsFromRoute]);
 
   const stopNavigation = useCallback(() => {
     clearGps();
@@ -565,12 +613,13 @@ export function NavigationProvider({ children }) {
           setRouteData(r);
           setIsActive(true);
           routeLenRef.current = computeRouteLength(r.geometry);
+          initStatsFromRoute(r);
           startGps();
         }
       }
     } catch {}
     return () => { clearGps(); try { window.speechSynthesis.cancel(); } catch {} };
-  }, [clearGps, startGps, computeRouteLength]);
+  }, [clearGps, startGps, computeRouteLength, initStatsFromRoute]);
 
   const value = useMemo(() => ({
     isActive, isPaused,

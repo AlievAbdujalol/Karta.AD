@@ -7,6 +7,8 @@ const DEFAULT_MODEL = import.meta.env.VITE_GEMINI_MODEL || 'gemini-3.6-flash';
 const API_BASE = 'https://generativelanguage.googleapis.com/v1/models';
 const IS_DEV = import.meta.env.DEV;
 
+import { getApiKey as getUserApiKey } from './userKeys';
+
 // ─── ошибки ────────────────────────────────────────────────────────────
 export class GeminiError extends Error {
   constructor(message, status, type) {
@@ -26,9 +28,9 @@ function classifyError(status) {
 }
 
 // ─── ключ ──────────────────────────────────────────────────────────────
+// Приоритет: личный ключ пользователя (Профиль → AI-ключи) → общий из .env
 export function getGeminiKey() {
-  const k = (import.meta.env.VITE_GEMINI_API_KEY || '').trim();
-  return k || null;
+  return getUserApiKey('gemini', import.meta.env.VITE_GEMINI_API_KEY);
 }
 
 export function isGeminiConfigured() {

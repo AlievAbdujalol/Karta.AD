@@ -12,6 +12,7 @@ import { useCurrentUser } from '@/lib/useCurrentUser';
 import { supabase } from '@/api/supabase';
 import { toast } from 'sonner';
 import { snapToRoad, snapPositions } from '@/lib/osrm';
+import { cartoRaster } from '@/lib/tiles';
 import TaxiCategoryCard from '@/components/taxi/TaxiCategoryCard';
 import TaxiChat from '@/components/taxi/TaxiChat';
 import ShareMenu from '@/components/taxi/ShareMenu';
@@ -276,7 +277,7 @@ export default function TaxiPassenger() {
     if (trip.category) setCategory(trip.category);
   }, [location.state]);
 
-  const TILE_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_2m2c_1_fd237f9c15572ee356a4aa42';
+  const TILE_URL = cartoRaster('rastertiles/voyager');
   const ATTR = '&copy; OpenStreetMap contributors';
 
   const routeInfo = useMemo(() => {

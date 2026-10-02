@@ -16,6 +16,7 @@ import TaxiChat from '@/components/taxi/TaxiChat';
 import ShareMenu from '@/components/taxi/ShareMenu';
 import { haversineKm, DRIVER_MATCH_RADIUS_KM, formatTJS, TAXI_COMMISSION } from '@/lib/taxi';
 import { snapToRoad } from '@/lib/osrm';
+import { cartoRaster } from '@/lib/tiles';
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -79,7 +80,7 @@ export default function TaxiDriverDashboard() {
   useEffect(() => { currentOrderRef.current = currentOrder; }, [currentOrder]);
   useEffect(() => { driverPosRef.current = driverPosition; }, [driverPosition]);
 
-  const TILE_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_2m2c_1_fd237f9c15572ee356a4aa42';
+  const TILE_URL = cartoRaster('rastertiles/voyager');
   const ATTR = '&copy; OpenStreetMap contributors';
 
   const loadStats = useCallback(async () => {

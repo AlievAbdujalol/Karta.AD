@@ -28,13 +28,15 @@ describe('Utility Functions - Property Based Testing', () => {
   });
 
   it('Property 9: validatePhone validates phone number according to tajikistan format', () => {
+    const digits = (minLength, maxLength) =>
+      fc.array(fc.integer({ min: 0, max: 9 }), { minLength, maxLength }).map((a) => a.join(''));
     const validPhoneArb = fc.record({
       space1: fc.constantFrom('', ' '),
-      digits1: fc.stringOf(fc.integer({ min: 0, max: 9 }), { minLength: 2, maxLength: 2 }),
+      digits1: digits(2, 2),
       space2: fc.constantFrom('', ' '),
-      digits2: fc.stringOf(fc.integer({ min: 0, max: 9 }), { minLength: 3, maxLength: 3 }),
+      digits2: digits(3, 3),
       space3: fc.constantFrom('', ' '),
-      digits3: fc.stringOf(fc.integer({ min: 0, max: 9 }), { minLength: 4, maxLength: 4 }),
+      digits3: digits(4, 4),
     }).map(({ space1, digits1, space2, digits2, space3, digits3 }) => {
       return `+992${space1}${digits1}${space2}${digits2}${space3}${digits3}`;
     });

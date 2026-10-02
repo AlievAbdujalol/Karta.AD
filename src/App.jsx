@@ -27,6 +27,13 @@ const TruckSettings = lazy(() => import('./pages/TruckSettings'));
 const DeliveryTracking = lazy(() => import('./pages/DeliveryTracking'));
 const MerchantDashboard = lazy(() => import('./pages/MerchantDashboard'));
 const BusinessDashboard = lazy(() => import('./pages/BusinessDashboard'));
+const BusinessProducts = lazy(() => import('./pages/BusinessProducts'));
+const BusinessOrders = lazy(() => import('./pages/BusinessOrders'));
+const BusinessDelivery = lazy(() => import('./pages/BusinessDelivery'));
+const BusinessAnalytics = lazy(() => import('./pages/BusinessAnalytics'));
+const BusinessSettings = lazy(() => import('./pages/BusinessSettings'));
+const BusinessAI = lazy(() => import('./pages/BusinessAI'));
+const SiteView = lazy(() => import('./pages/SiteView'));
 
 import ErrorBoundary, { BusMapErrorFallback } from '@/components/ErrorBoundary';
 import { TripProvider } from '@/lib/TripContext';
@@ -72,6 +79,12 @@ const AuthenticatedApp = () => {
           <Route path="/taxi/history" element={<ErrorBoundary><TaxiHistory /></ErrorBoundary>} />
           <Route path="/taxi/finance" element={<ErrorBoundary><TaxiFinance /></ErrorBoundary>} />
           <Route path="/business" element={<ErrorBoundary><BusinessDashboard /></ErrorBoundary>} />
+          <Route path="/business/products" element={<ErrorBoundary><BusinessProducts /></ErrorBoundary>} />
+          <Route path="/business/orders" element={<ErrorBoundary><BusinessOrders /></ErrorBoundary>} />
+          <Route path="/business/delivery" element={<ErrorBoundary><BusinessDelivery /></ErrorBoundary>} />
+          <Route path="/business/analytics" element={<ErrorBoundary><BusinessAnalytics /></ErrorBoundary>} />
+          <Route path="/business/settings" element={<ErrorBoundary><BusinessSettings /></ErrorBoundary>} />
+          <Route path="/business/ai" element={<ErrorBoundary><BusinessAI /></ErrorBoundary>} />
           <Route path="/offline-maps" element={<ErrorBoundary><OfflineMaps /></ErrorBoundary>} />
           <Route path="/settings/navigator" element={<ErrorBoundary><NavigatorSettings /></ErrorBoundary>} />
           <Route path="/settings/vehicle" element={<ErrorBoundary><VehicleSettings /></ErrorBoundary>} />
@@ -121,6 +134,20 @@ function App() {
                       }
                     >
                       <MerchantDashboard />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/s/:id"
+                  element={
+                    <Suspense
+                      fallback={
+                        <div className="fixed inset-0 flex items-center justify-center">
+                          <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin" />
+                        </div>
+                      }
+                    >
+                      <SiteView />
                     </Suspense>
                   }
                 />

@@ -4,6 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapPin, Navigation, X } from 'lucide-react';
 import { useLanguage } from '@/lib/useLanguage';
+import { cartoRaster } from '@/lib/tiles';
 
 // Fix leaflet default icon
 // @ts-ignore
@@ -118,9 +119,10 @@ export default function MapLocationPicker({
 
       {/* Карта */}
       <div
-        className="rounded-xl overflow-hidden border-2 border-blue-100 shadow-sm cursor-crosshair"
+        className="map-picker rounded-xl overflow-hidden border-2 border-blue-100 shadow-sm cursor-crosshair"
         style={{ height }}
       >
+        <style>{`.map-picker .leaflet-control-attribution{font-size:8px !important;opacity:.55 !important;background:rgba(255,255,255,.6) !important;padding:0 4px !important;} .map-picker .leaflet-control-attribution a{color:#64748b !important;}`}</style>
         <MapContainer
           center={mapCenter}
           zoom={zoom}
@@ -128,7 +130,7 @@ export default function MapLocationPicker({
           zoomControl={true}
         >
           <TileLayer
-            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_2m2c_1_fd237f9c15572ee356a4aa42"
+            url={cartoRaster('rastertiles/voyager')}
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
           />
           <ClickHandler onPick={handlePick} />

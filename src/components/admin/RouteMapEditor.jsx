@@ -5,6 +5,7 @@ import { Route, City } from '@/api/entities';
 import { Save, Trash2, MapPin, Plus, X, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '@/lib/useLanguage';
+import { cartoRaster, withCartoKey } from '@/lib/tiles';
 import 'leaflet/dist/leaflet.css';
 
 delete L.Icon.Default.prototype._getIconUrl;
@@ -221,12 +222,12 @@ export default function RouteMapEditor() {
             attributionControl={false}
           >
             <TileLayer
-              url={satellite ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_2m2c_1_fd237f9c15572ee356a4aa42'}
+              url={satellite ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' : cartoRaster('rastertiles/voyager')}
               attribution={satellite ? '&copy; Esri' : '&copy; OpenStreetMap contributors &copy; CARTO'}
             />
             {satellite && (
               <TileLayer
-                url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
+                url={withCartoKey('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png')}
                 attribution='&copy; OpenStreetMap contributors &copy; CARTO'
                 opacity={1}
               />

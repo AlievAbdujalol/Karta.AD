@@ -58,6 +58,23 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState('stops');
   const [routingOpen, setRoutingOpen] = useState(false);
   const [placeCard, setPlaceCard] = useState(null);
+  const [shareTipHidden, setShareTipHidden] = useState(() => {
+    try { return localStorage.getItem('karta_sharetip_dismissed') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    const h = () => setShareTipHidden(true);
+    window.addEventListener('karta_sharetip', h);
+    const fly = (e) => {
+      if (e?.detail?.lat != null && e?.detail?.lng != null) {
+        setFlyTo({ lat: e.detail.lat, lng: e.detail.lng, zoom: e.detail.zoom || 16 });
+      }
+    };
+    window.addEventListener('karta_ai_flyto', fly);
+    return () => {
+      window.removeEventListener('karta_sharetip', h);
+      window.removeEventListener('karta_ai_flyto', fly);
+    };
+  }, []);
   const [shareSheet, setShareSheet] = useState(null);
   const [eventsOpen, setEventsOpen] = useState(false);
   const [tiltEnabled, setTiltEnabled] = useState(()=> { try{return localStorage.getItem('karta_tilt')==='1';}catch{return false;}});
@@ -397,16 +414,26 @@ export default function Home() {
       {eventsOpen && <MapEventsSheet center={eventPos || (eventLine[0] ? eventLine[0] : null) || liveCenter || mapCenter} eventLine={eventLine} roadDir={roadDir} onDirChange={setRoadDir} onClearLine={()=> setEventLine([])} onTypeChange={setEventType} onClose={()=>{setEventsOpen(false); setEventPos(null); setEventLine([]);}} onPickHint={eventPos || eventLine.length ? null : 'Тапните по карте, чтобы выбрать место'}/>}
       <BluetoothSheet onClose={()=>{}}/>
       {nav.isActive && <div className="absolute bottom-[204px] left-2 z-[550] opacity-90 hover:opacity-100 transition-opacity pointer-events-none"><MiniMap center={nav.userPosition||mapCenter} route={nav.routeData} userPos={nav.userPosition} heading={nav.userHeading}/></div>}
-      {nav.isActive && (
-        <div className="absolute top-[88px] left-2 right-2 sm:right-20 z-[550] pointer-events-auto">
-          <div className="bg-slate-900/90 backdrop-blur text-white rounded-xl px-3 py-2 flex items-center gap-2 shadow-lg border border-white/10 max-w-[280px]">
+      {nav.isActive && !shareTipHidden && (
+        <div className="absolute top-[150px] left-2 z-[550] pointer-events-auto">
+          <div className="bg-slate-900/90 backdrop-blur text-white rounded-xl pl-3 pr-1.5 py-1.5 flex items-center gap-2 shadow-lg border border-white/10 max-w-[250px]">
             <span className="text-[11px] leading-tight flex-1">Отправляйте друзьям свою геопозицию в реальном времени</span>
             <button onClick={()=>{ try{navigator.share?.({title:'Геопозиция', url: window.location.href});}catch{} }} className="text-emerald-400 text-[11px] font-bold whitespace-nowrap">Делиться</button>
+            <button
+              onClick={() => { try { localStorage.setItem('karta_sharetip_dismissed', '1'); } catch {} window.dispatchEvent(new Event('karta_sharetip')); }}
+              className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 flex items-center justify-center flex-shrink-0 text-[13px] leading-none"
+              title="Скрыть"
+            >
+              ×
+            </button>
           </div>
         </div>
       )}
       <button onClick={()=>{ try{ navigator.vibrate?.(50); }catch{} if(!eventsOpen){ setTimeout(()=> setEventsOpen(true), 70); setEventPos(null); } else setEventsOpen(false); }} className="absolute left-2 bottom-[160px] z-[500] w-9 h-9 rounded-2xl bg-white dark:bg-slate-900 border shadow flex items-center justify-center text-[10px] font-black">{eventsOpen?'×':'!'}</button>
-      <AiChat cityName={selectedCity?.name || selectedCity?.country || ''} />
+      <AiChat
+        cityName={selectedCity?.name || selectedCity?.country || ''}
+        mapContext={{ center: liveCenter || mapCenter, userPos: nav.userPosition, routesCount: routes.length }}
+      />
 
       {/* Group Route Panel */}
       {panelVisible && (
