@@ -50,12 +50,12 @@ export function detectCategory(text) {
 export async function searchNearbyCategory(text, center, radius = 3000) {
   const cat = detectCategory(text);
   if (!cat || !center || center.lat == null) return null;
-  const query = `[out:json][timeout:12];(${cat.clause}(around:${radius},${center.lat},${center.lng}););out body 5;`;
+  const query = `[out:json][timeout:10];(${cat.clause}(around:${radius},${center.lat},${center.lng}););out body 5;`;
   for (const base of OVERPASS_URLS) {
     try {
       const resp = await fetch(`${base}?data=${encodeURIComponent(query)}`, {
         headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(10000),
       });
       if (!resp.ok) continue;
       const data = await resp.json();

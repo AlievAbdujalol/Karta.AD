@@ -21,6 +21,24 @@ export function bearing(fromLat, fromLng, toLat, toLng) {
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 
+// Точка на расстоянии meters и азимуте bearingDeg от (lat, lng).
+// Нужна навигации: проверить, что «вперёд по курсу» на карте действительно сверху.
+export function destPoint(lat, lng, meters, bearingDeg) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const toDeg = (r) => (r * 180) / Math.PI;
+  const delta = meters / 6371008.8;
+  const theta = toRad(bearingDeg || 0);
+  const phi1 = toRad(lat);
+  const lambda1 = toRad(lng);
+  const sinPhi2 = Math.sin(phi1) * Math.cos(delta) + Math.cos(phi1) * Math.sin(delta) * Math.cos(theta);
+  const phi2 = Math.asin(Math.min(1, Math.max(-1, sinPhi2)));
+  const lambda2 = lambda1 + Math.atan2(
+    Math.sin(theta) * Math.sin(delta) * Math.cos(phi1),
+    Math.cos(delta) - Math.sin(phi1) * Math.sin(phi2)
+  );
+  return { lat: toDeg(phi2), lng: ((toDeg(lambda2) + 540) % 360) - 180 };
+}
+
 export function distToSegmentM(lat, lng, lat1, lng1, lat2, lng2) {
   const x = lng, y = lat, x1 = lng1, y1 = lat1, x2 = lng2, y2 = lat2;
   const cosLat = Math.cos((y * Math.PI) / 180);

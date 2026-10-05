@@ -88,6 +88,8 @@ export function NavigationProvider({ children }) {
   const [isRerouting, setIsRerouting] = useState(false);
   const [hasArrived, setHasArrived] = useState(false);
   const [snappedPosition, setSnappedPosition] = useState(null);
+  const [followingStep, setFollowingStep] = useState(null);
+  const [gpsAccuracy, setGpsAccuracy] = useState(null);
 
   const watchIdRef = useRef(null);
   const lastAnnounceRef = useRef(0);
@@ -204,7 +206,7 @@ export function NavigationProvider({ children }) {
     return len;
   }, []);
 
-  const processPosition = useCallback((lat, lng, heading, speed) => {
+  const processPosition = useCallback((lat, lng, heading, speed, accuracy = null) => {
     const hist = positionsRef.current.slice(-2);
     if (hist.length >= 2) {
       const avgLat = (hist[0].lat + hist[1].lat + lat) / 3;
@@ -228,6 +230,7 @@ export function NavigationProvider({ children }) {
     }
     setUserHeading(effectiveHeading || 0);
     setUserSpeed(speed || 0);
+    if (Number.isFinite(accuracy)) setGpsAccuracy(accuracy);
 
     if (isPausedRef.current) return;
 
@@ -307,6 +310,7 @@ export function NavigationProvider({ children }) {
         instruction: 'continue',
         modifier: '',
       });
+      setFollowingStep(null);
       return;
     }
 
@@ -315,6 +319,9 @@ export function NavigationProvider({ children }) {
 
     const step = steps[stepIdx];
     const nextStep = steps[stepIdx + 1];
+    setFollowingStep(nextStep
+      ? { instruction: nextStep.instruction || '', modifier: nextStep.modifier || '', name: nextStep.name || '' }
+      : null);
     const loc = step.start || [0, 0];
     const distToStep = Math.hypot(proj.snappedLat - loc[0], proj.snappedLng - loc[1]) * 111320;
 
@@ -418,8 +425,8 @@ export function NavigationProvider({ children }) {
     }
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
-        const { latitude, longitude, heading, speed } = pos.coords;
-        processPositionRef.current(latitude, longitude, heading, speed || 0);
+        const { latitude, longitude, heading, speed, accuracy } = pos.coords;
+        processPositionRef.current(latitude, longitude, heading, speed || 0, accuracy ?? null);
       },
       (err) => {
         if (err?.code === 1) toast.error('Разрешите доступ к геолокации — без неё навигация не следит за вами', { id: 'nav-geo-denied' });
@@ -628,6 +635,7 @@ export function NavigationProvider({ children }) {
     startTime, voiceEnabled, followUser,
     showSummary, summaryData, tripStats,
     routeProgress, isOffRoute, isRerouting, hasArrived, snappedPosition,
+    followingStep, gpsAccuracy,
     startNavigation, startNavigationWithFromTo, stopNavigation,
     togglePause, toggleVoice, toggleFollow,
     reroute, closeSummary,
@@ -639,6 +647,7 @@ export function NavigationProvider({ children }) {
     startTime, voiceEnabled, followUser,
     showSummary, summaryData, tripStats,
     routeProgress, isOffRoute, isRerouting, hasArrived, snappedPosition,
+    followingStep, gpsAccuracy,
     startNavigation, startNavigationWithFromTo, stopNavigation,
     togglePause, toggleVoice, toggleFollow,
     reroute, closeSummary,

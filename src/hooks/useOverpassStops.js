@@ -10,7 +10,29 @@ const LS_KEY = 'osm_stops_cache_v1';
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 function buildQuery(south, west, north, east) {
-  return `[out:json][timeout:12];node["highway"="bus_stop"](${south},${west},${north},${east});out body;`;
+  // out tags вместо out body — метаданные не нужны, ответ легче и быстрее
+  return `[out:json][timeout:10];node["highway"="bus_stop"](${south},${west},${north},${east});out tags;`;
+}
+
+// Половина bbox максимум ~9 км — иначе запрос тяжёлый и зеркала отдают 504
+const MAX_HALF_DEG = 0.08;
+
+function clampBounds(bounds) {
+  const c = bounds.getCenter();
+  const sw = bounds.getSouthWest();
+  const ne = bounds.getNorthEast();
+  const halfLat = Math.min((ne.lat - sw.lat) / 2, MAX_HALF_DEG);
+  const halfLng = Math.min((ne.lng - sw.lng) / 2, MAX_HALF_DEG);
+  return {
+    south: c.lat - halfLat,
+    west: c.lng - halfLng,
+    north: c.lat + halfLat,
+    east: c.lng + halfLng,
+  };
+}
+
+function tileKey(b) {
+  return `${b.south.toFixed(2)}_${b.west.toFixed(2)}_${b.north.toFixed(2)}_${b.east.toFixed(2)}`;
 }
 
 function loadCache() {
@@ -20,7 +42,7 @@ function saveCache(cache) {
   try { localStorage.setItem(LS_KEY, JSON.stringify(cache)); } catch {}
 }
 
-export function useOverpassStops() {
+export function useOverpassStops({ enabled = true } = {}) {
   const [osmStops, setOsmStops] = useState(() => {
     const c = loadCache();
     const all = [];
@@ -43,7 +65,8 @@ export function useOverpassStops() {
   const FAILED_TTL = 5 * 60 * 1000; // не трогаем упавший тайл 5 минут
   const FAIL_COOLDOWN = 30000; // после тотального провала — тишина 30с
 
-  const fetchStops = useCallback(async (bounds, key, attempt = 0) => {
+  const fetchStops = useCallback(async (bounds, key) => {
+    if (!enabled) return;
     if (fetchingRef.current) return;
     if (fetchedKeys.current.has(key)) return;
     const failedAt = failedKeys.current.get(key);
@@ -64,19 +87,16 @@ export function useOverpassStops() {
     fetchingRef.current = true;
     lastFetchRef.current = Date.now();
     try {
-      const sw = bounds.getSouthWest();
-      const ne = bounds.getNorthEast();
-      const query = buildQuery(sw.lat, sw.lng, ne.lat, ne.lng);
+      const b = clampBounds(bounds);
+      const query = buildQuery(b.south, b.west, b.north, b.east);
       let data = null;
-      let lastStatus = 0;
       for (const url of OVERPASS_URLS) {
         try {
           const resp = await fetch(`${url}?data=${encodeURIComponent(query)}`, {
             method: 'GET',
             headers: { 'Accept': 'application/json' },
-            signal: AbortSignal.timeout(15000),
+            signal: AbortSignal.timeout(10000),
           });
-          lastStatus = resp.status;
           if (resp.status === 429 || resp.status === 406) {
             cooldownUntilRef.current = Date.now() + 60000;
             fetchedKeys.current.add(key);
@@ -121,21 +141,19 @@ export function useOverpassStops() {
     } finally {
       fetchingRef.current = false;
     }
-  }, [map]);
+  }, [map, enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     const handleMoveEnd = () => {
       if (map.getZoom() < 12) return;
-      const bounds = map.getBounds();
-      const sw = bounds.getSouthWest();
-      const ne = bounds.getNorthEast();
-      const key = `${sw.lat.toFixed(2)}_${sw.lng.toFixed(2)}_${ne.lat.toFixed(2)}_${ne.lng.toFixed(2)}_z${map.getZoom()}`;
+      const key = `${tileKey(clampBounds(map.getBounds()))}_z${map.getZoom()}`;
       if (fetchedKeys.current.has(key)) return;
       const failedAt = failedKeys.current.get(key);
       if (failedAt && Date.now() - failedAt < FAILED_TTL) return;
       if (Date.now() < cooldownUntilRef.current) return;
       clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => fetchStops(bounds, key), 2200);
+      timerRef.current = setTimeout(() => fetchStops(map.getBounds(), key), 2200);
     };
     map.on('moveend', handleMoveEnd);
     timerRef.current = setTimeout(handleMoveEnd, 1400);

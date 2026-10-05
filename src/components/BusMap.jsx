@@ -1,6 +1,7 @@
 import 'leaflet/dist/leaflet.css';
 import { getNextStopEta } from '@/utils/eta';
 import L from 'leaflet';
+import '@/lib/leafletRotate'; // плагин поворота карты — глобальные патчи должны примениться до создания карты
 import { useEffect, useMemo, useRef, useState, useCallback, Fragment } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, ScaleControl, useMap, useMapEvents } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
@@ -14,7 +15,9 @@ import StopInfoPopup, { collectUniqueStops } from './StopInfoPopup';
 import { useOverpassStops } from '@/hooks/useOverpassStops';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useNavigation } from '@/lib/NavigationContext';
-import { splitRouteByProgress } from '@/lib/geo';
+import { readNavSettings, persistNavSettings, customCursorHtml, useNavCursor, applyNightMode } from '@/lib/navCursor';
+import { useTheme } from 'next-themes';
+import { splitRouteByProgress, destPoint } from '@/lib/geo';
 import { supabase } from '@/api/supabase';
 import { toast } from 'sonner';
 import { Heart, X, Crosshair, MapPin, Loader2, Check } from 'lucide-react';
@@ -106,6 +109,7 @@ function MapController({ center, mapRef }) {
   const lng = center?.[1];
   useEffect(() => {
     mapRef.current = map;
+    if (import.meta.env.DEV && typeof window !== 'undefined') window.__kartaMap = map;
     if (lat && lng) {
       // двигаем карту только если центр реально ушёл — иначе setView плодит moveend-циклы
       try {
@@ -159,7 +163,9 @@ function FlyToHandler({ flyTo, onDone }) {
 function UserLocationMarker({ transportMode }) {
   const [pos, setPos] = useState(null);
   const [accuracy, setAccuracy] = useState(0);
+  const [heading, setHeading] = useState(null);
   const map = useMap();
+  const cursor = useNavCursor();
 
   useEffect(() => {
     if (!navigator.geolocation) return;
@@ -169,6 +175,8 @@ function UserLocationMarker({ transportMode }) {
         try{ const s=JSON.parse(localStorage.getItem('karta_vehicle')||'{}'); if(s.use_sensors===false && p.coords.accuracy>80) return; }catch{}
         setPos([p.coords.latitude, p.coords.longitude]);
         setAccuracy(p.coords.accuracy);
+        // курс появляется только в движении — запоминаем последний, чтобы стрелка не дёргалась на месте
+        if (Number.isFinite(p.coords.heading) && (p.coords.speed ?? 0) > 0.7) setHeading(p.coords.heading);
       },
       () => {},
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
@@ -179,14 +187,27 @@ function UserLocationMarker({ transportMode }) {
   if (!pos) return null;
 
   const colorByMode = transportMode==='truck'?'#78350f': transportMode==='scooter'?'#0ea5e9': transportMode==='cycling'?'#059669': transportMode==='walking'?'#7c3aed': '#3b82f6';
+  // выбранный на «Кастомизации навигатора» курсор (эмодзи/аватарка);
+  // классика — прежняя стрелка
+  const custom = customCursorHtml({ style: cursor.style, photoUrl: cursor.photo, rot: heading || 0, color: colorByMode, showPointer: heading != null });
   const userIcon = L.divIcon({
-    html: `<div style="position:relative;width:20px;height:20px;">
-      <div style="position:absolute;inset:0;border-radius:50%;background:${colorByMode}22;border:2px solid ${colorByMode};box-shadow:0 0 12px ${colorByMode}66;"></div>
-      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:8px;height:8px;border-radius:50%;background:${colorByMode};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.3);"></div>
-    </div>`,
+    html: custom ? custom.html
+      : heading != null
+      ? `<div style="position:relative;width:40px;height:40px;">
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transform:rotate(${heading}deg);transition:transform 0.2s linear;">
+            <svg width="34" height="34" viewBox="0 0 24 24" style="filter:drop-shadow(0 2px 6px rgba(37,99,235,0.55));">
+              <path d="M12 2 L20 20 L12 15.5 L4 20 Z" fill="${colorByMode}" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div style="position:absolute;inset:-6px;border-radius:50%;background:radial-gradient(circle, rgba(37,99,235,0.22) 0%, rgba(37,99,235,0) 70%);"></div>
+        </div>`
+      : `<div style="position:relative;width:20px;height:20px;">
+          <div style="position:absolute;inset:0;border-radius:50%;background:${colorByMode}22;border:2px solid ${colorByMode};box-shadow:0 0 12px ${colorByMode}66;"></div>
+          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:8px;height:8px;border-radius:50%;background:${colorByMode};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.3);"></div>
+        </div>`,
     className: '',
-    iconSize: [20, 20],
-    iconAnchor: [10, 10],
+    iconSize: custom ? [custom.size, custom.size] : [40, 40],
+    iconAnchor: custom ? [custom.size / 2, custom.size / 2] : [20, 20],
   });
 
   return (
@@ -205,9 +226,39 @@ function UserLocationMarker({ transportMode }) {
 }
 
 function NavigationUserArrow({ position, heading }) {
+  const map = useMap();
+  const [rot, setRot] = useState(0);
+  const cursor = useNavCursor();
+
+  // Стрелка должна смотреть туда, куда едешь, уже С УЧЁТОМ поворота карты.
+  // Измеряем фактическое экранные направление точки «по курсу» и пересчитываем
+  // при каждом повороте карты (событие rotate) и при смене курса.
+  useEffect(() => {
+    const calc = () => {
+      let r = heading || 0;
+      try {
+        if (position) {
+          const p0 = map.latLngToContainerPoint(position);
+          const ahead = destPoint(position[0], position[1], 40, heading || 0);
+          const p1 = map.latLngToContainerPoint(ahead);
+          const dx = p1.x - p0.x;
+          const dy = p1.y - p0.y;
+          if (Math.hypot(dx, dy) > 2) r = (Math.atan2(dx, -dy) * 180) / Math.PI;
+        }
+      } catch {}
+      setRot(r);
+    };
+    calc();
+    map.on('rotate', calc);
+    return () => { map.off('rotate', calc); };
+  }, [map, position, heading]);
+
+  // выбранный курсор (страница «Кастомизация навигатора»); классика — прежняя стрелка
+  const custom = customCursorHtml({ style: cursor.style, photoUrl: cursor.photo, rot, color: '#2563EB', showPointer: true });
   const icon = L.divIcon({
-    html: `<div style="position:relative;width:46px;height:46px;">
-      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transform:rotate(${heading || 0}deg);transition:transform 0.15s linear;">
+    html: custom ? custom.html
+      : `<div style="position:relative;width:46px;height:46px;">
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transform:rotate(${rot}deg);transition:transform 0.15s linear;">
         <div style="position:relative;width:36px;height:36px;">
           <svg width="36" height="36" viewBox="0 0 24 24" style="filter:drop-shadow(0 2px 6px rgba(37,99,235,0.6));">
             <path d="M12 2 L20 20 L12 15.5 L4 20 Z" fill="#2563EB" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/>
@@ -218,8 +269,8 @@ function NavigationUserArrow({ position, heading }) {
       <div style="position:absolute;inset:-6px;border-radius:50%;background:radial-gradient(circle, rgba(37,99,235,0.25) 0%, rgba(37,99,235,0) 70%);"></div>
     </div>`,
     className: '',
-    iconSize: [46, 46],
-    iconAnchor: [23, 23],
+    iconSize: custom ? [custom.size, custom.size] : [46, 46],
+    iconAnchor: custom ? [custom.size / 2, custom.size / 2] : [23, 23],
   });
 
   return <Marker position={position} icon={icon} zIndexOffset={1000} interactive={false} />;
@@ -554,29 +605,78 @@ async function snapToRoad(lat, lng) {
   return { lat, lng };
 }
 
-function NavigationCamera({ followUser, userPosition, userHeading, routeData }) {
+function NavigationCamera({ followUser, userPosition, userHeading = 0, autoCenter = true, routeData }) {
   const map = useMap();
-  const headingSmoothRef = useRef(0);
 
+  // выход из навигации — возвращаем север наверх
+  useEffect(() => () => {
+    try { if (map._rotate) map.setBearing(0); } catch {}
+  }, [map]);
+
+  // Камера «сзади»: карта поворачивается за курсом, пользователь — в нижней трети экрана.
+  // Поворот даёт плагин leaflet-rotate (map.setBearing), см. @/lib/leafletRotate.
   useEffect(() => {
     if (!followUser || !userPosition) return;
-    const h = userHeading || 0;
-    const prev = headingSmoothRef.current;
-    let delta = h - prev;
-    if (delta > 180) delta -= 360;
-    if (delta < -180) delta += 360;
-    headingSmoothRef.current = prev + delta * 0.3;
-
     try {
-      map.setBearing(0);
-      map.setView(userPosition, Math.max(map.getZoom(), 17), { animate: true, duration: 0.3 });
-    } catch {}
-  }, [userPosition, followUser, userHeading, map]);
+      // Масштаб: базовый 100 м (зум 16), авто-зум по скорости убран по требованию.
+      // «Авто-масштаб» выключен — камера не трогает зум вовсе; недавнее
+      // срабатывание karta_autoscale (приближение к манёвру, зум 16/18)
+      // держим в покое 20 с, затем возвращаем 100 м.
+      let zoom = map.getZoom();
+      if (readNavSettings().auto_scale !== false && Date.now() - (window.__karta_scale_at || 0) > 20000) {
+        zoom = autoCenter ? 16 : Math.max(map.getZoom(), 14);
+      }
+      if (zoom !== map.getZoom()) map.setZoom(zoom, { animate: false });
+      const size = map.getSize();
 
+      // 1) поворот карты за курсом
+      if (map._rotate) {
+        const heading = ((userHeading % 360) + 360) % 360;
+        // Измерено на leaflet-rotate@0.2.8: направление (360 − bearing) смотрит вверх,
+        // поэтому для курса heading ставим bearing = 360 − heading.
+        const intended = (360 - heading) % 360;
+        const cur = ((map.getBearing() % 360) + 360) % 360;
+        const diff = Math.abs(((cur - intended + 540) % 360) - 180);
+        if (diff > 0.4) {
+          map.setBearing(intended);
+          // самопроверка: точка «прямо по курсу» должна оказаться выше пользователя.
+          // Если знак поворота вдруг окажется другим — ставим обратный.
+          try {
+            const p0 = map.latLngToContainerPoint(userPosition);
+            const ahead = destPoint(userPosition[0], userPosition[1], 40, heading);
+            const p1 = map.latLngToContainerPoint(ahead);
+            const looksUp = p1.y < p0.y && Math.abs(p1.x - p0.x) <= Math.abs(p1.y - p0.y);
+            if (!looksUp) map.setBearing(heading);
+          } catch {}
+        }
+      }
+
+      // 2) пользователь в нижней трети экрана. Не гадаем со знаками поворота —
+      //    измеряем реальное отображение «координаты → экран» (два тест-вектора)
+      //    и решаем R(v) = d, где d — нужный сдвиг контента.
+      const dY = Math.round(size.y * 0.22);
+      const pUser = map.project(userPosition, zoom);
+      const s0 = map.latLngToContainerPoint(userPosition);
+      const s1 = map.latLngToContainerPoint(map.unproject([pUser.x + 100, pUser.y], zoom));
+      const s2 = map.latLngToContainerPoint(map.unproject([pUser.x, pUser.y + 100], zoom));
+      const e1x = (s1.x - s0.x) / 100;
+      const e1y = (s1.y - s0.y) / 100;
+      const e2x = (s2.x - s0.x) / 100;
+      const e2y = (s2.y - s0.y) / 100;
+      const det = e1x * e2y - e2x * e1y;
+      // v = R⁻¹ · (0, dY)
+      const vx = Math.abs(det) > 1e-6 ? (-e2x * dY) / det : 0;
+      const vy = Math.abs(det) > 1e-6 ? (e1x * dY) / det : dY;
+      const X = map.unproject([pUser.x - vx, pUser.y - vy], zoom);
+      map.setView(X, zoom, { animate: true, duration: 0.4, easeLinearity: 0.6 });
+    } catch {}
+  }, [userPosition, followUser, userHeading, autoCenter, map]);
+
+  // обзор всего маршрута (слежение выключено) — север сверху
   useEffect(() => {
     if (followUser || !routeData?.geometry?.length) return;
     try {
-      map.setBearing(0);
+      if (map._rotate) map.setBearing(0);
       const b = L.latLngBounds(routeData.geometry);
       map.fitBounds(b, { paddingTopLeft: [50, 130], paddingBottomRight: [50, 190], animate: true });
     } catch {}
@@ -603,7 +703,8 @@ function distM2(lat1, lng1, lat2, lng2) {
 }
 
 function OsmStopMarkers({ routes, routeGeometries, routingOpen, onPickResult }) {
-  const osmStops = useOverpassStops();
+  const { isActive: navActive, followUser } = useNavigation();
+  const osmStops = useOverpassStops({ enabled: !(navActive && followUser) });
   const map = useMap();
   const [zoom, setZoom] = useState(map.getZoom());
   useEffect(() => {
@@ -674,7 +775,12 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
     if (!CARTO_KEY) return fallback();
     return 0;
   });
-  const [showTraffic, setShowTraffic] = useState(true); // Default to true
+  const [showTraffic, setShowTraffic] = useState(() => readNavSettings().show_traffic !== false); // из настроек навигатора
+  const toggleTraffic = () => {
+    const v = !showTraffic;
+    setShowTraffic(v);
+    persistNavSettings({ show_traffic: v }, { silent: true });
+  };
   const [showTransport, setShowTransport] = useState(false);
   const [trafficData, setTrafficData] = useState([]);
 
@@ -710,6 +816,20 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
   const { user } = useCurrentUser();
   const mapRef = useRef(null);
   const nav = useNavigation();
+  // Кнопка «Маршрут» в карточки места (Home держит meta в routeMeta): открываем панель
+  // и отдаём точку «куда». «Откуда» подставится геолокацией, если позиции ещё нет.
+  useEffect(() => {
+    if (!routeMeta?.to) return;
+    const to = routeMeta.to;
+    const from = Array.isArray(nav.userPosition) && nav.userPosition[0] != null
+      ? { lat: nav.userPosition[0], lng: nav.userPosition[1], name: 'Моя позиция', shortName: 'Моя позиция' }
+      : null;
+    setAiRouteReq({ from, to, _nonce: Date.now() });
+    if (!routingOpenRef.current && onRoutingOpen) onRoutingOpen();
+    routingOpenRef.current = true;
+    setRoutingOpen(true);
+    if (onRoutingStateChange) onRoutingStateChange(true);
+  }, [routeMeta?.to]);
   function HeatmapLayer({ points }) {
   const map = useMap();
   useEffect(() => {
@@ -732,13 +852,9 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       setTimeout(()=> mapRef.current?.invalidateSize(), 220);
     }
   },[]);
-  // auto-scale based on speed
-  useEffect(()=>{
-    if(!nav.isActive || !nav.userSpeed || !autoCenter) return;
-    const spd = nav.userSpeed*3.6;
-    const targetZoom = spd>50?14: spd>30?15: spd>10?16:17;
-    if(mapRef.current && Math.abs(mapRef.current.getZoom()-targetZoom)>0.6) mapRef.current.setZoom(targetZoom, {animate:true});
-  },[nav.userSpeed, nav.isActive, autoCenter]);
+  // зумом в навигации владеет только NavigationCamera (базовый масштаб 100 м,
+  // плюс karta_autoscale при приближении к манёвру) — здесь второй владелец
+  // зума был и они конфликтовали
   // PiP: enter when app hidden — показывает манёвр/ETA
   useEffect(()=>{
     const h=()=>{ if(document.visibilityState==='hidden' && nav.isActive && JSON.parse(localStorage.getItem('karta_nav_settings')||'{}')?.pip_enabled && document.pictureInPictureEnabled && !document.pictureInPictureElement){
@@ -747,17 +863,19 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
     document.addEventListener('visibilitychange', h); return ()=>document.removeEventListener('visibilitychange', h);
   },[nav.isActive]);
   useEffect(()=>{
-    const onScale=(e)=>{ if(mapRef.current) mapRef.current.setZoom(e.detail, {animate:true}); };
+    // метка времени: камера навигации даёт karta_autoscale поработать 20 с
+    const onScale=(e)=>{ window.__karta_scale_at = Date.now(); if(mapRef.current) mapRef.current.setZoom(e.detail, {animate:true}); };
     window.addEventListener('karta_autoscale', onScale); return ()=>window.removeEventListener('karta_autoscale', onScale);
   },[]);
 
   const [mapEvents, setMapEvents] = useState([]);
   useEffect(()=>{ const load=()=> supabase.from('map_events').select('*').eq('is_active',true).limit(100).then(({data})=>setMapEvents(data||[])); load(); const ch=supabase.channel('map_events_bus').on('postgres_changes',{event:'*',schema:'public',table:'map_events'}, load).subscribe(); return ()=>supabase.removeChannel(ch); },[]);
-  // night mode auto 18-06
+  // ночной режим из настроек навигатора: on/off/system + auto по часам (18–06)
+  const { setTheme } = useTheme();
   useEffect(()=>{
-    const check=()=>{ try{ const s=JSON.parse(localStorage.getItem('karta_nav_settings')||'{}'); if(s.night_mode==='auto'){ const h=new Date().getHours(); document.documentElement.classList.toggle('dark', h>=18||h<6);} }catch{} };
+    const check = () => applyNightMode(readNavSettings().night_mode, setTheme);
     check(); const iv=setInterval(check, 60000); return ()=>clearInterval(iv);
-  },[]);
+  },[setTheme]);
   useEffect(() => {
     try { localStorage.setItem(TILE_KEY, String(tileIndex)); } catch {}
   }, [tileIndex]);
@@ -1075,6 +1193,8 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       zoom={13}
       style={{ height: '100%', width: '100%' }}
       zoomControl={false}
+      rotate={true}
+      bearing={0}
     >
       <TileLayer
         attribution=""
@@ -1093,7 +1213,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
       <FlyToHandler flyTo={flyTo} onDone={onFlyDone} />
       <ScaleControl position="bottomleft" imperial={false} metric={true} />
-      {!mapPickTarget && <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={routingOpen} onFinderToggle={handleFinderToggle} onShareTrip={onShareTrip} rightOffset={routingOpen ? 400 : panelVisible ? 360 : 0} isNavigating={nav.isActive} onLocate={onLocate} autoCenter={autoCenter} onToggleAutoCenter={()=>{ const v=!autoCenter; window.dispatchEvent(new CustomEvent('karta_autocenter',{detail:v})); }} overviewActive={!nav.followUser} onToggleOverview={()=>nav.toggleFollow()} showTraffic={showTraffic} onToggleTraffic={()=>setShowTraffic(prev=>!prev)} showTransport={showTransport} onToggleTransport={()=>setShowTransport(prev=>!prev)} />}
+      {!mapPickTarget && <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={routingOpen} onFinderToggle={handleFinderToggle} onShareTrip={onShareTrip} rightOffset={routingOpen ? 400 : panelVisible ? 360 : 0} isNavigating={nav.isActive} onLocate={onLocate} autoCenter={autoCenter} onToggleAutoCenter={()=>{ const v=!autoCenter; window.dispatchEvent(new CustomEvent('karta_autocenter',{detail:v})); }} overviewActive={!nav.followUser} onToggleOverview={()=>nav.toggleFollow()} showTraffic={showTraffic} onToggleTraffic={toggleTraffic} showTransport={showTransport} onToggleTransport={()=>setShowTransport(prev=>!prev)} />}
 
       {showTraffic && (
         <TileLayer
@@ -1374,7 +1494,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       <BusinessMarkers />
 
       {/* Navigation camera follow + arrow */}
-      {nav.isActive && <NavigationCamera followUser={nav.followUser} userPosition={nav.userPosition} userHeading={nav.userHeading} routeData={nav.routeData} />}
+      {nav.isActive && <NavigationCamera followUser={nav.followUser} userPosition={nav.userPosition} userHeading={nav.userHeading} autoCenter={autoCenter} routeData={nav.routeData} />}
 
       {/* Group route members — улучшенные маркеры с статусом и направлением */}
       {groupRouteMembers.filter(m => m.lat && m.lng).map((member) => {

@@ -1,19 +1,10 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Check, Download, Volume2, Map, Moon, PictureInPicture } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useTheme } from 'next-themes';
 import { supabase } from '@/api/supabase';
 import { toast } from 'sonner';
-
-const AVAILABLE = [
-  { id:'kamaz', label:'KAMAZ', icon:'🚚' },
-  { id:'love_car', label:'Машина любви', icon:'❤️' },
-  { id:'blin', label:'Блин', icon:'🥞' },
-  { id:'kabrik', label:'Кабрик с Патриков', icon:'🌈', rainbow:true },
-  { id:'vezdehod', label:'Вездеход', icon:'🚙', rainbow:true, hasIcon:true },
-  { id:'sportcar', label:'Спорткар', icon:'🏎️', rainbow:true },
-  { id:'ghost', label:'Привидение', icon:'👻' },
-  { id:'monster', label:'Монстр-трак', icon:'🚜' },
-];
+import { AVAILABLE, readNavSettings, persistNavSettings, applyNightMode } from '@/lib/navCursor';
 
 // Выбор конкретного голоса из установленных в устройстве + подсказка, если голоса под язык нет
 function VoiceSettings({ s, save }){
@@ -75,21 +66,40 @@ function VoiceSettings({ s, save }){
 
 export default function NavigatorSettings(){
   const navigate = useNavigate();
+  const { setTheme } = useTheme();
   const [tab, setTab] = useState('cursors');
-  const [s, setS] = useState(()=>{ try{ return { voice_enabled:true, voice_language:'ru', voice_volume:0.9, cursor_style:'classic', night_mode:'auto', pip_enabled:false, auto_scale:true, show_traffic:true, speed_alert:true, ...JSON.parse(localStorage.getItem('karta_nav_settings')||'{}') }; }catch{ return { voice_enabled:true, voice_language:'ru', voice_volume:0.9, cursor_style:'classic', night_mode:'auto', pip_enabled:false, auto_scale:true, show_traffic:true, speed_alert:true }; } });
+  const [s, setS] = useState(readNavSettings);
   const [profilePhoto, setProfilePhoto] = useState(null);
 
-  useEffect(()=>{ supabase.auth.getUser().then(({data:{user}})=>{ if(!user) return; supabase.from('profiles').select('photo_url').eq('id', user.id).maybeSingle().then(({data})=> setProfilePhoto(data?.photo_url)).catch(()=>{}); supabase.from('navigation_settings').select('*').eq('user_id',user.id).maybeSingle().then(({data})=>{ if(data){ setS(data); try{ localStorage.setItem('karta_nav_settings', JSON.stringify(data)); }catch{} } }).catch(()=>{}); }).catch(()=>{}); },[]);
+  useEffect(()=>{
+    supabase.auth.getUser().then(({data:{user}})=>{
+      if(!user) return;
+      supabase.from('profiles').select('photo_url').eq('id', user.id).maybeSingle()
+        .then(({data})=> setProfilePhoto(data?.photo_url)).catch(()=>{});
+      supabase.from('navigation_settings').select('*').eq('user_id',user.id).maybeSingle()
+        .then(({data})=>{
+          if(!data) return;
+          // локальная копия новее (серверный сейв не прошёл) — не затираем её
+          const localAt = Number(localStorage.getItem('karta_nav_settings_at') || 0);
+          const serverAt = Date.parse(data.updated_at || '') || 0;
+          if(serverAt < localAt) return;
+          setS(prev => ({ ...prev, ...data }));
+          try{
+            localStorage.setItem('karta_nav_settings', JSON.stringify({ ...readNavSettings(), ...data }));
+            localStorage.setItem('karta_nav_settings_at', String(serverAt));
+          }catch{}
+        }).catch(()=>{});
+    }).catch(()=>{});
+  },[]);
+
+  // применяем ночной режим при открытии страницы (on/off/system/auto)
+  useEffect(()=>{ applyNightMode(readNavSettings().night_mode, setTheme); },[setTheme]);
 
   // локально — сразу и всегда; на сервер — по возможности (иначе без сети настройки «не работают»)
-  const save = async (patch)=>{
-    const ns={...s,...patch}; setS(ns);
-    try{ localStorage.setItem('karta_nav_settings', JSON.stringify(ns)); }catch{}
-    try{
-      const { data:{user}} = await supabase.auth.getUser(); if(!user) return;
-      const { error } = await supabase.from('navigation_settings').upsert({ user_id:user.id, ...ns, updated_at:new Date().toISOString() }, {onConflict:'user_id'});
-      if(error) toast.error(error.message); else toast.success('Сохранено');
-    }catch{ /* офлайн — локальная копия уже сохранена */ }
+  const save = (patch)=>{
+    setS(prev => ({ ...prev, ...patch }));
+    if('night_mode' in patch) applyNightMode(patch.night_mode, setTheme);
+    persistNavSettings(patch);
   };
 
   return (
@@ -117,28 +127,45 @@ export default function NavigatorSettings(){
             <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">Настраивайте курсор под себя — выбирайте тип навигатора и анимацию движения</p>
 
             <div className="mt-3 bg-white dark:bg-slate-900 rounded-[14px] overflow-hidden shadow-sm border border-slate-100 dark:border-slate-800">
-              {/* classic */}
-              <div className="flex items-center gap-3 px-4 py-4">
+              {/* classic — раньше выбрать обратно было нельзя, строка вообще не реагировала */}
+              <div
+                role="button"
+                tabIndex={0}
+                aria-pressed={s.cursor_style==='classic'}
+                onClick={()=>save({cursor_style:'classic'})}
+                onKeyDown={e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); save({cursor_style:'classic'}); } }}
+                className={`flex items-center gap-3 px-4 py-4 cursor-pointer transition-colors ${s.cursor_style==='classic' ? 'bg-emerald-50/60 dark:bg-emerald-500/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}
+              >
                 <div className="w-9 h-9 flex items-center justify-center">
                   <span className="text-[26px]">🔷</span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[14px] font-semibold text-slate-900 dark:text-white leading-none">Классический курсор</p>
                   <p className="text-[12px] text-slate-500 dark:text-slate-400">Для всех навигаторов</p>
-                  <button onClick={()=> toast.info('Настройка курсора скоро')} className="text-[12px] font-semibold text-[#0a7a3a] dark:text-emerald-400 mt-1">Настроить курсор</button>
+                  <button onClick={(e)=>{ e.stopPropagation(); toast.info('Настройка курсора скоро'); }} className="text-[12px] font-semibold text-[#0a7a3a] dark:text-emerald-400 mt-1">Настроить курсор</button>
                 </div>
-                {s.cursor_style==='classic' && <Check size={20} className="text-[#0a7a3a]" strokeWidth={2.5} />}
+                {s.cursor_style==='classic'
+                  ? <Check size={20} className="text-[#0a7a3a]" strokeWidth={2.5} />
+                  : <span className="w-7 h-7 flex items-center justify-center"><span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600" /></span>}
               </div>
               <div className="h-[1px] bg-slate-100 dark:bg-slate-800 mx-4" />
-              {/* photo profile */}
-              <div className="flex items-center gap-3 px-4 py-4">
+              {/* photo profile — клик по всей строке */}
+              <div
+                role="button"
+                tabIndex={0}
+                aria-pressed={s.cursor_style==='photo'}
+                onClick={()=>save({cursor_style:'photo'})}
+                onKeyDown={e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); save({cursor_style:'photo'}); } }}
+                className={`flex items-center gap-3 px-4 py-4 cursor-pointer transition-colors ${s.cursor_style==='photo' ? 'bg-emerald-50/60 dark:bg-emerald-500/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}
+              >
                 <img src={profilePhoto || `https://i.pravatar.cc/100?img=5`} alt="" className="w-9 h-9 rounded-full object-cover" />
                 <div className="flex-1 min-w-0">
                   <p className="text-[14px] font-semibold text-slate-900 dark:text-white">Фото профиля</p>
                   <p className="text-[12px] text-slate-500 dark:text-slate-400 leading-tight">Заменить курсор на аватарку и эффекты из «Друзей на карте»</p>
                 </div>
-                {s.cursor_style==='photo' && <Check size={20} className="text-[#0a7a3a]" strokeWidth={2.5} />}
-                {s.cursor_style!=='photo' && <button onClick={()=>save({cursor_style:'photo'})} className="w-7 h-7 flex items-center justify-center"><span className="w-2 h-2 rounded-full bg-slate-300"/></button>}
+                {s.cursor_style==='photo'
+                  ? <Check size={20} className="text-[#0a7a3a]" strokeWidth={2.5} />
+                  : <span className="w-7 h-7 flex items-center justify-center"><span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600" /></span>}
               </div>
             </div>
           </div>

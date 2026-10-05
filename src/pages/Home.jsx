@@ -29,7 +29,6 @@ import BluetoothSheet from '@/components/BluetoothSheet';
 import MiniMap from '@/components/MiniMap';
 import AiChat from '@/components/AiChat';
 import AlertBanner from '@/components/AlertBanner';
-import ConnectivityIndicator from '@/components/ConnectivityIndicator';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 
 export default function Home() {
@@ -361,7 +360,6 @@ export default function Home() {
   return (
     <div className="relative w-full h-full bg-slate-50 dark:bg-slate-950 overflow-hidden select-none">
       <AlertBanner />
-      <ConnectivityIndicator />
       <div className="absolute inset-0 w-full h-full z-0">
         <ErrorBoundary fallback={(error) => <BusMapErrorFallback error={error} />}>
           <BusMap vehicles={vehicles} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} flyTo={flyTo} onFlyDone={() => setFlyTo(null)} routes={routes} onRoutingOpen={() => setSheetState('collapsed')} onRoutingStateChange={(open, meta)=>{setRoutingOpen(open); if(meta) setRouteMeta(meta);}} contactLocations={contactLocations} groupRouteMembers={onlineMembers} onShareTrip={handleShareTrip} groupRoute={groupRoute} panelVisible={panelVisible} onLocate={handleLocateUser} tiltEnabled={tiltEnabled} autoCenter={autoCenter} routeMeta={routeMeta} onPlaceSelect={setPlaceCard} onCenterChange={setLiveCenter} hideEvents={eventsOpen} onMapClick={eventsOpen ? (latlng)=> {
@@ -435,7 +433,7 @@ export default function Home() {
       {shareSheet && <ShareRouteSheet from={shareSheet.from} to={shareSheet.to} route={shareSheet.route} onClose={()=>setShareSheet(null)}/>}
       {eventsOpen && <MapEventsSheet center={eventPos || (eventLine[0] ? eventLine[0] : null) || liveCenter || mapCenter} eventLine={eventLine} roadDir={roadDir} onDirChange={setRoadDir} onClearLine={()=> setEventLine([])} onTypeChange={setEventType} onClose={()=>{setEventsOpen(false); setEventPos(null); setEventLine([]);}} onPickHint={eventPos || eventLine.length ? null : 'Тапните по карте, чтобы выбрать место'}/>}
       <BluetoothSheet onClose={()=>{}}/>
-      {nav.isActive && <div className="absolute bottom-[204px] left-2 z-[550] opacity-90 hover:opacity-100 transition-opacity pointer-events-none"><MiniMap center={nav.userPosition||mapCenter} route={nav.routeData} userPos={nav.userPosition} heading={nav.userHeading}/></div>}
+      {nav.isActive && (nav.userSpeed || 0) < 1 && <div className="absolute bottom-[204px] left-2 z-[550] opacity-90 hover:opacity-100 transition-opacity pointer-events-none"><MiniMap center={nav.userPosition||mapCenter} route={nav.routeData} userPos={nav.userPosition} heading={nav.userHeading}/></div>}
       {nav.isActive && !shareTipHidden && (
         <div className="absolute top-[150px] left-2 z-[550] pointer-events-auto">
           <div className="bg-slate-900/90 backdrop-blur text-white rounded-xl pl-3 pr-1.5 py-1.5 flex items-center gap-2 shadow-lg border border-white/10 max-w-[250px]">

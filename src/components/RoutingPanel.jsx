@@ -580,12 +580,20 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
     else if (mapPickResult.target === 'to') { setTo(mapPickResult); setToText(mapPickResult.shortName || ''); pushRecent(mapPickResult); }
   }, [mapPickResult]);
 
-  // Точки от ИИ («маршрут фразой»): подставляем — автобилд подхватит сам
+  // Точки от ИИ («маршрут фразой») или из карточки места: подставляем — автобилд подхватит сам.
+  // Допустим только `to` (from подставится геолокацией ниже), если точки «откуда» ещё нет.
   useEffect(() => {
-    if (!externalRoute?.from || !externalRoute?.to) return;
-    setFrom(externalRoute.from); setFromText(externalRoute.from.shortName || '');
-    setTo(externalRoute.to); setToText(externalRoute.to.shortName || '');
-    pushRecent(externalRoute.from); pushRecent(externalRoute.to);
+    if (!externalRoute?.from && !externalRoute?.to) return;
+    if (externalRoute.from) {
+      setFrom(externalRoute.from);
+      setFromText(externalRoute.from.shortName || externalRoute.from.name || '');
+      pushRecent(externalRoute.from);
+    }
+    if (externalRoute.to) {
+      setTo(externalRoute.to);
+      setToText(externalRoute.to.shortName || externalRoute.to.name || '');
+      pushRecent(externalRoute.to);
+    }
   }, [externalRoute?._nonce]);
 
   // Auto-fill from with geolocation on first open

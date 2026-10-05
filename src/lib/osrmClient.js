@@ -12,9 +12,34 @@ export function getEndpoint(profile) {
   return OSRM_ENDPOINTS[profile] || OSRM_ENDPOINTS.driving;
 }
 
+// Полный разбор одного маршрута OSRM: геометрия + шаги для навигации.
+// Раньше шаги строились только для routes[0], поэтому альтернативы
+// запускались без инструкций.
+function parseOsrmRoute(r) {
+  const geometry = r.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+  const steps = [];
+  let cursor = 0;
+  (r.legs || []).forEach((leg) => {
+    (leg.steps || []).forEach((step) => {
+      steps.push({
+        instruction: step.maneuver?.type || '',
+        modifier: step.maneuver?.modifier || '',
+        name: step.name || '',
+        distance: step.distance || 0,
+        duration: step.duration || 0,
+        start: geometry[cursor] || [0, 0],
+      });
+      cursor = Math.min(cursor + 1, geometry.length - 1);
+    });
+  });
+  return { distance: r.distance, duration: r.duration, geometry, steps, legs: r.legs };
+}
+
 export async function buildOsrmRoute(from, to, profile = 'driving', opts = {}) {
   const { waypoints = [], alternatives = false, exclude = null } = opts;
-  const cacheKey = `${profile}-${from.lat}-${from.lng}-${to.lat}-${to.lng}-${JSON.stringify(waypoints)}`;
+  // ключ кэша обязан зависеть от alternatives/exclude: иначе закэшированный
+  // одиночный маршрут «съест» запрос с вариантами (и наоборот)
+  const cacheKey = `${profile}-${from.lat}-${from.lng}-${to.lat}-${to.lng}-${JSON.stringify(waypoints)}-${exclude || 'none'}${alternatives ? '-alt' : ''}`;
   
   const cached = await loadRouteCache(cacheKey);
   if (cached) return cached;
@@ -38,30 +63,9 @@ export async function buildOsrmRoute(from, to, profile = 'driving', opts = {}) {
       }
       const data = await resp.json();
       if (!data.routes?.length) return null;
-      const r = data.routes[0];
-      const geometry = r.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-      const steps = [];
-      let cursor = 0;
-      (r.legs || []).forEach((leg) => {
-        (leg.steps || []).forEach((step) => {
-          steps.push({
-            instruction: step.maneuver?.type || '',
-            modifier: step.maneuver?.modifier || '',
-            name: step.name || '',
-            distance: step.distance || 0,
-            duration: step.duration || 0,
-            start: geometry[cursor] || [0, 0],
-          });
-          cursor = Math.min(cursor + 1, geometry.length - 1);
-        });
-      });
-      const result = { distance: r.distance, duration: r.duration, geometry, steps, legs: r.legs };
-      if (data.routes.length > 1 && alternatives) {
-        result.alternatives = data.routes.slice(1).map((alt) => ({
-          distance: alt.distance, duration: alt.duration,
-          geometry: alt.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
-        }));
-      }
+      const parsed = data.routes.map(parseOsrmRoute);
+      const result = parsed[0];
+      if (alternatives && parsed.length > 1) result.alternatives = parsed.slice(1);
       await saveRouteCache(cacheKey, result);
       return result;
     } catch {

@@ -26,7 +26,7 @@ import SectionsPanel from '@/components/aiBuilder/SectionsPanel';
 import FileExplorer from '@/components/aiBuilder/FileExplorer';
 import FileEditor from '@/components/aiBuilder/FileEditor';
 import {
-  normalizePath, resolveEntry,
+  normalizePath, resolveEntry, buildInlineDoc,
   applyFileEdits, extractFileEdits, isTextFile,
   MAX_FILES, MAX_FILE_SIZE, MAX_TOTAL_SIZE,
 } from '@/lib/projectFiles';

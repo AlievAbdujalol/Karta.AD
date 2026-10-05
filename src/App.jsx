@@ -101,7 +101,6 @@ const AuthenticatedApp = () => {
 import { ThemeProvider } from 'next-themes';
 import { NotificationProvider } from '@/lib/NotificationContext';
 import { ConnectivityProvider } from '@/lib/ConnectivityContext';
-import ConnectivityIndicator from '@/components/ConnectivityIndicator';
 
 import { useRouteMonitor } from '@/hooks/useRouteMonitor';
 
@@ -112,7 +111,6 @@ function App() {
       <AuthProvider>
         <NotificationProvider>
           <ConnectivityProvider>
-            <ConnectivityIndicator />
             <QueryClientProvider client={queryClientInstance}>
             <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
               <Routes>

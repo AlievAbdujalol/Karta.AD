@@ -73,7 +73,9 @@ export const AuthProvider = ({ children }) => {
             for(const [key, table] of pairs){
               const raw=localStorage.getItem(key); if(!raw) continue;
               const parsed=JSON.parse(raw);
-              await supabase.from(table).upsert({user_id: session.user.id, ...parsed, updated_at:new Date().toISOString()}, {onConflict:'user_id'});
+              // user_id ПОСЛЕ spread: в localStorage может лежать user_id другой
+              // сессии, и RLS молча отклонял бы upsert при повторном входе
+              await supabase.from(table).upsert({...parsed, user_id: session.user.id, updated_at:new Date().toISOString()}, {onConflict:'user_id'});
             }
           }catch{}
         } else if (event === 'SIGNED_OUT') {
