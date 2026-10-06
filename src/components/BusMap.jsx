@@ -427,9 +427,21 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
     if (window.confirm(`${t('busmap.paymentConfirmTitle')} #${vehicle.route_number} ${t('schedulePanel.somoni')} ${fare} TJS?`)) {
       setPaying(true);
       try {
-        const newBalance = Math.max(0, userBalance - fare);
-        const { error: balErr } = await supabase.from('profiles').update({ balance: newBalance }).eq('id', user.id);
-        if (balErr) throw new Error(balErr.message);
+        // Списание на сервере: баланс из браузера не меняем
+        const { error: balErr } = await supabase.rpc('pay_bus_fare', {
+          p_route_id: vehicle.route_id || null,
+          p_driver_id: vehicle.driver_id || null,
+          p_amount: fare,
+          p_route_number: vehicle.route_number,
+          p_route_name: vehicle.route_name || '',
+          p_route_type: vehicle.type,
+        });
+        if (balErr) {
+          if (balErr.message === 'insufficient balance') {
+            throw new Error(`${t('busmap.paymentInsufficientBalance')} ${fare} TJS. ${t('profile.balanceLabel')} ${userBalance.toFixed(2)} TJS.`);
+          }
+          throw new Error(balErr.message);
+        }
         toast.success(t('busmap.paymentSent'));
         TripLog.create({
           user_id: user.id,

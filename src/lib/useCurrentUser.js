@@ -28,7 +28,8 @@ export function useCurrentUser() {
       const isSchemaIssue = msg.includes('schema cache') || msg.includes('Could not find the');
 
       if (isSchemaIssue) {
-        const allowed = ['language', 'phone', 'full_name', 'photo_url', 'city_id', 'role', 'driver_status', 'vehicle_number', 'bio', 'balance', 'subscription_status', 'subscription_paid_until', 'subscription_start_date', 'subscription_next_billing', 'admin_activated', 'route_id', 'created_by_id'];
+        // деньги, подписку и роль правит только сервер (RPC) — из клиента не трогаем
+        const allowed = ['language', 'phone', 'full_name', 'photo_url', 'city_id', 'vehicle_number', 'bio', 'route_id'];
         const cleaned = Object.fromEntries(
           Object.entries(payload).filter(([k]) => allowed.includes(k))
         );

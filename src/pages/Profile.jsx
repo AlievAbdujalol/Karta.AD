@@ -452,14 +452,13 @@ export default function Profile() {
         throw new Error(t('profile.insufficientBalanceRenew'));
       }
 
-      const nextMonth = new Date();
-      nextMonth.setDate(nextMonth.getDate() + 30);
-
-      await update({
-        balance: Math.max(0, Number(user?.balance || 0) - fee),
-        subscription_status: 'active',
-        subscription_paid_until: nextMonth.toISOString()
-      });
+      // Продление со списанием на сервере: баланс и подписку нельзя править из клиента
+      const { error } = await supabase.rpc('renew_subscription');
+      if (error) {
+        const msg = error.message || '';
+        throw new Error(msg === 'insufficient balance' ? t('profile.insufficientBalanceRenew') : msg);
+      }
+      await refreshUser?.();
       toast.success(`${t('profile.subscriptionRenewed')} ${fee} TJS.`);
     } catch (err) {
       console.error('[Profile] renew error:', err);
