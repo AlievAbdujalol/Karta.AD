@@ -4,7 +4,7 @@ import { useLanguage, LANG_KEY } from '@/lib/useLanguage';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useAuth } from '@/lib/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { User, Save, Heart, History, Camera, Loader2, LogOut, ChevronDown, Search, Wallet, Car, PlusCircle, CheckCircle2, X, Pencil, Trash2 } from 'lucide-react';
+import { User, Save, Heart, History, Camera, Loader2, LogOut, ChevronDown, Search, Wallet, Car, PlusCircle, CheckCircle2, X, Pencil, Trash2, Store } from 'lucide-react';
 import FavoriteRoutes from '@/components/profile/FavoriteRoutes';
 import TripHistory from '@/components/profile/TripHistory';
 import InstallAppButton from '@/components/InstallAppButton';
@@ -13,6 +13,16 @@ import { loadUserKeys } from '@/lib/userKeys';
 import { toast } from 'sonner';
 import { supabase } from '@/api/supabase';
 import { CATEGORY_LABELS as TAXI_CATEGORIES } from '@/lib/taxi';
+import { roleChangeFee, renewalFee, isBusinessRoleActive, BUSINESS_ROLE } from '@/lib/roles';
+
+// Ключи локализации для названий ролей
+const ROLE_LABELS = {
+  passenger: 'profile.rolePassenger',
+  driver: 'profile.roleDriver',
+  taxi_driver: 'profile.roleTaxiDriver',
+  business: 'profile.roleBusinessTitle',
+  admin: 'profile.roleAdmin',
+};
 
 const LANGS = [
   { code: 'ru', label: 'profile.langRu' },
@@ -380,14 +390,11 @@ export default function Profile() {
 
     const hasActiveSub = user?.subscription_status === 'active' && new Date(user?.subscription_paid_until || 0) > new Date();
 
-    let fee = 0;
-    if (!hasActiveSub) {
-      if (newRole === 'driver') fee = 20;
-      if (newRole === 'admin') fee = user?.admin_activated ? 25 : 100;
-      if (newRole === 'taxi_driver') fee = 25;
-    }
+    // «Бизнес» тарифицируется всегда (сервер списывает 1000 при каждой активации),
+    // иначе активная подписка другой роли дарила бы бизнес бесплатно.
+    const fee = roleChangeFee(newRole, { hasActiveSub, adminActivated: user?.admin_activated });
 
-    const roleName = newRole === 'passenger' ? t('profile.rolePassenger') : newRole === 'driver' ? t('profile.roleDriver') : newRole === 'taxi_driver' ? 'Такси водитель' : t('profile.roleAdmin');
+    const roleName = ROLE_LABELS[newRole] ? t(ROLE_LABELS[newRole]) : t('profile.roleAdmin');
     const confirmed = window.confirm(
       `${t('profile.changeRoleConfirmTitle')} "${roleName}"?\n` +
       (fee > 0 ? `\n${t('profile.costLabel')} ${fee} TJS\n${t('profile.balanceLabel')} ${Number(user?.balance || 0).toFixed(2)} TJS` : `\n${t('profile.subscriptionActiveFree')}`)
@@ -437,7 +444,7 @@ export default function Profile() {
   };
 
   const handleRenewSubscription = async () => {
-    const fee = form.role === 'driver' ? 20 : 25;
+    const fee = renewalFee(form.role);
     const confirmed = window.confirm(`${t('profile.renewSubscriptionConfirm')}\n${t('profile.costLabel')} ${fee} TJS\n${t('profile.balanceLabel')} ${Number(user?.balance || 0).toFixed(2)} TJS`);
     if (!confirmed) return;
     try {
@@ -561,7 +568,7 @@ export default function Profile() {
           )}
           {user?.role && (
             <span className="mt-2 inline-block bg-white/20 text-white text-xs px-3 py-1 rounded-full font-medium">
-              {t(user.role === 'user' ? 'passenger' : user.role)}
+              {t(ROLE_LABELS[user.role === 'user' ? 'passenger' : user.role] || 'profile.rolePassenger')}
             </span>
           )}
         </div>
@@ -1054,8 +1061,87 @@ export default function Profile() {
                   </div>
                 )}
               </div>
+
+              {/* Бизнес — 1000 TJS/мес, открывает все бизнес-функции */}
+              <div
+                onClick={() => {
+                  if (form.role !== BUSINESS_ROLE) {
+                    handleRoleChange(BUSINESS_ROLE);
+                  }
+                }}
+                className={`relative rounded-xl border-2 p-3.5 cursor-pointer transition-all ${
+                  form.role === BUSINESS_ROLE
+                    ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20'
+                    : 'border-gray-100 dark:border-gray-700 hover:border-cyan-200 dark:hover:border-cyan-700 bg-gray-50 dark:bg-gray-700/40'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-2xl">🏪</span>
+                    <div>
+                      <p className="text-sm font-bold text-gray-800 dark:text-gray-100">{t('profile.roleBusinessTitle')}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{t('profile.businessPricePerMonth')}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400 text-xs font-bold px-2.5 py-1 rounded-full">
+                      {t('profile.businessPriceMonthBadge')}
+                    </span>
+                    {form.role === BUSINESS_ROLE && (
+                      <span className="w-5 h-5 bg-cyan-500 rounded-full flex items-center justify-center text-white text-[10px]">✓</span>
+                    )}
+                  </div>
+                </div>
+                {form.role === BUSINESS_ROLE && (
+                  <div className="mt-2 pt-2 border-t border-cyan-200 dark:border-cyan-700/40 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <p className={`text-[11px] font-semibold ${
+                        user?.subscription_status === 'active' ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'
+                      }`}>
+                        {user?.subscription_status === 'active' ? t('profile.businessSubscriptionActive') : t('profile.businessSubscriptionExpired')}
+                      </p>
+                      {user?.subscription_paid_until && (
+                        <p className="text-[10px] text-gray-400">
+                          {t('profile.until')} {new Date(user.subscription_paid_until).toLocaleDateString(lang === 'tg' ? 'tg-TJ' : lang)}
+                        </p>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-cyan-600 dark:text-cyan-400">{t('profile.businessActiveStatus')}</p>
+                    {user?.subscription_status !== 'active' && (
+                      <button
+                        type="button"
+                        onClick={async (e) => { e.stopPropagation(); await handleRenewSubscription(); }}
+                        className="w-full text-center text-[11px] bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg py-1.5 font-semibold transition-all"
+                      >
+                        {t('profile.renewBusinessButton')}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+
+          {form.role === BUSINESS_ROLE && (
+            <div className="rounded-xl border-2 border-cyan-200 dark:border-cyan-800 bg-white dark:bg-gray-800 p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <Store size={16} className="text-cyan-600 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-gray-800 dark:text-gray-100">Панель бизнеса</p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                    {isBusinessRoleActive(user) ? t('profile.businessActiveStatus') : t('profile.businessSubscriptionExpired')}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); navigate('/business'); }}
+                className="shrink-0 text-[11px] bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg px-3 py-1.5 font-semibold transition-all"
+              >
+                Открыть
+              </button>
+            </div>
+          )}
 
           {form.role === 'driver' && (
             <div className="space-y-3 pt-1">

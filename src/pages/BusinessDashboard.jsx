@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/api/supabase';
 import { useCurrentUser } from '@/lib/useCurrentUser';
+import { isBusinessRoleActive, BUSINESS_MONTHLY_FEE } from '@/lib/roles';
 import { useLanguage } from '@/lib/useLanguage';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -149,6 +150,11 @@ export default function BusinessDashboard() {
       toast.error(t('business.nameRequired'));
       return;
     }
+    // Роль «Бизнес» обязательна — сервер тоже проверит (create_business)
+    if (!isBusinessRoleActive(user)) {
+      toast.error(`Требуется активная подписка «Бизнес» (${BUSINESS_MONTHLY_FEE} TJS/мес)`);
+      return;
+    }
     setSubmitting(true);
     const { error } = await supabase.rpc('create_business', {
       p_name: form.name.trim(),
@@ -159,7 +165,12 @@ export default function BusinessDashboard() {
     });
     setSubmitting(false);
     if (error) {
-      toast.error(t('business.createError'));
+      const msg = error.message || '';
+      toast.error(
+        msg.includes('роль Бизнес') || msg.includes('Подписка')
+          ? msg
+          : t('business.createError')
+      );
       return;
     }
     toast.success(t('business.createSuccess'));
@@ -248,7 +259,14 @@ export default function BusinessDashboard() {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setShowForm((v) => !v)}
+                onClick={() => {
+                  if (!isBusinessRoleActive(user)) {
+                    toast.error(`Роль «Бизнес» не активна. Активируйте подписку за ${BUSINESS_MONTHLY_FEE} TJS/мес в профиле.`);
+                    navigate('/profile');
+                    return;
+                  }
+                  setShowForm((v) => !v);
+                }}
                 className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 md:px-4 py-2 rounded-xl text-sm font-semibold transition-all active:scale-95"
               >
                 <Plus size={16} />
@@ -412,9 +430,26 @@ export default function BusinessDashboard() {
             </div>
           ) : businesses.length === 0 ? (
             <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 text-center space-y-3 shadow-sm border border-slate-200 dark:border-slate-800">
-              <div className="text-4xl">🏪</div>
-              <p className="text-slate-600 dark:text-slate-300 text-sm font-medium">{t('business.empty')}</p>
-              <p className="text-slate-400 dark:text-slate-500 text-xs">{t('business.emptyHint')}</p>
+              <div className="text-4xl">{isBusinessRoleActive(user) ? '🏪' : '🔒'}</div>
+              {isBusinessRoleActive(user) ? (
+                <>
+                  <p className="text-slate-600 dark:text-slate-300 text-sm font-medium">{t('business.empty')}</p>
+                  <p className="text-slate-400 dark:text-slate-500 text-xs">{t('business.emptyHint')}</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-slate-700 dark:text-slate-200 text-sm font-bold">Нужна роль «Бизнес»</p>
+                  <p className="text-slate-400 dark:text-slate-500 text-xs max-w-sm mx-auto">
+                    Подписка «Бизнес» — {BUSINESS_MONTHLY_FEE} TJS/мес. Открывает создание бизнеса, товары, заказы, доставку, AI-сайт и аналитику.
+                  </p>
+                  <button
+                    onClick={() => navigate('/profile')}
+                    className="inline-flex items-center gap-1.5 mt-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-sm font-bold hover:opacity-90"
+                  >
+                    Активировать в профиле
+                  </button>
+                </>
+              )}
             </div>
           ) : (
             <>
