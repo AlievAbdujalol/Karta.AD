@@ -3,7 +3,7 @@ import { City, Route, Vehicle } from '@/api/entities';
 import { supabase } from '@/api/supabase';
 import { useLanguage } from '@/lib/useLanguage';
 import { useCurrentUser } from '@/lib/useCurrentUser';
-import { Building2, Map, Users, TrendingUp, Car } from 'lucide-react';
+import { Building2, Map, Users, TrendingUp, Car, UserCog } from 'lucide-react';
 import CitiesManager from '@/components/admin/CitiesManager';
 import RouteStats from '@/components/admin/RouteStats';
 import TripCharts from '@/components/admin/TripCharts';
@@ -11,6 +11,7 @@ import RoutesManager from '@/components/admin/RoutesManager';
 import DriversManager from '@/components/admin/DriversManager';
 import VehiclesManager from '@/components/admin/VehiclesManager';
 import TaxiAdmin from '@/components/admin/TaxiAdmin';
+import UsersManager from '@/components/admin/UsersManager';
 
 import RouteMapEditor from '@/components/admin/RouteMapEditor';
 import { Link } from 'react-router-dom';
@@ -59,6 +60,7 @@ export default function AdminPanel() {
     { id: 'stats', label: t('admin.tabAnalytics'), icon: TrendingUp },
     { id: 'cities', label: t('cities'), icon: Building2 },
     { id: 'routes', label: t('routes'), icon: Map },
+    { id: 'users', label: t('admin.tabUsers') || 'Пользователи', icon: UserCog },
     { id: 'drivers', label: t('drivers'), icon: Users },
     { id: 'vehicles', label: t('admin.tabVehicles'), icon: Map },
     { id: 'taxi', label: 'Такси', icon: Car },
@@ -103,6 +105,7 @@ export default function AdminPanel() {
         {tab === 'stats' && <div className="space-y-4"><TripCharts /><RouteStats /></div>}
         {tab === 'cities' && <CitiesManager />}
         {tab === 'routes' && <RoutesManager />}
+        {tab === 'users' && <UsersManager />}
         {tab === 'drivers' && <DriversManager />}
         {tab === 'vehicles' && <VehiclesManager />}
         {tab === 'map' && <RouteMapEditor />}
