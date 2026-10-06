@@ -1387,28 +1387,66 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
             remainingPts = split.remaining;
           }
 
+          // Плашка «мин / км» на маршруте (как в макете):
+          // синяя — основной маршрут, белая — альтернативный
+          const pillIcon = (min, km, active) => L.divIcon({
+            html: `<div style="background:${active ? '#0a84ff' : '#ffffff'};color:${active ? '#ffffff' : '#0f172a'};`
+              + `border:${active ? '0' : '1px solid #e2e8f0'};border-radius:999px;padding:5px 11px;text-align:center;`
+              + 'box-shadow:0 3px 10px rgba(0,0,0,0.25);line-height:1.15;white-space:nowrap;">'
+              + `<div style="font-size:13px;font-weight:900;">${min} мин</div>`
+              + `<div style="font-size:10px;font-weight:800;opacity:0.75;">${km} км</div></div>`,
+            className: '', iconSize: [86, 46], iconAnchor: [43, 23],
+          });
+          const pillMin = (sec) => Math.max(1, Math.round((sec || 0) / 60));
+          const pillKm = (m) => ((m || 0) / 1000).toFixed(1);
+
           return (
             <>
               {isPreview && routingRoute?.alternatives?.map((alt,i)=> (
                 <Polyline
                   key={`alt-${i}`}
                   positions={alt.geometry}
-                  color="#60a5fa"
+                  color="#94a3b8"
                   weight={6}
-                  opacity={0.55}
-                  dashArray="12 10"
+                  opacity={0.85}
                   lineCap="round"
                   lineJoin="round"
                   eventHandlers={{ click: ()=> {
                     try{ navigator.vibrate?.(20);}catch{}
-                    setRoutingRoute(prev=> ({ ...alt, from: prev.from, to: prev.to, mode: prev.mode, waypoints: prev.waypoints, alternatives: prev.alternatives }));
+                    // выбор варианта живёт в RoutingPanel (он источник истины):
+                    // событие → панель переключит маршрут и вернёт его через onRouteBuilt
+                    window.dispatchEvent(new CustomEvent('karta_select_variant', { detail: { index: i + 1 } }));
                     if(alt.geometry?.length) { const b=L.latLngBounds(alt.geometry); mapRef.current?.fitBounds(b, {padding:[40,40]}); }
                   }}}
                 />
               ))}
-              {isPreview && routingRoute?.alternatives?.[0] && (
-                <Marker position={routingRoute.alternatives[0].geometry[Math.floor(routingRoute.alternatives[0].geometry.length/2)]} interactive={false} icon={L.divIcon({ html:`<div style="background:rgba(59,130,246,0.9);color:#fff;font-size:10px;font-weight:800;padding:2px 6px;border-radius:10px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.25);">то же время</div>`, className:'', iconSize:[70,18], iconAnchor:[35,9]})} />
+              {isPreview && positions?.length > 2
+                && ((routingRoute.duration || 0) > 0 || (routingRoute.distance || 0) > 0) && (
+                <Marker
+                  position={positions[Math.floor(positions.length / 2)]}
+                  interactive={false}
+                  icon={pillIcon(pillMin(routingRoute.duration), pillKm(routingRoute.distance), true)}
+                />
               )}
+              {isPreview && routingRoute?.alternatives?.map((alt,i) => {
+                const g = alt.geometry;
+                if (!g?.length || (!(alt.duration > 0) && !(alt.distance > 0))) return null;
+                const selectAlt = () => {
+                  try { navigator.vibrate?.(20); } catch {}
+                  // панель переключит вариант и вернёт его обратно через onRouteBuilt
+                  window.dispatchEvent(new CustomEvent('karta_select_variant', { detail: { index: i + 1 } }));
+                  const b = L.latLngBounds(g);
+                  mapRef.current?.fitBounds(b, { padding: [40, 40] });
+                };
+                return (
+                  <Marker
+                    key={`alt-pill-${i}`}
+                    position={g[Math.floor(g.length / 2)]}
+                    icon={pillIcon(pillMin(alt.duration), pillKm(alt.distance), false)}
+                    eventHandlers={{ click: selectAlt }}
+                  />
+                );
+              })}
 
               {isNavigating && traveledPts.length >= 2 && (
                 <>
@@ -1422,7 +1460,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
                   <Polyline positions={remainingPts} color="white" weight={10} opacity={0.95} lineCap="round" lineJoin="round" />
                   <Polyline
                     positions={remainingPts}
-                    color={navRoute.mode === 'walking' ? '#7C3AED' : navRoute.mode === 'cycling' ? '#059669' : isPreview ? '#22c55e' : '#2563EB'}
+                    color={navRoute.mode === 'walking' ? '#7C3AED' : navRoute.mode === 'cycling' ? '#059669' : isPreview ? '#0a84ff' : '#2563EB'}
                     weight={6}
                     opacity={1}
                     lineCap="round"

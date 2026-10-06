@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { City, FavoriteRoute, TripLog } from '@/api/entities';
 import { supabase } from '@/api/supabase';
 import { useLanguage, LANG_KEY } from '@/lib/useLanguage';
+import { fetchOsmTransitRoutes, bboxAround, mergeTransitRoutes } from '@/lib/osmTransit';
 import { toast } from 'sonner';
 import BusMap from '@/components/BusMap';
 import StopWatcher from '@/components/StopWatcher';
@@ -272,8 +273,16 @@ export default function Home() {
       supabase.from('routes').select('*')
         .or(`city_id.is.null,city_id.eq.${selectedCity.id}`)
         .order('created_at', { ascending: false })
-        .then(({ data }) => {
-          setRoutes(data || []);
+        .then(async ({ data }) => {
+          let list = data || [];
+          // Линии OSM пополняют список города (в БД часто нет данных)
+          try {
+            if (selectedCity.lat && selectedCity.lng && navigator.onLine !== false) {
+              const osm = await fetchOsmTransitRoutes(bboxAround([selectedCity], 0.25));
+              list = mergeTransitRoutes(list, osm);
+            }
+          } catch { /* OSM недоступен — только маршруты БД */ }
+          setRoutes(list);
           setIsOffline(false);
         }).catch(() => {
           setIsOffline(true);

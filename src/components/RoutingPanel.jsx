@@ -16,7 +16,7 @@ import {
   ChevronDown, Play, Car, Bike, PersonStanding, Clock3, ArrowLeftRight,
   LocateFixed, Share2, Check, Bus, Truck, Volume2, VolumeX, Timer,
   ArrowRight, Footprints, CheckCircle2, CircleDot, Radio, WifiOff,
-  CreditCard, Package, Plus, Upload, Settings2, List,
+  CreditCard, Package, Plus, Upload, Settings2,
 } from 'lucide-react';
 import AiRouteExplainer from './AiRouteExplainer';
 import PublicTransportSheet from './PublicTransportSheet';
@@ -26,6 +26,7 @@ import {
   findTransitRoutes, fmtDist, fmtDur, distanceM,
 } from '@/lib/transitRouter';
 import { buildOsrmRoute } from '@/lib/osrmClient';
+import { fetchOsmTransitRoutes, bboxAround, mergeTransitRoutes } from '@/lib/osmTransit';
 import { toast } from 'sonner';
 
 // ---------------------------------------------------------------------------
@@ -46,6 +47,25 @@ const TRANSPORT_MODES = [
 
 
 const RECENT_KEY = 'karta_route_recent_v2';
+
+// Примерная стоимость поездки (TJS) для карточки «Начать»
+function estimateRouteCost(dist, mode) {
+  const km = (dist || 0) / 1000;
+  if (mode === 'driving') return Math.round(km * 1.8 + 8);
+  if (mode === 'taxi') return Math.round(km * 5 + 25);
+  return 0;
+}
+
+// Главная (самая длинная) улица маршрута — для строки «Через …» как в макете
+function viaStreetOf(route) {
+  const steps = route?.steps;
+  if (!steps?.length) return null;
+  let best = null;
+  for (const s of steps) {
+    if (s.name && (!best || (s.distance || 0) > (best.distance || 0))) best = s;
+  }
+  return best?.name || null;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -137,20 +157,18 @@ function PlaceField({ value, onChangeText, onPickPlace, placeholder, iconColor, 
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
   const borderCls = isActive
-    ? 'border-amber-400 dark:border-amber-500 shadow-md'
+    ? 'bg-amber-50 dark:bg-amber-500/10 ring-1 ring-amber-400'
     : focused
-    ? 'border-blue-500 shadow-md shadow-blue-500/10'
-    : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600';
+    ? 'bg-blue-50/70 dark:bg-blue-500/10 ring-1 ring-blue-400'
+    : 'hover:bg-slate-50 dark:hover:bg-slate-700/50';
 
   return (
     <div className="relative">
-      <div className={'flex items-center gap-2.5 px-3.5 py-3 rounded-2xl border-2 bg-white dark:bg-slate-800 transition-all ' + borderCls}>
+      <div className={'flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all ' + borderCls}>
         <span
-          className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ backgroundColor: iconColor + '18', color: iconColor }}
-        >
-          <MapPin size={15} />
-        </span>
+          className="w-3 h-3 rounded-full flex-shrink-0"
+          style={{ backgroundColor: iconColor, boxShadow: `0 0 0 4px ${iconColor}26` }}
+        />
         <input
           type="text"
           value={value}
@@ -437,99 +455,19 @@ function OsrmStepsList({ steps }) {
 // Sub-component: OsrmResultBlock
 // ---------------------------------------------------------------------------
 
-function OsrmResultBlock({ route, mode, fromText, toText, nowTime, arrivalTime, onStart, onShare, copied, navCtl, showSteps, onToggleSteps }) {
-  const modeMeta = TRANSPORT_MODES.find((m) => m.id === mode);
-  const estimateCost = (dist, m) => {
-    const km = dist / 1000;
-    if (m === 'driving') return Math.round(km * 1.8 + 8);
-    if (m === 'taxi')    return Math.round(km * 5 + 25);
-    return 0;
-  };
-  const cost = estimateCost(route.distance, mode);
+function OsrmResultBlock({ route, showSteps, onToggleSteps }) {
+  if (!route?.steps?.length) return null;
 
   return (
-    <div className="space-y-3">
-      <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3.5">
-        <div className="flex gap-3">
-          <div className="flex flex-col items-center gap-1 pt-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20" />
-            <span className="w-0.5 flex-1 min-h-[28px] bg-gradient-to-b from-emerald-500 via-slate-300 to-red-500 dark:via-slate-600 rounded-full" />
-            <span className="w-2.5 h-2.5 rounded-full bg-red-500 ring-4 ring-red-500/20" />
-          </div>
-          <div className="flex-1 min-w-0 space-y-3">
-            <div>
-              <p className="text-[10px] font-black tracking-widest uppercase text-emerald-600 dark:text-emerald-400">Откуда</p>
-              <p className="text-[13px] font-bold text-slate-900 dark:text-white truncate">{fromText || '—'}</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-black tracking-widest uppercase text-red-500">Куда</p>
-              <p className="text-[13px] font-bold text-slate-900 dark:text-white truncate">{toText || '—'}</p>
-            </div>
-            <div className="flex items-center gap-2 text-[11px] font-bold text-slate-600 dark:text-slate-300 border-t border-slate-200 dark:border-slate-700 pt-2.5">
-              <Timer size={12} className="text-slate-400" />
-              <span>Выезд {nowTime}</span>
-              <span className="text-slate-300 dark:text-slate-600">&rarr;</span>
-              <span className="text-emerald-600 dark:text-emerald-400">Прибытие {arrivalTime}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {onStart && (
-        <div className="space-y-2">
-          <button
-            onClick={onStart}
-            className="w-full rounded-2xl text-white shadow-xl active:scale-[0.98] transition-all p-1 bg-gradient-to-br from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-emerald-500/25"
-          >
-            <span className="flex items-center gap-3 px-4 py-3">
-              <span className="w-11 h-11 rounded-xl bg-white text-emerald-600 flex items-center justify-center shadow flex-shrink-0">
-                <Play size={20} className="fill-emerald-600 ml-0.5" />
-              </span>
-              <span className="flex-1 text-left">
-                <span className="block text-[15px] font-black leading-none">Поехать</span>
-                <span className="block text-[11px] font-bold opacity-90 mt-0.5">
-                  {(modeMeta?.label || mode)} &middot; {fmtDur(route.duration)} &middot; {fmtDist(route.distance)}
-                  {cost > 0 ? ' · ~' + cost + ' TJS' : ''}
-                </span>
-              </span>
-            </span>
-          </button>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => navCtl?.toggleVoice?.()}
-              className={
-                'flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-xl border text-xs font-bold transition-colors ' +
-                (navCtl?.voiceEnabled
-                  ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/20 text-blue-700 dark:text-blue-400'
-                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500')
-              }
-            >
-              {navCtl?.voiceEnabled ? <Volume2 size={13} /> : <VolumeX size={13} />}
-              {navCtl?.voiceEnabled ? 'Озвучка вкл' : 'Без звука'}
-            </button>
-            <button
-              onClick={onShare}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300"
-            >
-              {copied ? <Check size={13} className="text-emerald-500" /> : <Share2 size={13} />}
-              {copied ? 'Скопировано' : 'Поделиться'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {route.steps?.length > 0 && (
-        <>
-          <button
-            onClick={onToggleSteps}
-            className="w-full py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center justify-center gap-1.5 hover:bg-slate-50"
-          >
-            <Route size={12} />
-            {showSteps ? 'Скрыть шаги' : 'Показать пошаговый маршрут (' + route.steps.length + ')'}
-          </button>
-          {showSteps && <OsrmStepsList steps={route.steps} />}
-        </>
-      )}
+    <div>
+      <button
+        onClick={onToggleSteps}
+        className="w-full py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center justify-center gap-1.5 hover:bg-slate-50"
+      >
+        <Route size={12} />
+        {showSteps ? 'Скрыть шаги' : 'Показать пошаговый маршрут (' + route.steps.length + ')'}
+      </button>
+      {showSteps && <div className="mt-2"><OsrmStepsList steps={route.steps} /></div>}
     </div>
   );
 }
@@ -647,9 +585,26 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
     const isTransit = transportMode === 'bus' || transportMode === 'minibus';
 
     if (isTransit) {
+      // Линии OSM дополняют пустые маршруты БД — маршрут строится через остановки
+      let allRoutes = routes;
+      try {
+        const osm = await fetchOsmTransitRoutes(bboxAround([from, to], 0.1));
+        if (osm.length) allRoutes = mergeTransitRoutes(routes, osm);
+      } catch { /* OSM недоступен — ищем только по маршрутам БД */ }
+
       let result;
-      try { result = await findTransitRoutes(from, to, routes, transportMode); }
+      try { result = await findTransitRoutes(from, to, allRoutes, transportMode); }
       catch { result = { direct: [], transfers: [], best: null }; }
+
+      // В городе есть только автобусы (или только маршрутки) — пробуем соседний тип ОТ.
+      // findTransitRoutes сам учитывает allowed_types из настроек пользователя.
+      if (!result.best && allRoutes.length) {
+        const other = transportMode === 'bus' ? 'minibus' : 'bus';
+        try {
+          const alt = await findTransitRoutes(from, to, allRoutes, other);
+          if (alt.best) { result = alt; setTransportMode(other); }
+        } catch { /* остаёмся с пустым результатом */ }
+      }
 
       if (result.best) {
         setTransitResults(result);
@@ -719,6 +674,31 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
     });
   }, [allTransitOptions, from, to, fromText, toText, transportMode, onRouteBuilt]);
 
+  // Варианты маршрута для выбора ПЕРЕД поездкой: выбранный — osrmRoute,
+  // остальные — в alternatives (все с шагами, см. parseOsrmRoute в osrmClient)
+  const routeVariants = useMemo(
+    () => (osrmRoute ? [osrmRoute, ...(osrmRoute.alternatives || [])] : []),
+    [osrmRoute]
+  );
+  // без вложенности — иначе при переключениях варианты размножаются
+  const stripAlts = useCallback((r) => { const { alternatives: _a, ...rest } = r; return rest; }, []);
+
+  const selectVariant = useCallback((idx) => {
+    const sel = routeVariants[idx];
+    if (!sel) return;
+    const next = { ...stripAlts(sel), alternatives: routeVariants.filter((_, i) => i !== idx).map(stripAlts) };
+    setOsrmRoute(next);
+    onRouteBuilt?.({ ...next, mode: transportMode, from, to, fromText, toText, segments: null });
+  }, [routeVariants, stripAlts, transportMode, from, to, fromText, toText, onRouteBuilt]);
+
+  // клик по пунктирному варианту на карте: карта шлёт событие, панель
+  // переключает вариант и через onRouteBuilt синхронизирует карту обратно
+  useEffect(() => {
+    const onPick = (e) => selectVariant(Number(e?.detail?.index));
+    window.addEventListener('karta_select_variant', onPick);
+    return () => window.removeEventListener('karta_select_variant', onPick);
+  }, [selectVariant]);
+
   // Navigation launch
   const handleStartNavigation = useCallback(() => {
     const isTransit = transportMode === 'bus' || transportMode === 'minibus';
@@ -738,7 +718,7 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
     const routeSource = isTransit ? fallbackWalk : osrmRoute;
     if (!routeSource) return;
     const navRoute = {
-      ...routeSource,
+      ...stripAlts(routeSource), // геометрии прочих вариантов навигации не нужны
       mode: isTransit ? 'walking' : transportMode,
       from: { lat: from.lat, lng: from.lng, shortName: fromText },
       to:   { lat: to.lat,   lng: to.lng,   shortName: toText },
@@ -746,7 +726,7 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
     if (onStartNavigation) onStartNavigation(navRoute);
     else navCtl?.startNavigation?.(navRoute);
     onClose?.();
-  }, [transportMode, selectedTransitOption, osrmRoute, fallbackWalk, from, to, fromText, toText, onStartNavigation, navCtl, onClose]);
+  }, [transportMode, selectedTransitOption, osrmRoute, fallbackWalk, from, to, fromText, toText, onStartNavigation, navCtl, onClose, stripAlts]);
 
   // Share
   const handleShare = useCallback(async () => {
@@ -823,38 +803,70 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
       {/* Body */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
 
-        {/* From / To */}
-        <div className="relative">
-          <div className="absolute left-[19px] top-[22px] bottom-[22px] w-0.5 bg-gradient-to-b from-emerald-500 via-slate-300 to-red-500 dark:via-slate-600 rounded-full opacity-50 pointer-events-none" />
-          <button
-            onClick={handleSwap}
-            className="absolute left-[6px] top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 shadow flex items-center justify-center hover:border-blue-400 hover:text-blue-600 active:scale-90 transition-all"
-            title="Поменять местами"
-          >
-            <ArrowLeftRight size={12} className="text-slate-500 rotate-90" />
-          </button>
-          <div className="space-y-2.5">
-            <PlaceField
-              value={fromText}
-              onChangeText={(v) => { setFromText(v); if (!v) setFrom(null); }}
-              onPickPlace={(p) => { setFrom(p); setFromText(p.shortName); pushRecent(p); }}
-              placeholder="Откуда — адрес или точка"
-              iconColor="#22c55e"
-              isActive={mapPickTarget === 'from'}
-              onRequestMapPick={() => onRequestMapPick?.('from')}
-              autoFocus={!from && !to}
-            />
-            <PlaceField
-              value={toText}
-              onChangeText={(v) => { setToText(v); if (!v) setTo(null); }}
-              onPickPlace={(p) => { setTo(p); setToText(p.shortName); pushRecent(p); }}
-              placeholder="Куда — цель маршрута"
-              iconColor="#ef4444"
-              isActive={mapPickTarget === 'to'}
-              onRequestMapPick={() => onRequestMapPick?.('to')}
-            />
+        {/* From / To + транспорт — единая карточка сверху (макет) */}
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm p-1.5">
+          <div className="relative">
+            <div className="pr-9 space-y-0.5">
+              <PlaceField
+                value={fromText}
+                onChangeText={(v) => { setFromText(v); if (!v) setFrom(null); }}
+                onPickPlace={(p) => { setFrom(p); setFromText(p.shortName); pushRecent(p); }}
+                placeholder="Откуда — адрес или точка"
+                iconColor="#22c55e"
+                isActive={mapPickTarget === 'from'}
+                onRequestMapPick={() => onRequestMapPick?.('from')}
+                autoFocus={!from && !to}
+              />
+              <PlaceField
+                value={toText}
+                onChangeText={(v) => { setToText(v); if (!v) setTo(null); }}
+                onPickPlace={(p) => { setTo(p); setToText(p.shortName); pushRecent(p); }}
+                placeholder="Куда — цель маршрута"
+                iconColor="#ef4444"
+                isActive={mapPickTarget === 'to'}
+                onRequestMapPick={() => onRequestMapPick?.('to')}
+              />
+            </div>
+            <button
+              onClick={handleSwap}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 z-30 w-7 h-7 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow flex items-center justify-center hover:border-blue-400 hover:text-blue-600 active:scale-90 transition-all"
+              title="Поменять местами"
+            >
+              <ArrowLeftRight size={12} className="text-slate-500 rotate-90" />
+            </button>
+          </div>
+          <div className="border-t border-slate-100 dark:border-slate-700 my-1.5" />
+          <div className="grid grid-cols-4 gap-1.5">
+            {TRANSPORT_MODES.map((mode) => {
+              const active = transportMode === mode.id;
+              const Icon = mode.icon;
+              return (
+                <button
+                  key={mode.id}
+                  onClick={() => setTransportMode(mode.id)}
+                  aria-pressed={active}
+                  className={
+                    'flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all ' +
+                    (active
+                      ? 'bg-[#0a84ff] text-white shadow-md shadow-blue-500/30'
+                      : 'bg-slate-50 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700')
+                  }
+                >
+                  <Icon size={15} />
+                  <span className="text-[10px] font-bold mt-1 leading-none">{mode.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
+        {(transportMode==='truck' || transportMode==='scooter') && (
+          <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-[11px]">
+            {transportMode==='truck' && 'Учитываются габариты из Настройки → Грузовик'}
+            {transportMode==='scooter' && 'Избегаем автодорог и лестниц (профиль велосипеда)'}
+          </div>
+        )}
+        <button onClick={()=>setShowPT(v=>!v)} className="w-full py-2 rounded-xl bg-slate-900 text-white text-xs font-bold flex items-center justify-center gap-1.5"><Settings2 size={12}/> Общественный транспорт — настройки</button>
+        {showPT && <PublicTransportSheet cityId={from?.cityId||to?.cityId} routes={routes} onClose={()=>setShowPT(false)} />}
 
         {/* Quick location */}
         <div className="flex flex-wrap gap-1.5">
@@ -892,42 +904,6 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
             ))}
           </div>
         )}
-
-        {/* Transport modes */}
-        <div>
-          <p className="text-[10px] font-black tracking-widest uppercase text-slate-400 mb-2 flex items-center gap-1.5">
-            <Route size={11} /> Чем едем
-          </p>
-          <div className="grid grid-cols-4 gap-1.5">
-            {TRANSPORT_MODES.map((mode) => {
-              const active = transportMode === mode.id;
-              const Icon = mode.icon;
-              return (
-                <button
-                  key={mode.id}
-                  onClick={() => setTransportMode(mode.id)}
-                  className={
-                    'flex flex-col items-center justify-center py-2.5 px-1 rounded-2xl border-2 transition-all ' +
-                    (active
-                      ? 'bg-slate-900 border-slate-900 text-white dark:bg-white dark:text-slate-900 dark:border-white shadow-lg'
-                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300')
-                  }
-                >
-                  <Icon size={15} />
-                  <span className="text-[10px] font-bold mt-1 leading-none">{mode.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          {(transportMode==='truck' || transportMode==='scooter') && (
-            <div className="mt-2 p-2 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-[11px]">
-              {transportMode==='truck' && 'Учитываются габариты из Настройки → Грузовик'}
-              {transportMode==='scooter' && 'Избегаем автодорог и лестниц (профиль велосипеда)'}
-            </div>
-          )}
-          <button onClick={()=>setShowPT(v=>!v)} className="w-full mt-2 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold flex items-center justify-center gap-1.5"><Settings2 size={12}/> Общественный транспорт — настройки</button>
-          {showPT && <PublicTransportSheet cityId={from?.cityId||to?.cityId} routes={routes} onClose={()=>setShowPT(false)} />}
-        </div>
 
         {/* Map pick banner */}
         {mapPickTarget && (
@@ -1050,15 +1026,6 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
             </div>
             <OsrmResultBlock
               route={fallbackWalk}
-              mode="walking"
-              fromText={fromText}
-              toText={toText}
-              nowTime={nowTime}
-              arrivalTime={arrivalTime}
-              onStart={handleStartNavigation}
-              onShare={handleShare}
-              copied={copied}
-              navCtl={navCtl}
               showSteps={showSteps}
               onToggleSteps={() => setShowSteps((s) => !s)}
             />
@@ -1083,29 +1050,9 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
             )}
             <OsrmResultBlock
               route={osrmRoute}
-              mode={transportMode}
-              fromText={fromText}
-              toText={toText}
-              nowTime={nowTime}
-              arrivalTime={arrivalTime}
-              onStart={transportMode !== 'taxi' ? handleStartNavigation : undefined}
-              onShare={handleShare}
-              copied={copied}
-              navCtl={navCtl}
               showSteps={showSteps}
               onToggleSteps={() => setShowSteps((s) => !s)}
             />
-            {osrmRoute.alternatives?.length > 0 && (
-              <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-3 space-y-2">
-                <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">Альтернативы</p>
-                {osrmRoute.alternatives.map((a,i)=> (
-                  <button key={i} onClick={()=>{ const nr={...a, steps:[]}; setOsrmRoute(nr); onRouteBuilt?.({...nr, mode:transportMode, from,to,fromText,toText}); }} className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border text-xs">
-                    <span>Вариант {i+2} · {fmtDist(a.distance)} · {fmtDur(a.duration)}</span>
-                    <span className="text-emerald-600 font-bold">{a.duration>osrmRoute.duration?`+${fmtDur(a.duration-osrmRoute.duration)}`:`−${fmtDur(osrmRoute.duration-a.duration)}`}</span>
-                  </button>
-                ))}
-              </div>
-            )}
             <div className="rounded-xl bg-slate-50 dark:bg-slate-800 p-2 text-[11px] text-slate-500 flex flex-wrap gap-2">
               <span>Пробки: нет данных</span><span>· Платные: {transportMode==='truck'?'учитываются': 'избежать в настройках'}</span><span>· Камеры: —</span><span>· Перекрытия: из Событий</span>
             </div>
@@ -1118,38 +1065,83 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
         <div className="flex-shrink-0 px-4 pb-4 pt-3 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2">
           {/* AI Explanation Placeholder */}
           <AiRouteExplainer routeData={osrmRoute || {}} />
-          
-          {osrmRoute?.steps && (
-            <button onClick={() => setShowSteps(!showSteps)} className="w-full py-2 text-xs text-slate-500 font-bold flex items-center justify-center gap-1.5 border rounded-xl hover:bg-slate-50">
-              {showSteps ? <X size={14}/> : <List size={14}/>} {showSteps ? 'Скрыть инструкции' : 'Показать инструкции'}
-            </button>
-          )}
 
-          {showSteps && (
-            <div className="max-h-40 overflow-y-auto p-2 space-y-1 text-xs border rounded-xl">
-              {osrmRoute.steps.map((step, i) => (
-                <div key={i} className="flex gap-2">
-                  <span className="font-mono text-slate-400">{i+1}.</span>
-                  <p>{step.instruction} {step.name}</p>
-                </div>
-              ))}
+          {/* Выбор варианта маршрута — показываем ВСЕ дороги до старта поездки */}
+          {routeVariants.length > 1 && (
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-2 space-y-1.5">
+              <p className="px-1 text-[11px] font-black uppercase tracking-widest text-slate-400">Варианты маршрута</p>
+              {(() => {
+                const fastest = routeVariants.reduce((b, v, j) => (v.duration < routeVariants[b].duration ? j : b), 0);
+                return routeVariants.map((v, i) => {
+                  const selected = i === 0;
+                  const delta = (v.duration || 0) - (routeVariants[fastest].duration || 0);
+                  return (
+                    <button
+                      key={`variant-${i}`}
+                      onClick={() => selectVariant(i)}
+                      aria-pressed={selected}
+                      className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border text-xs font-bold transition-colors ${
+                        selected
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/60'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ background: selected ? '#2563EB' : i === fastest ? '#10B981' : '#94A3B8' }}
+                        />
+                        <span className="truncate">{fmtDur(v.duration)} ({fmtDist(v.distance)})</span>
+                      </span>
+                      <span className="flex items-center gap-1.5 shrink-0">
+                        {i === fastest && <span className="text-emerald-600 dark:text-emerald-400">⏱ быстрее</span>}
+                        {i !== fastest && (delta > 30
+                          ? <span className="text-amber-600 dark:text-amber-400">+{fmtDur(delta)}</span>
+                          : <span className="text-slate-400">≈</span>)}
+                        {selected && <span className="text-blue-600 dark:text-blue-400">✓</span>}
+                      </span>
+                    </button>
+                  );
+                });
+              })()}
             </div>
           )}
 
-          <button
-            onClick={handleStartNavigation}
-            className="w-full py-3.5 rounded-2xl font-black text-sm bg-gradient-to-br from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-xl shadow-emerald-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2.5"
-          >
-            <Play size={16} className="fill-white" />
-            {isTransit && selectedTransitOption
-              ? `Поехать · ${fmtDur(selectedTransitOption.totalDuration)} · ${fmtDist(selectedTransitOption.totalDistance)}`
-              : osrmRoute
-              ? `${TRANSPORT_MODES.find(m => m.id === transportMode)?.label || 'Поехать'} · ${fmtDur(osrmRoute.duration)} · ${fmtDist(osrmRoute.distance)}`
-              : fallbackWalk
-              ? `Пешком · ${fmtDur(fallbackWalk.duration)} · ${fmtDist(fallbackWalk.distance)}`
-              : 'Поехать'
-            }
-          </button>
+          {/* Карточка маршрута (макет): время (дистанция) · Через улицу… · Начать */}
+          {(() => {
+            const activeRoute = selectedTransitOption
+              ? { duration: selectedTransitOption.totalDuration, distance: selectedTransitOption.totalDistance }
+              : (osrmRoute || fallbackWalk);
+            if (!activeRoute) return null;
+            const via = viaStreetOf(osrmRoute);
+            const cost = estimateRouteCost(activeRoute.distance, transportMode);
+            return (
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 space-y-2.5 shadow-sm">
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="text-[22px] font-black leading-none text-slate-900 dark:text-white truncate">
+                    {fmtDur(activeRoute.duration)}{' '}
+                    <span className="text-[15px] font-extrabold text-slate-400 dark:text-slate-500">
+                      ({fmtDist(activeRoute.distance)})
+                    </span>
+                  </p>
+                  {cost > 0 && (
+                    <span className="text-[12px] font-bold text-slate-500 dark:text-slate-400 shrink-0">~{cost} TJS</span>
+                  )}
+                </div>
+                <p className="text-[13px] text-slate-500 dark:text-slate-400 truncate">
+                  {via ? `Через ${via}` : 'Маршрут построен'}
+                  {' · '}Прибытие {arrivalTime}
+                </p>
+                <button
+                  onClick={handleStartNavigation}
+                  className="w-full py-3.5 rounded-2xl bg-[#0a84ff] hover:bg-[#0a7ae8] text-white text-[15px] font-black shadow-xl shadow-blue-500/25 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                >
+                  <Play size={16} className="fill-white" />
+                  Начать
+                </button>
+              </div>
+            );
+          })()}
           <div className="flex items-center gap-2">
             <button
               onClick={() => navCtl?.toggleVoice?.()}
