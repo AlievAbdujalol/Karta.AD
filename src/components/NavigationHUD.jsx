@@ -109,9 +109,9 @@ export default function NavigationHUD() {
         )}
       </div>
 
-      {/* Speed badge — bottom-left above trip panel, only while moving */}
+      {/* Speed badge — top-right (левее колонки кнопок карты), only while moving */}
       {moving && (
-        <div className="absolute left-3 bottom-[160px] z-[800] pointer-events-none">
+        <div className="absolute right-14 top-3 z-[800] pointer-events-none">
           <div className="w-16 h-16 rounded-full bg-white shadow-[0_4px_16px_rgba(0,0,0,0.2)] border-2 border-[#ef4444] flex flex-col items-center justify-center leading-none">
             <span className="text-[20px] font-black text-slate-900">{speedKmh}</span>
             <span className="text-[9px] font-bold text-slate-500">км/ч</span>

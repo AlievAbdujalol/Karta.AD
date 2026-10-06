@@ -90,6 +90,8 @@ export function NavigationProvider({ children }) {
   const [snappedPosition, setSnappedPosition] = useState(null);
   const [followingStep, setFollowingStep] = useState(null);
   const [gpsAccuracy, setGpsAccuracy] = useState(null);
+  // Предложение «Другая дорога»: более быстрый маршрут с текущей позиции до конца
+  const [alternativeRoute, setAlternativeRoute] = useState(null);
 
   const watchIdRef = useRef(null);
   const lastAnnounceRef = useRef(0);
@@ -106,6 +108,9 @@ export function NavigationProvider({ children }) {
   const routeProgressRef = useRef(0);
   const routeLenRef = useRef(0);
   const arrivalAnnouncedRef = useRef(false);
+  const alternativeRef = useRef(null);
+
+  useEffect(() => { alternativeRef.current = alternativeRoute; }, [alternativeRoute]);
 
   useEffect(() => { isPausedRef.current = isPaused; }, [isPaused]);
   useEffect(() => { voiceEnabledRef.current = voiceEnabled; }, [voiceEnabled]);
@@ -398,11 +403,16 @@ export function NavigationProvider({ children }) {
         profile
       );
       if (newRoute) {
-        routeRef.current = { ...newRoute, from: { lat: pos.lat, lng: pos.lng }, to: route.to, mode: route.mode, waypoints: route.waypoints };
+        routeRef.current = {
+          ...newRoute,
+          from: { lat: pos.lat, lng: pos.lng, shortName: route.from?.shortName, name: route.from?.name },
+          to: route.to, mode: route.mode, waypoints: route.waypoints,
+        };
         setRouteData(routeRef.current);
         stepIndexRef.current = 0;
         const newLen = computeRouteLength(newRoute.geometry);
         routeLenRef.current = newLen;
+        setAlternativeRoute(null);
         speak('Маршрут обновлён');
       }
     } catch {}
@@ -476,6 +486,7 @@ export function NavigationProvider({ children }) {
     lastRerouteRef.current = 0;
     arrivalAnnouncedRef.current = false;
     routeLenRef.current = 0;
+    setAlternativeRoute(null);
   }, []);
 
   const startNavigationWithFromTo = useCallback((route, from, to) => {
@@ -532,6 +543,7 @@ export function NavigationProvider({ children }) {
     isPausedRef.current = false;
     setNextInstruction(null);
     setFollowUser(true);
+    setAlternativeRoute(null);
     speak('Вы прибыли');
   }, [clearGps, speak]);
 
@@ -548,38 +560,43 @@ export function NavigationProvider({ children }) {
     cycling: 'https://routing.openstreetmap.de/routed-bike/route/v1/bike',
   };
 
-  const rerouteInternal = useCallback(async (from, to, waypoints, profile = 'driving') => {
+  const rerouteInternal = useCallback(async (from, to, waypoints, profile = 'driving', opts = {}) => {
     if (!from || !to) return null;
     try {
       const wps = (waypoints || []).filter(Boolean);
       const coords = [from, ...wps, to].map(p => `${p.lng},${p.lat}`).join(';');
       const endpoint = OSRM_ENDPOINTS[profile] || OSRM_ENDPOINTS.driving;
+      const altParam = opts.alternatives ? '&alternatives=true' : '';
       const resp = await fetch(
-        `${endpoint}/${coords}?overview=full&geometries=geojson&steps=true&annotations=true`,
+        `${endpoint}/${coords}?overview=full&geometries=geojson&steps=true&annotations=true${altParam}`,
         { signal: AbortSignal.timeout(10000) }
       );
       if (!resp.ok) return null;
       const data = await resp.json();
       if (!data.routes?.length) return null;
-      const r = data.routes[0];
-      const geom = r.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-      const steps = [];
-      let cursor = 0;
-      if (r.legs) r.legs.forEach(leg => {
-        if (leg.steps) leg.steps.forEach(step => {
-          const start = geom[cursor] || [0, 0];
-          cursor = Math.min(cursor + 1, geom.length - 1);
-          steps.push({
-            instruction: step.maneuver?.type || '',
-            modifier: step.maneuver?.modifier || '',
-            name: step.name || '',
-            distance: step.distance || 0,
-            duration: step.duration || 0,
-            start,
+      const parsed = data.routes.map((r) => {
+        const geom = r.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+        const steps = [];
+        let cursor = 0;
+        if (r.legs) r.legs.forEach(leg => {
+          if (leg.steps) leg.steps.forEach(step => {
+            const start = geom[cursor] || [0, 0];
+            cursor = Math.min(cursor + 1, geom.length - 1);
+            steps.push({
+              instruction: step.maneuver?.type || '',
+              modifier: step.maneuver?.modifier || '',
+              name: step.name || '',
+              distance: step.distance || 0,
+              duration: step.duration || 0,
+              start,
+            });
           });
         });
+        return { distance: r.distance, duration: r.duration, geometry: geom, steps };
       });
-      return { distance: r.distance, duration: r.duration, geometry: geom, steps };
+      // с alternatives=true отдаём все варианты, иначе — только лучший (как раньше)
+      if (opts.alternatives) return parsed;
+      return parsed[0] || null;
     } catch { return null; }
   }, []);
 
@@ -591,10 +608,69 @@ export function NavigationProvider({ children }) {
       setRouteData(routeRef.current);
       stepIndexRef.current = 0;
       routeLenRef.current = computeRouteLength(newRoute.geometry);
+      setAlternativeRoute(null);
       speak('Маршрут обновлён');
     }
     return newRoute;
   }, [rerouteInternal, speak, computeRouteLength]);
+
+  // «Другая дорога»: периодически ищем более быстрый маршрут с текущей позиции до конца.
+  // Показываем предложение только если он быстрее текущего остатка заметно (≥45 с).
+  const checkAlternative = useCallback(async () => {
+    const rd = routeRef.current;
+    if (!rd?.to || !isActive || isReroutingRef.current) return;
+    const pos = positionsRef.current[positionsRef.current.length - 1];
+    if (!pos) return;
+    const profile = rd.mode === 'walking' ? 'walking' : rd.mode === 'cycling' ? 'cycling' : 'driving';
+    const routes = await rerouteInternal(pos, rd.to, rd.waypoints, profile, { alternatives: true });
+    if (!Array.isArray(routes) || routes.length < 2) { setAlternativeRoute(null); return; }
+    // остаток текущего маршрута в терминах OSRM (оба числа «сырые», сравнение честное)
+    const remaining = rd.duration ? rd.duration * (1 - routeProgressRef.current) : 0;
+    if (!remaining) { setAlternativeRoute(null); return; }
+    const best = routes.reduce((a, b) => (b.duration < a.duration ? b : a));
+    const delta = remaining - best.duration;
+    if (delta >= 45) setAlternativeRoute({ route: best, deltaSec: Math.round(delta) });
+    else setAlternativeRoute(null);
+  }, [isActive, rerouteInternal]);
+
+  const checkAlternativeRef = useRef(null);
+  useEffect(() => { checkAlternativeRef.current = checkAlternative; }, [checkAlternative]);
+
+  const useAlternative = useCallback(() => {
+    const alt = alternativeRef.current;
+    const rd = routeRef.current;
+    if (!alt?.route || !rd) return;
+    const pos = positionsRef.current[positionsRef.current.length - 1];
+    // подписи «ОТ» сохраняем от исходной точки маршрута, координаты — текущие
+    const enriched = {
+      ...alt.route,
+      from: pos ? { ...pos, shortName: rd.from?.shortName, name: rd.from?.name } : rd.from,
+      to: rd.to, mode: rd.mode, waypoints: rd.waypoints,
+    };
+    routeRef.current = enriched;
+    setRouteData(enriched);
+    stepIndexRef.current = 0;
+    annKeyRef.current = { idx: -1, pre: false, final: false };
+    routeLenRef.current = computeRouteLength(enriched.geometry);
+    setRouteProgress(0);
+    routeProgressRef.current = 0;
+    setIsOffRoute(false);
+    offRouteStartRef.current = null;
+    setAlternativeRoute(null);
+    initStatsFromRoute(enriched);
+    try { localStorage.setItem('karta_nav_active', JSON.stringify(enriched)); } catch {}
+    speak('Переключаемся на другую дорогу');
+  }, [computeRouteLength, initStatsFromRoute, speak]);
+
+  const dismissAlternative = useCallback(() => setAlternativeRoute(null), []);
+
+  // первый запрос через 8 с после старта, дальше — раз в минуту
+  useEffect(() => {
+    if (!isActive || isPaused) { setAlternativeRoute(null); return; }
+    const initial = setTimeout(() => checkAlternativeRef.current?.(), 8000);
+    const id = setInterval(() => checkAlternativeRef.current?.(), 60000);
+    return () => { clearTimeout(initial); clearInterval(id); };
+  }, [isActive, isPaused]);
 
   const closeSummary = useCallback(() => {
     setShowSummary(false);
@@ -638,7 +714,7 @@ export function NavigationProvider({ children }) {
     followingStep, gpsAccuracy,
     startNavigation, startNavigationWithFromTo, stopNavigation,
     togglePause, toggleVoice, toggleFollow,
-    reroute, closeSummary,
+    reroute, alternativeRoute, useAlternative, dismissAlternative, closeSummary,
     setUserPosition, setUserHeading, setUserSpeed, setFollowUser,
   }), [
     isActive, isPaused,
@@ -650,7 +726,7 @@ export function NavigationProvider({ children }) {
     followingStep, gpsAccuracy,
     startNavigation, startNavigationWithFromTo, stopNavigation,
     togglePause, toggleVoice, toggleFollow,
-    reroute, closeSummary,
+    reroute, alternativeRoute, useAlternative, dismissAlternative, closeSummary,
   ]);
 
   return <NavigationContext.Provider value={value}>{children}</NavigationContext.Provider>;
