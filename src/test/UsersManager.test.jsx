@@ -5,15 +5,18 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 // Мок Supabase до импорта компонента
 const rpcMock = vi.fn();
 const selectResult = { data: [], error: null };
+const requestsResult = { data: [], error: null };
 
 vi.mock('@/api/supabase', () => ({
   supabase: {
-    from: () => {
+    from: (table) => {
+      const result = table === 'payment_requests' ? requestsResult : selectResult;
       const chain = {
         select: () => chain,
         order: () => chain,
-        limit: () => Promise.resolve(selectResult),
-        then: (cb) => cb(selectResult),
+        eq: () => chain,
+        limit: () => Promise.resolve(result),
+        then: (cb) => cb(result),
       };
       return chain;
     },
@@ -47,6 +50,8 @@ describe('UsersManager', () => {
   beforeEach(() => {
     selectResult.data = [USER];
     selectResult.error = null;
+    requestsResult.data = [];
+    requestsResult.error = null;
     rpcMock.mockReset();
     toastMock.mockReset();
   });
@@ -132,6 +137,23 @@ describe('UsersManager', () => {
       p_reason: 'Пополнение администратором',
     }));
     await waitFor(() => expect(toastMock).toHaveBeenCalledWith('success', 'Баланс пополнен: 1502.10 TJS'));
+  });
+
+  it('показывает заявки на пополнение и зачисляет их на сервере', async () => {
+    requestsResult.data = [{
+      id: 'req1', user_id: 'u1', amount: 1000, method: 'manual', status: 'pending', created_at: '2026-10-01T00:00:00Z',
+    }];
+    rpcMock.mockResolvedValue({ data: { amount: 1000, balance: 1502.1 }, error: null });
+    render(<UsersManager />);
+
+    await waitFor(() => expect(screen.getByText(/Заявки на пополнение/)).toBeTruthy());
+    fireEvent.click(screen.getByText('Зачислить'));
+
+    await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('complete_topup_request', {
+      p_request_id: 'req1',
+      p_external_id: null,
+    }));
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith('success', expect.stringContaining('1000.00 TJS')));
   });
 
   it('пополнение с нулевой суммой не отправляется', async () => {

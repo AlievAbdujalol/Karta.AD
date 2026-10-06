@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { City, Vehicle } from '@/api/entities';
 import { useLanguage, LANG_KEY } from '@/lib/useLanguage';
 import { useCurrentUser } from '@/lib/useCurrentUser';
@@ -14,6 +14,9 @@ import { toast } from 'sonner';
 import { supabase } from '@/api/supabase';
 import { CATEGORY_LABELS as TAXI_CATEGORIES } from '@/lib/taxi';
 import { roleChangeFee, renewalFee, isBusinessRoleActive, BUSINESS_ROLE } from '@/lib/roles';
+import {
+  PRESET_AMOUNTS, validateTopupAmount, buildTopupRequest, paymentStatusLabel,
+} from '@/lib/topup';
 
 // Ключи локализации для названий ролей
 const ROLE_LABELS = {
@@ -139,6 +142,10 @@ export default function Profile() {
   const [taxiEdit, setTaxiEdit] = useState({});
   const [taxiSaving, setTaxiSaving] = useState(false);
   const [taxiTab, setTaxiTab] = useState('info');
+  const [showTopup, setShowTopup] = useState(false);
+  const [topupAmount, setTopupAmount] = useState('');
+  const [topupBusy, setTopupBusy] = useState(false);
+  const [topupRequests, setTopupRequests] = useState([]);
   const [saveFlash, setSaveFlash] = useState(null);
   const [addMode, setAddMode] = useState(false);
   const [vehicleDraft, setVehicleDraft] = useState('');
@@ -466,6 +473,59 @@ export default function Profile() {
     }
   };
 
+  // Заявки на пополнение кошелька
+  const loadTopupRequests = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const { data } = await supabase
+        .from('payment_requests')
+        .select('id, amount, status, created_at')
+        .order('created_at', { ascending: false })
+        .limit(20);
+      setTopupRequests(data || []);
+    } catch (err) {
+      console.error('[Profile] topup requests error:', err);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (profileTab === 'wallet') loadTopupRequests();
+  }, [profileTab, loadTopupRequests]);
+
+  const handleCreateTopup = async () => {
+    const payload = buildTopupRequest(topupAmount);
+    if (!payload) {
+      const res = validateTopupAmount(topupAmount);
+      toast.error(res.error);
+      return;
+    }
+    setTopupBusy(true);
+    try {
+      const { error } = await supabase.rpc('create_topup_request', payload);
+      if (error) throw new Error(error.message);
+      toast.success(t('profile.walletRequestSent'));
+      setTopupAmount('');
+      setShowTopup(false);
+      loadTopupRequests();
+    } catch (err) {
+      console.error('[Profile] topup request error:', err);
+      toast.error(err.message || 'Не удалось создать заявку');
+    } finally {
+      setTopupBusy(false);
+    }
+  };
+
+  const handleCancelTopup = async (id) => {
+    try {
+      const { error } = await supabase.rpc('cancel_topup_request', { p_request_id: id });
+      if (error) throw new Error(error.message);
+      loadTopupRequests();
+    } catch (err) {
+      console.error('[Profile] topup cancel error:', err);
+      toast.error(err.message || 'Не удалось отменить заявку');
+    }
+  };
+
   const handleTaxiSave = async () => {
     setTaxiSaving(true);
     try {
@@ -596,7 +656,7 @@ export default function Profile() {
 
         {profileTab === 'wallet' && (
           <div className="space-y-4">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 flex items-center justify-between">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 flex items-center justify-between gap-3">
               <div className="space-y-1">
                 <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">{t('profile.walletBalance')}</p>
                 <p className="text-3xl font-black text-gray-900 dark:text-gray-100">
@@ -604,12 +664,80 @@ export default function Profile() {
                 </p>
               </div>
               <button
-                onClick={() => toast.info('Пополнение кошелька временно недоступно. Платежная система еще не подключена.')}
-                className="bg-slate-300 text-slate-500 text-xs font-bold px-4 py-2.5 rounded-xl cursor-not-allowed"
+                onClick={() => setShowTopup((v) => !v)}
+                className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl"
               >
-                Пополнение недоступно
+                {t('profile.walletTopup')}
               </button>
             </div>
+
+            {showTopup && (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+                <p className="text-xs text-gray-500 dark:text-gray-400">{t('profile.walletTopupHint')}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {PRESET_AMOUNTS.map((v) => (
+                    <button
+                      key={v}
+                      onClick={() => setTopupAmount(String(v))}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                        String(v) === topupAmount
+                          ? 'bg-emerald-500 border-emerald-500 text-white'
+                          : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300'
+                      }`}
+                    >
+                      {v} TJS
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={topupAmount}
+                    onChange={(e) => setTopupAmount(e.target.value)}
+                    placeholder={t('profile.walletAmount')}
+                    className="flex-1 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  />
+                  <button
+                    onClick={handleCreateTopup}
+                    disabled={topupBusy}
+                    className="bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white text-xs font-bold px-4 py-2 rounded-xl"
+                  >
+                    {topupBusy ? <Loader2 size={14} className="animate-spin" /> : t('profile.walletRequest')}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {topupRequests.length > 0 && (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-2">
+                <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">{t('profile.walletRequests')}</p>
+                {topupRequests.map((r) => (
+                  <div key={r.id} className="flex items-center justify-between gap-3 text-xs py-1.5 border-b border-gray-100 dark:border-gray-700 last:border-0">
+                    <div>
+                      <span className="font-bold text-gray-800 dark:text-gray-100">{Number(r.amount).toFixed(2)} TJS</span>
+                      <span className="text-gray-400"> · {new Date(r.created_at).toLocaleDateString('ru-RU')}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        r.status === 'paid' ? 'bg-green-100 text-green-700'
+                          : r.status === 'pending' ? 'bg-amber-100 text-amber-700'
+                            : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {paymentStatusLabel(r.status, lang === 'en' ? 'en' : lang === 'tg' ? 'tg' : 'ru')}
+                      </span>
+                      {r.status === 'pending' && (
+                        <button
+                          onClick={() => handleCancelTopup(r.id)}
+                          className="text-[10px] font-bold text-red-500 hover:underline"
+                        >
+                          {t('profile.walletCancel')}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

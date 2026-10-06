@@ -18,6 +18,7 @@ const EMPTY_FORM = {
 
 export default function UsersManager() {
   const [users, setUsers] = useState([]);
+  const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [showCreate, setShowCreate] = useState(false);
@@ -27,6 +28,7 @@ export default function UsersManager() {
   const [topupFor, setTopupFor] = useState(null); // { id, name, balance }
   const [topupAmount, setTopupAmount] = useState('');
   const [topupBusy, setTopupBusy] = useState(false);
+  const [confirmingRequest, setConfirmingRequest] = useState(null);
 
   const load = useCallback(() => {
     supabase
@@ -39,9 +41,38 @@ export default function UsersManager() {
         setUsers(data || []);
       })
       .finally(() => setLoading(false));
+
+    supabase
+      .from('payment_requests')
+      .select('id, user_id, amount, method, status, created_at')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(50)
+      .then(({ data }) => setRequests(data || []))
+      .catch(() => setRequests([]));
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Зачислить оплаченную заявку: деньги падают на баланс на сервере
+  const handleConfirmRequest = async (req) => {
+    setConfirmingRequest(req.id);
+    try {
+      const { data, error } = await supabase.rpc('complete_topup_request', {
+        p_request_id: req.id,
+        p_external_id: null,
+      });
+      if (error) throw new Error(error.message);
+      const u = users.find((x) => x.id === req.user_id);
+      toast.success(`Зачислено ${formatTJS(data?.amount ?? req.amount)} · баланс ${formatTJS(data?.balance ?? u?.balance ?? 0)}`);
+      load();
+    } catch (err) {
+      console.error('[UsersManager] complete topup error:', err);
+      toast.error(err.message || 'Не удалось зачислить');
+    } finally {
+      setConfirmingRequest(null);
+    }
+  };
 
   const filtered = users.filter((u) => {
     const q = query.trim().toLowerCase();
@@ -123,6 +154,33 @@ export default function UsersManager() {
 
   return (
     <div className="space-y-4">
+      {requests.length > 0 && (
+        <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-2xl p-4 space-y-2">
+          <p className="text-xs font-bold text-amber-800 dark:text-amber-300">
+            Заявки на пополнение ({requests.length}) — зачислите после фактической оплаты
+          </p>
+          {requests.map((r) => {
+            const u = users.find((x) => x.id === r.user_id);
+            return (
+              <div key={r.id} className="flex items-center justify-between gap-3 text-xs">
+                <span className="text-gray-700 dark:text-gray-200">
+                  <span className="font-bold">{formatTJS(r.amount)}</span>
+                  <span className="text-gray-400"> · {u?.full_name || u?.email || 'пользователь'}</span>
+                  <span className="text-gray-400"> · {new Date(r.created_at).toLocaleDateString('ru-RU')}</span>
+                </span>
+                <button
+                  onClick={() => handleConfirmRequest(r)}
+                  disabled={confirmingRequest === r.id}
+                  className="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[11px] font-semibold"
+                >
+                  {confirmingRequest === r.id ? <Loader2 size={12} className="animate-spin" /> : 'Зачислить'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
