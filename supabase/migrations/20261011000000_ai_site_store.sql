@@ -1,5 +1,9 @@
--- AI-сайт: настройки сайта, slug для /store/:slug, платежи и серверный
--- расчёт заказа (спецификация §3, §8, §10, §12, §14).
+-- AI-сайт: настройки сайта, slug для /store/:slug, платежи, серверный
+-- расчёт заказа и защита цен триггерами (спецификация §3, §8, §10, §12, §14).
+--
+-- Зеркало состояния Supabase (применено через MCP, CLI здесь не работает):
+-- миграции ai_site_store_* и orders_server_side_pricing + расширение
+-- get_public_business. Файл идемпотентен, можно применять повторно.
 --
 -- Маппинг таблиц спецификации на СУЩЕСТВУЮЩИЕ (дубли не создаём):
 --   business_websites    -> ai_projects
@@ -9,11 +13,14 @@
 --   website_settings     -> новая таблица ниже
 --   payments             -> новая таблица ниже
 --
--- Делаются 4 шага; применять по одному statement:
+-- Секции ниже (применять по одному statement):
 --   1) таблицы website_settings / payments + slug на ai_projects;
 --   2) триггер slug;
 --   3) RPC create_store_order / create_store_payment / get_public_store;
---   4) RLS + гранты + reload schema.
+--   4) RLS + гранты + reload schema;
+--   7) orders.delivery_price + триггеры order_items_normalize /
+--      orders_recalc_total (серверное ценообразование);
+--   8) get_public_business с website_settings.
 
 -- ─── 1. Таблицы ──────────────────────────────────────────────────────
 
@@ -158,12 +165,15 @@ DECLARE
   v_qty int;
   v_subtotal numeric := 0;
   v_delivery_cost numeric := 0;
+  v_min_order numeric;
+  v_free_from numeric;
   v_total numeric;
   v_order_id uuid;
   v_name text;
   v_phone text;
+  v_lat numeric;
+  v_lng numeric;
   v_recent int;
-  v_free_from numeric;
 BEGIN
   -- Входные данные
   IF p_items IS NULL OR jsonb_typeof(p_items) <> 'array'
@@ -178,6 +188,18 @@ BEGIN
   IF p_payment_method NOT IN ('cash', 'card') THEN
     RAISE EXCEPTION 'bad_payment_method';
   END IF;
+
+  -- Координаты: нечисловое значение молча считаем отсутствующим
+  BEGIN
+    v_lat := NULLIF(p_delivery->>'lat', '')::numeric;
+  EXCEPTION WHEN invalid_text_representation THEN
+    v_lat := NULL;
+  END;
+  BEGIN
+    v_lng := NULLIF(p_delivery->>'lng', '')::numeric;
+  EXCEPTION WHEN invalid_text_representation THEN
+    v_lng := NULL;
+  END;
 
   SELECT b.id, b.status INTO v_business
     FROM public.businesses b WHERE b.id = p_business_id;
@@ -209,7 +231,10 @@ BEGIN
     IF NOT FOUND THEN
       RAISE EXCEPTION 'unknown_product';
     END IF;
-    IF v_product.stock IS NOT NULL AND v_product.stock < v_qty THEN
+    -- stock 0/NULL = наличие не учитывается (так у всех текущих товаров);
+    -- лимит действует только когда stock > 0
+    IF v_product.stock IS NOT NULL AND v_product.stock > 0
+       AND v_product.stock < v_qty THEN
       RAISE EXCEPTION 'out_of_stock';
     END IF;
     v_subtotal := v_subtotal + round(v_product.price * v_qty, 2);
@@ -232,8 +257,9 @@ BEGIN
         END;
       END IF;
       -- Минимальная сумма заказа
-      IF NULLIF(v_settings.delivery->>'min_order', '')::numeric IS NOT NULL
-         AND v_subtotal < NULLIF(v_settings.delivery->>'min_order', '')::numeric THEN
+      v_min_order := NULLIF(v_settings.delivery->>'min_order', '')::numeric;
+      IF v_min_order IS NOT NULL AND v_min_order > 0
+         AND v_subtotal < v_min_order THEN
         RAISE EXCEPTION 'min_order_not_met';
       END IF;
     END IF;
@@ -244,16 +270,12 @@ BEGIN
   INSERT INTO public.orders (
     business_id, customer_name, customer_phone, status, total, currency,
     delivery_type, delivery_address, delivery_lat, delivery_lng,
-    payment_method, notes
+    payment_method, delivery_price, notes
   ) VALUES (
     p_business_id, v_name, v_phone, 'pending', v_total, 'TJS',
     coalesce(p_delivery->>'type', 'delivery'),
     nullif(trim(coalesce(p_delivery->>'address', '')), ''),
-    CASE WHEN coalesce(p_delivery->>'lat', '') ~ '^-?[0-9]+(\.[0-9]+)?$'
-         THEN (p_delivery->>'lat')::numeric END,
-    CASE WHEN coalesce(p_delivery->>'lng', '') ~ '^-?[0-9]+(\.[0-9]+)?$'
-         THEN (p_delivery->>'lng')::numeric END,
-    p_payment_method,
+    v_lat, v_lng, p_payment_method, v_delivery_cost,
     nullif(trim(coalesce(p_customer->>'notes', '')), '')
   )
   RETURNING id INTO v_order_id;
@@ -422,5 +444,109 @@ GRANT EXECUTE ON FUNCTION
 GRANT EXECUTE ON FUNCTION
   public.get_public_store(text)
   TO anon, authenticated;
+
+-- 7. Серверное ценообразование (миграция orders_server_side_pricing):
+--    триггеры не дают закрепить поддельную цену/итог даже при прямом INSERT
+--    в orders/order_items мимо RPC.
+ALTER TABLE public.orders
+  ADD COLUMN IF NOT EXISTS delivery_price numeric NOT NULL DEFAULT 0;
+
+CREATE OR REPLACE FUNCTION public.order_items_normalize()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_product record;
+BEGIN
+  IF NEW.quantity IS NULL OR NEW.quantity < 1 OR NEW.quantity > 99 THEN
+    NEW.quantity := LEAST(GREATEST(COALESCE(NEW.quantity, 1), 1), 99);
+  END IF;
+  IF NEW.product_id IS NULL THEN
+    RAISE EXCEPTION 'unknown_product';
+  END IF;
+  SELECT p.id, p.name, p.price, p.is_active INTO v_product
+    FROM public.products p WHERE p.id = NEW.product_id;
+  IF NOT FOUND OR NOT COALESCE(v_product.is_active, false) THEN
+    RAISE EXCEPTION 'unknown_product';
+  END IF;
+  NEW.product_name := v_product.name;
+  NEW.price := v_product.price;
+  NEW.total := round(v_product.price * NEW.quantity, 2);
+  RETURN NEW;
+END
+$function$;
+
+CREATE TRIGGER trg_order_items_normalize
+  BEFORE INSERT OR UPDATE ON public.order_items
+  FOR EACH ROW EXECUTE FUNCTION order_items_normalize();
+
+CREATE OR REPLACE FUNCTION public.orders_recalc_total()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_order_id uuid;
+BEGIN
+  v_order_id := COALESCE(NEW.order_id, OLD.order_id);
+  UPDATE public.orders o
+     SET total = round(
+           COALESCE((SELECT sum(i.total)
+                       FROM public.order_items i
+                      WHERE i.order_id = v_order_id), 0)
+           + GREATEST(COALESCE(o.delivery_price, 0), 0), 2)
+   WHERE o.id = v_order_id;
+  RETURN COALESCE(NEW, OLD);
+END
+$function$;
+
+CREATE TRIGGER trg_orders_recalc_total
+  AFTER INSERT OR DELETE OR UPDATE ON public.order_items
+  FOR EACH ROW EXECUTE FUNCTION orders_recalc_total();
+
+-- 8. get_public_business дополнительно отдаёт website_settings —
+--    миграция ai_site_store_public_business_settings (настройки визарда
+--    доставки/оплаты для публичных страниц и виджета).
+CREATE OR REPLACE FUNCTION public.get_public_business(p_business_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+  SELECT jsonb_build_object(
+    'id',      b.id,
+    'name',    b.name,
+    'type',    b.type,
+    'phone',   b.phone,
+    'city',    b.city,
+    'address', b.address,
+    'logo_url', b.logo_url,
+    'lat',     b.lat,
+    'lng',     b.lng,
+    'website_settings', COALESCE((
+      SELECT jsonb_build_object(
+               'site_type', w.site_type, 'style', w.style,
+               'hero_title', w.hero_title, 'hero_description', w.hero_description,
+               'font', w.font, 'show_delivery', w.show_delivery,
+               'show_payment', w.show_payment, 'delivery', w.delivery,
+               'payment', w.payment
+             )
+      FROM public.website_settings w
+      WHERE w.business_id = b.id
+    ), 'null'::jsonb),
+    'products', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+               'id', p.id, 'name', p.name, 'description', p.description,
+               'price', p.price, 'currency', p.currency, 'stock', p.stock,
+               'image_url', p.image_url, 'category_id', p.category_id,
+               'category', c.name
+             ) ORDER BY p.created_at DESC)
+      FROM public.products p
+      LEFT JOIN public.categories c ON c.id = p.category_id
+      WHERE p.business_id = b.id AND p.is_active
+    ), '[]'::jsonb)
+  )
+  FROM public.businesses b
+  WHERE b.id = p_business_id AND b.status = 'active'
+$function$;
 
 SELECT pg_notify('pgrst', 'reload schema');
