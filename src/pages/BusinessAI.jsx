@@ -1152,7 +1152,12 @@ export default function BusinessAI() {
     try {
       setStage('Сохраняю настройки сайта…');
       if (selectedBusiness) {
-        await saveWebsiteSettings(wizardToSettings(state, selectedBusiness.id));
+        const filled = {
+          ...state,
+          heroTitle: state.heroTitle.trim() || selectedBusiness.name || 'Магазин',
+          heroDescription: state.heroDescription.trim() || selectedBusiness.description || '',
+        };
+        await saveWebsiteSettings(wizardToSettings(filled, selectedBusiness.id));
       }
       const picked = products
         .filter((p) => state.productIds.includes(p.id))
@@ -1170,6 +1175,9 @@ export default function BusinessAI() {
   // ─── ZIP полного React-проекта магазина (§9) ───────────────
   const handleExportProject = async () => {
     try {
+      if (!selectedBusiness?.id) {
+        toast.info('Бизнес не выбран: после распаковки заполните VITE_BUSINESS_ID в .env.local');
+      }
       const { default: JSZip } = await import('jszip');
       const projectFiles = buildStoreProject({
         name: activeProject?.name || selectedBusiness?.name || 'Магазин',

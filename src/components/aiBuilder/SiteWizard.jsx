@@ -143,6 +143,14 @@ export default function SiteWizard({ open, onClose, business, products = [], bus
           {!busy && !resolved && (
             <p className="text-xs text-amber-400 font-bold">Генерация скоро начнётся…</p>
           )}
+          {resolved && (
+            <button
+              onClick={onClose}
+              className="w-full px-4 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-black hover:bg-violet-500"
+            >
+              Открыть сайт
+            </button>
+          )}
         </div>
       </div>
     );
