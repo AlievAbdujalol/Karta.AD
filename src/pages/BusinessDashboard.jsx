@@ -9,9 +9,10 @@ import {
   Plus, Store, MapPin, Phone, Users, ChevronRight, Home, Map, ShoppingBag,
   Truck, ClipboardList, Bot, BarChart3, CreditCard, MessageSquare, Settings,
   Package, TrendingUp, TrendingDown, ExternalLink, MoreHorizontal, Crown, Bell,
-  Globe, Pencil,
+  Globe, Pencil, Code2, Copy,
 } from 'lucide-react';
 import { revenueTrend } from '@/lib/business';
+import { buildWidgetSnippet, buildAnchorHints } from '@/lib/widgetSnippet';
 
 const ROLE_LABELS = {
   owner: { ru: 'Владелец', tg: 'Соҳиб', en: 'Owner' },
@@ -76,6 +77,21 @@ export default function BusinessDashboard() {
   const [tab, setTab] = useState('admin');
   const [publishedSite, setPublishedSite] = useState(null);
   const [siteLoading, setSiteLoading] = useState(false);
+
+  // Одна строка вставки виджета для чужого хостинга
+  const widgetSnippet = selectedBusiness
+    ? buildWidgetSnippet(selectedBusiness.id, window.location.origin)
+    : null;
+
+  const copyWidgetSnippet = async () => {
+    if (!widgetSnippet) return;
+    try {
+      await navigator.clipboard.writeText(widgetSnippet);
+      toast.success('Сниппет скопирован — вставь его на свой сайт');
+    } catch {
+      toast.error('Не удалось скопировать');
+    }
+  };
 
   const loadBusinesses = async () => {
     setLoading(true);
@@ -421,6 +437,40 @@ export default function BusinessDashboard() {
                   >
                     Создать в AI-конструкторе →
                   </button>
+                </div>
+              )}
+
+              {/* Виджет на чужой хостинг: одна строка → каталог, корзина, доставка, заказы */}
+              {selectedBusiness && widgetSnippet && (
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Code2 size={16} className="text-blue-500" />
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                      Встроить на любой сайт
+                    </p>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Вставь одну строку — на твоём сайте появятся каталог, корзина,
+                    выбор адреса на карте и оформление заказа. Все заказы падают
+                    сюда, в «Заказы», и управляются как обычно.
+                  </p>
+                  <div className="flex items-stretch gap-2">
+                    <code className="flex-1 min-w-0 overflow-x-auto whitespace-nowrap text-[11px] font-mono bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-300">
+                      {widgetSnippet}
+                    </code>
+                    <button
+                      onClick={copyWidgetSnippet}
+                      className="inline-flex items-center gap-1 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shrink-0"
+                    >
+                      <Copy size={13} /> Копировать
+                    </button>
+                  </div>
+                  <details className="text-xs text-slate-500 dark:text-slate-400">
+                    <summary className="cursor-pointer font-bold select-none">
+                      Разместить секции отдельно (по желанию)
+                    </summary>
+                    <pre className="mt-2 bg-slate-100 dark:bg-slate-950 rounded-lg p-3 overflow-x-auto text-[11px] font-mono">{buildAnchorHints()}</pre>
+                  </details>
                 </div>
               )}
             </div>

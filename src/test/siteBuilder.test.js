@@ -265,3 +265,45 @@ describe('compileSite', () => {
     for (const t of SECTION_TYPES) expect(html).toContain(t);
   });
 });
+
+describe('чекаут: адрес на карте и способ оплаты', () => {
+  const s = { site: { name: 'T', pages: [{ name: 'H', sections: [{ type: 'products', title: 'К' }] }] } };
+  const biz = { id: 'b1', products: [{ id: 'p1', name: 'Торт', price: 50 }] };
+  const html = () => compileSite(s, biz, { supabaseUrl: 'https://x.supabase.co', anonKey: 'anon' });
+
+  it('кнопка выбора адреса на карте и контейнер карты в форме заказа', () => {
+    const h = html();
+    expect(h).toContain('id="co_mapbtn"');
+    expect(h).toContain('id="co_map"');
+  });
+
+  it('Leaflet подгружается лениво с unpkg (чужой хостинг не тащит наш бандл)', () => {
+    expect(html()).toContain('unpkg.com/leaflet@1.9.4/dist/leaflet.js');
+    expect(html()).toContain('unpkg.com/leaflet@1.9.4/dist/leaflet.css');
+  });
+
+  it('заказ несёт delivery_lat/delivery_lng и payment_method', () => {
+    const h = html();
+    expect(h).toContain('delivery_lat');
+    expect(h).toContain('delivery_lng');
+    expect(h).toContain('payment_method');
+  });
+
+  it('пин → обратное геокодирование Nominatim подставляет текст адреса', () => {
+    expect(html()).toContain('nominatim.openstreetmap.org/reverse');
+  });
+
+  it('оплата: наличные выбраны, карта помечена disabled (шлюза нет)', () => {
+    const h = html();
+    expect(h).toContain('name="pm"');
+    expect(h).toMatch(/name="pm" value="card" disabled/);
+  });
+
+  it('самовывоз не отправляет координаты доставки', () => {
+    expect(html()).toContain("dtype === 'pickup'");
+  });
+
+  it('без shop-конфига карты в чекауте нет (как и корзины)', () => {
+    expect(compileSite(s, biz)).not.toContain('id="co_mapbtn"');
+  });
+});

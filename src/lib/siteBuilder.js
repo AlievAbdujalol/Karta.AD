@@ -148,7 +148,10 @@ function sectionHtml(sec, biz, theme, cfg, appOrigin = '') {
 <input id="co_name" placeholder="Имя" autocomplete="name">
 <input id="co_phone" placeholder="Телефон" inputmode="tel" autocomplete="tel">
 <input id="co_addr" placeholder="Адрес доставки">
+<button type="button" id="co_mapbtn" style="background:transparent;border:2px dashed currentColor;padding:9px;color:inherit">📍 Указать адрес на карте</button>
+<div id="co_map" style="display:none;height:220px;border-radius:12px;overflow:hidden"></div>
 <div class="row"><label><input type="radio" name="dtype" value="delivery" checked> Доставка</label><label><input type="radio" name="dtype" value="pickup"> Самовывоз</label></div>
+<div class="row"><label><input type="radio" name="pm" value="cash" checked> Оплата при получении</label><label><input type="radio" name="pm" value="card" disabled> Картой · скоро</label></div>
 <button id="sendorder">Заказать</button>
 <p id="ordermsg" class="muted"></p>
 </div>` : '';
@@ -284,9 +287,47 @@ function cartJs(cfg, products) {
 var CFG = ${cfgJson};
 var DATA = ${dataJson};
 var cart = {};
+var geo = { lat: null, lng: null };
 function money(n){ return new Intl.NumberFormat('ru-RU').format(n) + ' сом'; }
 function count(){ var n = 0; for (var k in cart) n += cart[k]; return n; }
 function total(){ var s = 0; for (var k in cart) { var p = DATA.items[+k]; if (p) s += p.price * cart[k]; } return s; }
+function openMap(){
+  var box = document.getElementById('co_map');
+  var trigger = document.getElementById('co_mapbtn');
+  if (!box) return;
+  box.style.display = 'block';
+  if (trigger) trigger.style.display = 'none';
+  function init(){
+    var L = window.L;
+    if (!L) { box.textContent = 'Карта не загрузилась — введи адрес текстом'; return; }
+    var map = L.map(box).setView([38.5581, 68.7738], 13);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: 'OpenStreetMap' }).addTo(map);
+    var mk = null;
+    map.on('click', function(ev){
+      geo.lat = Math.round(ev.latlng.lat * 1e6) / 1e6;
+      geo.lng = Math.round(ev.latlng.lng * 1e6) / 1e6;
+      if (mk) mk.setLatLng(ev.latlng); else mk = L.marker(ev.latlng).addTo(map);
+      fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' + geo.lat + '&lon=' + geo.lng + '&zoom=18&accept-language=ru')
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(j){ if (j && j.display_name) document.getElementById('co_addr').value = j.display_name; })
+        .catch(function(){});
+    });
+  }
+  if (window.L) { init(); return; }
+  if (!document.getElementById('kwlfcss')) {
+    var link = document.createElement('link');
+    link.id = 'kwlfcss'; link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+  }
+  if (!document.getElementById('kwlfjs')) {
+    var sc = document.createElement('script');
+    sc.id = 'kwlfjs'; sc.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    sc.onload = init;
+    sc.onerror = function(){ box.textContent = 'Карта не загрузилась — введи адрес текстом'; };
+    document.head.appendChild(sc);
+  }
+}
 function render(){
   var bar = document.getElementById('cartbar');
   if (!bar) return;
@@ -306,6 +347,7 @@ document.addEventListener('click', function(e){
     f.style.display = f.style.display === 'none' ? 'flex' : 'none';
     f.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
+  if (e.target && e.target.id === 'co_mapbtn') openMap();
 });
 document.addEventListener('click', function(e){
   if (!e.target || e.target.id !== 'sendorder') return;
@@ -315,6 +357,8 @@ document.addEventListener('click', function(e){
   var addr = document.getElementById('co_addr').value.trim();
   var dtype = 'delivery';
   try { dtype = document.querySelector('input[name="dtype"]:checked').value || 'delivery'; } catch (err) {}
+  var pm = 'cash';
+  try { pm = document.querySelector('input[name="pm"]:checked').value || 'cash'; } catch (err) {}
   if (!count()) { msg.textContent = 'Корзина пуста'; return; }
   if (CFG.preview) { msg.textContent = 'Демо-режим: заказы работают на опубликованном сайте'; return; }
   if (!name || !phone) { msg.textContent = 'Укажи имя и телефон'; return; }
@@ -323,10 +367,11 @@ document.addEventListener('click', function(e){
     var p = DATA.items[+k];
     return { product_id: p.id, product_name: p.name, quantity: cart[k], price: p.price, total: p.price * cart[k] };
   });
+  var isPickup = dtype === 'pickup';
   var headers = { 'Content-Type': 'application/json', 'apikey': CFG.key, 'Authorization': 'Bearer ' + CFG.key, 'Prefer': 'return=representation' };
   fetch(CFG.url + '/rest/v1/orders', {
     method: 'POST', headers: headers,
-    body: JSON.stringify({ business_id: CFG.businessId, customer_name: name, customer_phone: phone, delivery_type: dtype === 'pickup' ? 'pickup' : 'delivery', delivery_address: addr || null, total: total(), status: 'pending' })
+    body: JSON.stringify({ business_id: CFG.businessId, customer_name: name, customer_phone: phone, delivery_type: isPickup ? 'pickup' : 'delivery', delivery_address: addr || null, delivery_lat: (isPickup || geo.lat == null) ? null : geo.lat, delivery_lng: (isPickup || geo.lng == null) ? null : geo.lng, payment_method: pm === 'card' ? 'card' : 'cash', total: total(), status: 'pending' })
   }).then(function(r){ if (!r.ok) throw new Error('order ' + r.status); return r.json(); })
   .then(function(ord){
     var order = Array.isArray(ord) ? ord[0] : ord;
