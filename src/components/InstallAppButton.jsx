@@ -1,67 +1,51 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Download, X, Share, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
-
-function isInstalled() {
-  try {
-    if (window.matchMedia?.('(display-mode: standalone)').matches) return true;
-    if (window.navigator.standalone === true) return true; // iOS
-  } catch {}
-  return false;
-}
-
-function isIOS() {
-  try {
-    const ua = navigator.userAgent || '';
-    return /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  } catch { return false; }
-}
+import {
+  initInstallPrompt, getInstallPrompt, canAutoInstall, onInstallPromptChange,
+  isStandalone, isIOS, promptInstall,
+} from '@/lib/installPrompt';
 
 /**
- * Кнопка «Установить приложение» (PWA).
- * Chrome/Edge: системный install-промпт. iOS/другие: инструкция вручную.
+ * Кнопка «Скачать приложение» (PWA).
+ * Chrome/Edge/Android: сразу системный install-промпт. iOS и браузеры без
+ * beforeinstallprompt: инструкция вручную — там API установки не существует.
  */
 export default function InstallAppButton() {
-  const [deferred, setDeferred] = useState(() => window.__kartaInstallPrompt || null);
-  const [installed, setInstalled] = useState(() => isInstalled());
+  const [canInstall, setCanInstall] = useState(() => canAutoInstall());
+  const [installed, setInstalled] = useState(() => isStandalone());
   const [showHelp, setShowHelp] = useState(false);
+  const [busy, setBusy] = useState(false);
 
+  // На всякий случай инициализируем и здесь: кнопка может отрендериться
+  // раньше, чем отработал main.jsx (например, в тестах или при HMR).
   useEffect(() => {
-    const onPrompt = (e) => {
-      e.preventDefault();
-      window.__kartaInstallPrompt = e;
-      setDeferred(e);
-    };
-    const onInstalled = () => {
-      window.__kartaInstallPrompt = null;
-      setDeferred(null);
-      setInstalled(true);
-      toast.success('Приложение установлено');
-    };
-    window.addEventListener('beforeinstallprompt', onPrompt);
-    window.addEventListener('appinstalled', onInstalled);
-    return () => {
-      window.removeEventListener('beforeinstallprompt', onPrompt);
-      window.removeEventListener('appinstalled', onInstalled);
-    };
+    initInstallPrompt();
+    setCanInstall(canAutoInstall());
+    return onInstallPromptChange(() => {
+      setCanInstall(canAutoInstall());
+      if (getInstallPrompt() === null && isStandalone()) setInstalled(true);
+    });
   }, []);
 
   const handleClick = useCallback(async () => {
-    const p = window.__kartaInstallPrompt;
-    if (p) {
-      try {
-        await p.prompt();
-        const { outcome } = await p.userChoice;
-        if (outcome === 'accepted') {
-          window.__kartaInstallPrompt = null;
-          setDeferred(null);
-          return;
-        }
-      } catch {}
-      return;
+    setBusy(true);
+    try {
+      const result = await promptInstall();
+      if (result === 'accepted') {
+        setInstalled(true);
+        toast.success('Приложение установлено');
+        return;
+      }
+      if (result === 'dismissed') {
+        setCanInstall(false);
+        return;
+      }
+      // Промпта нет (iOS, Firefox, уже отклонено) — показываем инструкцию.
+      setShowHelp((v) => !v);
+    } finally {
+      setBusy(false);
     }
-    // Промпта нет (iOS, Firefox, уже отклонено) — показываем инструкцию.
-    setShowHelp((v) => !v);
   }, []);
 
   if (installed) {
@@ -77,7 +61,8 @@ export default function InstallAppButton() {
     <div className="w-full">
       <button
         onClick={handleClick}
-        className="w-full rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-all px-4 py-3 flex items-center gap-3 text-left"
+        disabled={busy}
+        className="w-full rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-70 text-white shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-all px-4 py-3 flex items-center gap-3 text-left"
       >
         <span className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
           <Download size={20} />
@@ -85,12 +70,12 @@ export default function InstallAppButton() {
         <span className="flex-1 min-w-0">
           <span className="block text-[14px] font-extrabold leading-tight">Скачать приложение</span>
           <span className="block text-[11px] font-medium opacity-80 mt-0.5">
-            {deferred ? 'Установка в один тап' : 'Бесплатно · работает без интернета'}
+            {canInstall ? 'Нажмите — установится сразу' : 'Бесплатно · работает без интернета'}
           </span>
         </span>
       </button>
 
-      {showHelp && !deferred && (
+      {showHelp && !canInstall && (
         <div className="mt-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-4 py-3 space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-[12px] font-extrabold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">

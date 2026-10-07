@@ -3,6 +3,11 @@ import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
 import "./index.css";
 import "./lib/i18n";
+import { initInstallPrompt } from "./lib/installPrompt";
+
+// Ловим beforeinstallprompt сразу при старте: браузер стреляет событием один раз
+// и рано, а кнопка «Скачать приложение» живёт в профиле и монтируется позже.
+initInstallPrompt();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
