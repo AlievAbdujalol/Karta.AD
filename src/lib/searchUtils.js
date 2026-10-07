@@ -53,12 +53,6 @@ export function haversineDist(lat1, lng1, lat2, lng2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-function formatDist(km) {
-  if (km == null) return '';
-  if (km < 1) return `${Math.round(km * 1000)} м`;
-  return `${km.toFixed(1)} км`;
-}
-
 // Overpass POI categories mapping
 const OVERPASS_CATEGORIES = {
   'остановка': ['highway=bus_stop', 'public_transport=stop_position', 'railway=tram_stop'],

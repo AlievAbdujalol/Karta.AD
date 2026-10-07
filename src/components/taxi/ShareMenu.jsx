@@ -21,7 +21,7 @@ const SERVICES = [
     label: 'Instagram',
     icon: Share2,
     color: 'bg-gradient-to-br from-purple-500 to-pink-500 hover:opacity-90',
-    buildUrl: (text) => `https://www.instagram.com/`,
+    buildUrl: () => `https://www.instagram.com/`,
   },
 ];
 

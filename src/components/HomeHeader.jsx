@@ -15,11 +15,11 @@ const FLAG_MAP = {
 const getFlag = (c) => FLAG_MAP[c?.trim()] || (c ? '🏳️' : '🌍');
 
 export default function HomeHeader({
-  lang, setLang,
+  lang: _lang, setLang: _setLang,
   countries = [], selectedCountry, setSelectedCountry,
   cities = [], filteredCities = [], selectedCity, setSelectedCity,
   selectedType, setSelectedType,
-  routes = [], filteredRoutes = [], selectedRoute, setSelectedRoute,
+  routes: _routes = [], filteredRoutes = [], selectedRoute, setSelectedRoute,
   favorites = [], toggleFavorite,
   logTrip,
   notifications = [], onClearNotifications,

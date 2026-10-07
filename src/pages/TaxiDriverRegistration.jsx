@@ -10,7 +10,7 @@ const CAR_TYPES = ['Седан', 'Хэтчбек', 'Универсал', 'Мин
 const CAR_CATEGORIES = TARIFFS.map(t => t.id);
 
 export default function TaxiDriverRegistration() {
-  const { user, update } = useCurrentUser();
+  const { user } = useCurrentUser();
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);

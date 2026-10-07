@@ -122,9 +122,9 @@ export default function Profile() {
   const { user, refreshUser, update } = useCurrentUser();
   const { logout } = useAuth();
   const [cities, setCities] = useState([]);
-  const [vehicles, setVehicles] = useState([]);
+  const [, setVehicles] = useState([]);
   const [routes, setRoutes] = useState([]);
-  const [transactions, setTransactions] = useState([]);
+  const [, setTransactions] = useState([]);
   const [form, setForm] = useState({
     role: 'passenger',
     language: 'ru',
@@ -584,7 +584,7 @@ export default function Profile() {
       const { data } = supabase.storage.from('taxi_docs').getPublicUrl(path);
       setTaxiVehicle(prev => ({ ...prev, photo_url: data.publicUrl }));
       toast.success('Фото загружено — нажмите Сохранить');
-    } catch (err) {
+    } catch {
       toast.error('Ошибка загрузки фото');
     }
   };

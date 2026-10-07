@@ -695,7 +695,7 @@ export default function TaxiPassenger() {
       if (error) throw error;
       setOrderId(data.id);
       toast.success(`Ищем водителя · ${formatTJS(selectedPrice)} TJS${paymentMethod !== 'cash' ? '' : ' · наличные'}`);
-    } catch (e) {
+    } catch {
       toast.error(navigator.onLine ? 'Ошибка при создании заказа' : 'Нет интернета. Проверьте подключение');
       setOrderState('idle');
     }

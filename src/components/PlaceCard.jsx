@@ -2,11 +2,9 @@ import { useState } from 'react';
 import { MapPin, Star, Navigation, Heart, Share2, Download, AlertTriangle, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/api/supabase';
-import { useLanguage } from '@/lib/useLanguage';
 import { haversineM } from '@/lib/geo';
 
 export default function PlaceCard({ place, onClose, onRoute, onFlyTo, userPos }) {
-  const { t } = useLanguage();
   const [saved, setSaved] = useState(false);
   if (!place) return null;
   const dist = userPos ? Math.round(haversineM(userPos[0], userPos[1], place.lat, place.lng)) : null;
@@ -20,7 +18,7 @@ export default function PlaceCard({ place, onClose, onRoute, onFlyTo, userPos })
       if (!user) { toast.error('Войдите'); return; }
       await supabase.from('saved_places').insert({ user_id: user.id, name: place.name||'Место', address: place.display_name||'', lat: place.lat, lng: place.lng, category: 'favorite' });
       setSaved(true); toast.success('Сохранено в избранное');
-    } catch (e) { toast.error('Ошибка сохранения'); }
+    } catch { toast.error('Ошибка сохранения'); }
   };
   const report = async () => {
     try { const { data:{user}} = await supabase.auth.getUser(); if(!user) return toast.error('Войдите');

@@ -36,7 +36,7 @@ export default function Home() {
   const { t, lang, setLang } = useLanguage();
   const { user: currentUser } = useCurrentUser();
   const { contactLocations, shareWith, unshareWith } = useLocationSharing(currentUser?.id);
-  const { groupRoute, members, onlineMembers, sharingEnabled: groupSharingEnabled, createGroup, joinGroup, leaveGroup, finishGroup, toggleSharing: toggleGroupSharing, myPosition, meetPoint } = useGroupRoute(currentUser?.id);
+  const { groupRoute, members, onlineMembers, sharingEnabled: groupSharingEnabled, createGroup, leaveGroup, finishGroup, toggleSharing: toggleGroupSharing, myPosition, meetPoint } = useGroupRoute(currentUser?.id);
   const nav = useNavigation();
   const [cities, setCities] = useState([]);
   const [routes, setRoutes] = useState([]);

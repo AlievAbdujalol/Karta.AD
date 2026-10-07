@@ -113,7 +113,7 @@ function Chip({ r }) {
   );
 }
 
-export default function StopInfoPopup({ stop, routes, routeGeometries, routingOpen, onPickFrom, onPickTo }) {
+export default function StopInfoPopup({ stop, routes, routeGeometries, routingOpen: _routingOpen, onPickFrom, onPickTo }) {
   const { t } = useLanguage();
   const passingRoutes = useMemo(() => findRoutesAtStop(stop, routes, routeGeometries), [stop, routes, routeGeometries]);
   const buses = passingRoutes.filter(r => r.type === 'bus');

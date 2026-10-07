@@ -237,7 +237,6 @@ export async function chatWithFallback(models, { model, messages, maxTokens, tem
   for (let i = 0; i < order.length; i++) {
     const id = order[i];
     try {
-      const needConfirm = i > 0 ? false : allowPaid;
       const res = await proxyChat({
         model: id,
         messages,

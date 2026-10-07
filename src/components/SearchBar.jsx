@@ -6,7 +6,7 @@ import { isGeminiConfigured } from '@/lib/gemini';
 import { useLanguage } from '@/lib/useLanguage';
 import { supabase } from '@/api/supabase';
 
-export default function SearchBar({ cityId, selectedCity, selectedCountry, onSelectResult, mapCenter }) {
+export default function SearchBar({ cityId, selectedCity, selectedCountry: _selectedCountry, onSelectResult, mapCenter }) {
   const { t } = useLanguage();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState({ routes: [], stops: [], vehicles: [], addresses: [], pois: [] });
@@ -108,18 +108,6 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry, onSel
       // Bias coordinates from selected city (fallback to Tajikistan center)
       const biasLat = selectedCity?.lat || 38.559;
       const biasLng = selectedCity?.lng || 68.773;
-      const biasCountry = selectedCountry || selectedCity?.country || '';
-
-      // Country code mapping for Google components parameter
-      const countryCodeMap = {
-        'Таджикистан': 'tj', 'Tajikistan': 'tj',
-        'Узбекистан': 'uz', 'Uzbekistan': 'uz',
-        'Кыргызстан': 'kg', 'Kyrgyzstan': 'kg',
-        'Казахстан': 'kz', 'Kazakhstan': 'kz',
-        'Россия': 'ru', 'Russia': 'ru',
-        'Туркменистан': 'tm', 'Turkmenistan': 'tm',
-      };
-      const googleCountry = countryCodeMap[biasCountry] || 'tj';
 
       // Nominatim (OpenStreetMap) — biased toward selected city
       try {

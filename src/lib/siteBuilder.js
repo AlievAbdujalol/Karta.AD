@@ -270,7 +270,7 @@ ${cartScript}
 
 /** JS корзины и оформления заказа (инлайн, без внешних зависимостей). */
 function cartJs(cfg, products) {
-  const items = (products || []).slice(0, 12).map((p, i) => ({
+  const items = (products || []).slice(0, 12).map((p) => ({
     id: p.id || null,
     name: String(p.name || ''),
     price: Number(p.price || 0),

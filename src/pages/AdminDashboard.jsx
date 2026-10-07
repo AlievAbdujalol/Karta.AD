@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useOutletContext } from 'react-router-dom';
 import { City, Route, Vehicle } from '@/api/entities';
 import { supabase } from '@/api/supabase';
 import { useLanguage } from '@/lib/useLanguage';
@@ -9,7 +8,6 @@ import { Plus, Trash2, CheckCircle, XCircle, MapPin, Bus, Users, Globe, Search, 
 const tabs = ['dashboard', 'cities', 'manageRoutes', 'manageUsers'];
 
 export default function AdminDashboard() {
-  const { user } = useOutletContext() || { user: null };
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [cities, setCities] = useState([]);

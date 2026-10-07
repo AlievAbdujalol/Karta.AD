@@ -75,7 +75,6 @@ export default function BusinessAI() {
   // Файлы проекта (мультифайл-режим)
   const [files, setFiles] = useState({});
   const [activeFile, setActiveFile] = useState(null);
-  const [rightTab, setRightTab] = useState('preview');
   const [previewDoc, setPreviewDoc] = useState('');
   const zipInputRef = useRef(null);
   const multiInputRef = useRef(null);
@@ -99,7 +98,6 @@ export default function BusinessAI() {
     } catch {
       setPreviewDoc('');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files]);
 
   // Preview
@@ -1134,9 +1132,6 @@ export default function BusinessAI() {
       setKeySaving(false);
     }
   };
-
-  const [keyInputState, setKeyInputState] = [keyInput, setKeyInput];
-  void keyInputState;
 
   return (
     <div className="h-full overflow-y-auto lg:overflow-hidden bg-[#0b1120] dark:bg-[#0b1120]">

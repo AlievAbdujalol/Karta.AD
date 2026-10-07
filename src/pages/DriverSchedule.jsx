@@ -64,7 +64,7 @@ function ShiftSummary({ schedule }) {
   );
 }
 
-function ActiveStops({ schedule, route }) {
+function ActiveStops({ schedule }) {
   const { t } = useLanguage();
   if (!schedule?.stops_schedule?.length) return null;
   const now = getNowMinutes();
@@ -292,7 +292,7 @@ export default function DriverSchedule() {
         )}
 
         <ShiftSummary schedule={schedule} />
-        <ActiveStops schedule={schedule} route={route} />
+        <ActiveStops schedule={schedule} />
         <RoutePlan route={route} />
 
         {route && !schedule && (

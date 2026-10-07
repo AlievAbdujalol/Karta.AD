@@ -1,9 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/api/supabase';
 
-const UPDATE_INTERVAL = 10000;
-const STALE_THRESHOLD = 5 * 60 * 1000;
-
 export function useLocationSharing(userId) {
   const [sharingEnabled, setSharingEnabled] = useState(false);
   const [sharedContacts, setSharedContacts] = useState([]);
@@ -63,7 +60,7 @@ export function useLocationSharing(userId) {
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       sendLocation,
-      (err) => {},
+      () => {},
       { enableHighAccuracy: false, timeout: 30000, maximumAge: 10000 }
     );
 

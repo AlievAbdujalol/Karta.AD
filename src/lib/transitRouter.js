@@ -351,9 +351,6 @@ export async function findTransitRoutes(from, to, routes, typeFilter = null) {
 
     if (direct.length === 0 && filtered.length >= 2) {
       // Ищем пары маршрутов где высадка одного близко к посадке другого
-      const topDirect1 = [];
-      const topDirect2 = [];
-
       for (const route of filtered) {
         const boardCandidates = nearestStops(route, from.lat, from.lng, 2000, 1);
         if (boardCandidates.length === 0) continue;

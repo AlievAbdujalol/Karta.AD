@@ -3,9 +3,6 @@ import { Save, AlertTriangle } from 'lucide-react';
 
 /** Подсветка несбалансированных скобок (экранируем HTML). */
 function highlightBrackets(code) {
-  const stack = [];
-  const pairs = { '(': ')', '[': ']', '{': '}' };
-  const bad = new Set();
   const lines = String(code).split('\n');
   // грубая проверка по всему тексту без строк/комментариев — только явные хвосты
   const opens = (code.match(/[{[(]/g) || []).length;

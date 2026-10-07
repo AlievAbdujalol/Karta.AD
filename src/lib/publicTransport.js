@@ -1,7 +1,7 @@
 // Стандартные тарифы общественного транспорта (Таджикистан)
 const FLAT_FARE = 2.0; // 2 TJS
 
-export function estimatePublicTransportCost(distanceM) {
+export function estimatePublicTransportCost(_distanceM) {
   // Для простоты, общественный транспорт часто имеет фиксированную стоимость
   // или небольшую привязку к расстоянию. Примем фиксированную.
   return FLAT_FARE;

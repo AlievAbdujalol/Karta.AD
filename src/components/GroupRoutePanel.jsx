@@ -120,7 +120,7 @@ export default function GroupRoutePanel({
   members = [],
   onlineMembers = [],
   sharingEnabled,
-  myPosition,
+  myPosition: _myPosition,
   meetPoint,
   onLeave,
   onFinish,

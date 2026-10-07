@@ -164,7 +164,6 @@ function UserLocationMarker({ transportMode }) {
   const [pos, setPos] = useState(null);
   const [accuracy, setAccuracy] = useState(0);
   const [heading, setHeading] = useState(null);
-  const map = useMap();
   const cursor = useNavCursor();
 
   useEffect(() => {
@@ -311,38 +310,6 @@ function RouteNumberLabel({ positions, routeNumber, routeName, color }) {
       zIndexOffset={60}
     />
   ));
-}
-
-function createBusIcon(routeNumber, type, t) {
-  const color = type === 'minibus' ? '#2e7d32' : '#1565c0';
-  const glow = type === 'minibus' ? 'rgba(46,125,50,0.3)' : 'rgba(21,101,192,0.3)';
-
-  return L.divIcon({
-    html: `<div style="position:relative;display:flex;flex-direction:column;align-items:center;" class="k-breathe">
-      <div style="
-        background:${color};
-        border-radius:14px;
-        width:46px;
-        height:36px;
-        display:flex;
-        flex-direction:column;
-        align-items:center;
-        justify-content:center;
-        box-shadow:0 4px 16px ${glow}, 0 1px 4px rgba(0,0,0,0.2);
-        border:2.5px solid rgba(255,255,255,0.9);
-        position:relative;
-        z-index:1;
-        gap:1px;
-      ">
-        <span style="color:#fff;font-size:11px;font-weight:800;line-height:1;letter-spacing:-0.5px;">#${esc(routeNumber)}</span>
-        <span style="color:rgba(255,255,255,0.75);font-size:8px;font-weight:500;">${esc(type === 'minibus' ? t('busmap.minibusAbbr') : t('busmap.busLabel'))}</span>
-      </div>
-      <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid ${color};margin-top:-1px;"></div>
-    </div>`,
-    className: '',
-    iconSize: [46, 50],
-    iconAnchor: [23, 50],
-  });
 }
 
 import { distanceM } from '@/lib/transitRouter';
@@ -764,7 +731,7 @@ function OsmStopMarkers({ routes, routeGeometries, routingOpen, onPickResult }) 
 }
 
 const TILE_KEY = 'karta_tile_index';
-export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute, panelVisible, onLocate, tiltEnabled: _tiltEnabled = false, autoCenter = true, routeMeta = null, onPlaceSelect, onCenterChange, onMapClick, eventPos, eventLine=[], roadDir=0, hideEvents=false }) {
+export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute: _groupRoute, panelVisible, onLocate, tiltEnabled: _tiltEnabled = false, autoCenter = true, routeMeta = null, onPlaceSelect: _onPlaceSelect, onCenterChange, onMapClick, eventPos, eventLine=[], roadDir=0, hideEvents=false }) {
   const [tileIndex, setTileIndex] = useState(() => {
     const fallback = () => {
       // Без CARTO-ключа слои CARTO показывают водяной знак —
@@ -824,7 +791,6 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
   const [mapPickResult, setMapPickResult] = useState(null);
   const [routeGeometries, setRouteGeometries] = useState({});
   const getEtaLabel = (vehicle) => getNextStopEta(vehicle, route) || null;
-  const { t } = useLanguage();
   const { user } = useCurrentUser();
   const mapRef = useRef(null);
   const nav = useNavigation();
@@ -1002,7 +968,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
     routingStateCbRef.current?.(routingOpen);
   }, [routingOpen]);
 
-  function MapPickerOverlay({ target, onPick, onCancel }) {
+  function MapPickerOverlay({ target: _target, onPick, onCancel }) {
     const map = useMap();
     const [centerLatLng, setCenterLatLng] = useState(map.getCenter());
     const [address, setAddress] = useState(null);

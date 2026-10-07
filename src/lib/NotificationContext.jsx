@@ -20,8 +20,8 @@ const NotificationContext = createContext({
   clear: async () => {},
   confirmPayment: /** @type {(transactionId: string) => Promise<boolean>} */ (async () => false),
   rejectPayment: /** @type {(transactionId: string) => Promise<boolean>} */ (async () => false),
-  addLocalNotification: (/** @type {any} */ n) => {},
-  markAsRead: async (/** @type {string} */ id) => {},
+  addLocalNotification: () => {},
+  markAsRead: async () => {},
 });
 
 /**

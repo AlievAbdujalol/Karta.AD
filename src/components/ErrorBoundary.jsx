@@ -24,7 +24,7 @@ export function DefaultErrorFallback({ error, onReset }) {
   );
 }
 
-export function BusMapErrorFallback({ error }) {
+export function BusMapErrorFallback({ error: _error }) {
   const { t } = useLanguage();
   return (
     <div className="w-full h-full min-h-[300px] bg-slate-100 dark:bg-slate-900 border border-red-200 dark:border-red-900/50 rounded-2xl flex flex-col items-center justify-center p-6 text-center space-y-4">

@@ -132,7 +132,6 @@ export default function TripHistory({ user }) {
         <div className="space-y-1.5">
           {filtered.map(item => {
             const sent = isSent(item);
-            const received = isReceived(item);
             const amount = Number(item.amount);
             return (
             <div

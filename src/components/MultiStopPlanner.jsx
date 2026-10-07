@@ -35,7 +35,7 @@ export default function MultiStopPlanner({ onRouteBuilt, onRequestMapPick }) {
         if (data.stops) setStops(data.stops);
         if (data.routeInfo) setRouteInfo(data.routeInfo);
         toast.info("Маршрут успешно загружен");
-      } catch (e) {
+      } catch {
         toast.error("Не удалось загрузить маршрут");
       }
     }
