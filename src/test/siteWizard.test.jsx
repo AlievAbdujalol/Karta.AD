@@ -56,6 +56,7 @@ const gotoFinalStep = () => {
 
 beforeEach(() => {
   toastMock.mockClear();
+  sessionStorage.clear(); // черновик формы — между тестами не живёт
 });
 
 afterEach(cleanup);
@@ -217,5 +218,88 @@ describe('SiteWizard: финал и onSubmit', () => {
     fireEvent.click(screen.getByRole('button', { name: /Создать сайт/ }));
     expect(onSubmit).not.toHaveBeenCalled();
     expect(toastMock).toHaveBeenCalledWith('error', 'Сначала создай бизнес — сайт привязывается к нему');
+  });
+});
+
+describe('SiteWizard: UX', () => {
+  it('черновик: закрытие и новый монтаж не теряют шаг и заполненные поля', () => {
+    const { unmount } = render(<SiteWizard {...baseProps()} />);
+    clickNext();
+    clickNext();
+    fillInfo();
+    unmount();
+
+    render(<SiteWizard {...baseProps()} />);
+    // восстановились и шаг, и значения
+    expect(screen.getByText(/Шаг 3 из 7/)).toBeTruthy();
+    expect(screen.getByDisplayValue('Кроссовки AD')).toBeTruthy();
+    expect(screen.getByDisplayValue('Магазин кроссовок в Душанбе')).toBeTruthy();
+  });
+
+  it('успешная генерация очищает черновик', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(true);
+    const { unmount } = render(<SiteWizard {...baseProps({ onSubmit })} />);
+    gotoFinalStep();
+    fireEvent.click(screen.getByRole('button', { name: /Создать сайт/ }));
+    await waitFor(() => screen.getByText('Открыть сайт'));
+    unmount();
+    expect(sessionStorage.getItem('karta-ai-wizard-draft')).toBeNull();
+  });
+
+  it('после успеха и закрытия визард открывается заново на форме, а не на «Готово!»', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(true);
+    const onClose = vi.fn();
+    const props = baseProps({ onSubmit, onClose });
+    const { rerender } = render(<SiteWizard {...props} />);
+    gotoFinalStep();
+    fireEvent.click(screen.getByRole('button', { name: /Создать сайт/ }));
+    await waitFor(() => screen.getByText('Открыть сайт'));
+    fireEvent.click(screen.getByText('Открыть сайт'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    rerender(<SiteWizard {...props} open={false} />);
+    rerender(<SiteWizard {...props} open />);
+    expect(screen.queryByText('Создание сайта…')).toBeNull();
+    expect(screen.getByText(/Шаг 1 из 7/)).toBeTruthy();
+  });
+
+  it('Esc закрывает визард; при идущей генерации (busy) — нет', () => {
+    const onClose = vi.fn();
+    const { rerender } = render(<SiteWizard {...baseProps({ onClose })} />);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    rerender(<SiteWizard {...baseProps({ onClose, busy: true })} />);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1); // busy игнорирует Esc
+  });
+
+  it('Enter переходит на следующий шаг', () => {
+    render(<SiteWizard {...baseProps()} />);
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(screen.getByText(/Шаг 2 из 7/)).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(screen.getByText(/Шаг 3 из 7/)).toBeTruthy();
+  });
+
+  it('клик по пройденному шагу в прогресс-баре возвращает на него', () => {
+    render(<SiteWizard {...baseProps()} />);
+    clickNext();
+    clickNext();
+    expect(screen.getByText(/Шаг 3 из 7/)).toBeTruthy();
+    fireEvent.click(screen.getByTitle('Вернуться: Тип сайта'));
+    expect(screen.getByText(/Шаг 1 из 7/)).toBeTruthy();
+  });
+
+  it('шаг «Информация»: живое превью первого экрана в выбранном стиле', () => {
+    render(<SiteWizard {...baseProps()} />);
+    clickNext(); // → Стиль
+    clickNext(); // → Информация
+    // до заполнения — заглушки превью
+    expect(screen.getByText('Короткое описание бизнеса появится здесь')).toBeTruthy();
+    fillInfo();
+    // значения в превью обновились (сами поля в текст не ищем — RTL матчит value)
+    expect(screen.getByTestId('preview-hero-title').textContent).toBe('Кроссовки AD');
+    expect(screen.getByTestId('preview-hero-desc').textContent).toBe('Магазин кроссовок в Душанбе');
   });
 });

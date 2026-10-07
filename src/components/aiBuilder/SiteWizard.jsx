@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { X, ArrowLeft, ArrowRight, Sparkles, Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -33,23 +33,69 @@ const ONLINE_IDS = ['alif', 'eskhata', 'dushanbe_city'];
 const inputCls = 'w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500';
 const labelCls = 'block text-[12px] font-bold text-slate-400 mb-1';
 
+// ─── черновик формы (sessionStorage) ─────────────────────────────
+// Случайное закрытие или перезагрузка страницы не должны стирать
+// заполненные шаги; после успешной генерации черновик очищается.
+const DRAFT_KEY = 'karta-ai-wizard-draft';
+
+/** → { step, form } либо null (нет черновика / он битый / старый формат). */
+function loadDraft() {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const stored = JSON.parse(raw);
+    if (!stored || typeof stored !== 'object') return null;
+    // старый формат — просто объект формы без обёртки
+    const rawForm = stored.form && typeof stored.form === 'object' ? stored.form : stored;
+    const d = wizardDefaults({});
+    return {
+      step: Number.isInteger(stored.step) ? Math.max(0, Math.min(WIZARD_STEPS.length - 1, stored.step)) : 0,
+      form: {
+        ...d,
+        ...rawForm,
+        delivery: { ...d.delivery, ...(rawForm.delivery || {}) },
+        payment: { ...d.payment, ...(rawForm.payment || {}) },
+        productIds: Array.isArray(rawForm.productIds) ? rawForm.productIds : [],
+      },
+    };
+  } catch {
+    return null; // битый черновик — начинаем с дефолтов
+  }
+}
+
+function saveDraft(form, step) {
+  try {
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ step, form }));
+  } catch {
+    // приватный режим браузера — просто без черновика
+  }
+}
+
+function clearDraft() {
+  try {
+    sessionStorage.removeItem(DRAFT_KEY);
+  } catch {
+    // приватный режим браузера — нечего и удалять
+  }
+}
+
 /**
  * Визард «Создать сайт с помощью AI»: 7 шагов (спецификация §5),
  * финал — вызов onSubmit(state) → сохранение настроек + генерация,
  * с поэтапным прогрессом (§16). Чистая логика шагов — в wizardConfig.
  */
 export default function SiteWizard({ open, onClose, business, products = [], busy, stage, onSubmit }) {
-  const [step, setStep] = useState(0);
+  const [draft] = useState(() => loadDraft());
+  const [step, setStep] = useState(() => draft?.step ?? 0);
   const [phase, setPhase] = useState('form'); // form | progress
   const [resolved, setResolved] = useState(false);
   const [errors, setErrors] = useState([]);
-  const [form, setForm] = useState(() => wizardDefaults({}));
+  const [form, setForm] = useState(() => draft?.form || wizardDefaults({}));
+  const errorRef = useRef(null);
 
   const productList = useMemo(() => (Array.isArray(products) ? products : []), [products]);
   const current = WIZARD_STEPS[step];
   const theme = getTheme(form.style);
-
-  if (!open) return null;
 
   const patch = (p) => setForm((f) => ({ ...f, ...p }));
 
@@ -99,7 +145,11 @@ export default function SiteWizard({ open, onClose, business, products = [], bus
     try {
       const ok = await onSubmit(form);
       if (ok) {
+        // Успех: черновик больше не нужен, следующий запуск — с чистого листа
+        clearDraft();
         setResolved(true);
+        setForm(wizardDefaults({}));
+        setStep(0);
       } else {
         setPhase('form');
       }
@@ -108,6 +158,52 @@ export default function SiteWizard({ open, onClose, business, products = [], bus
       toast.error(e?.message || 'Не удалось создать сайт');
     }
   };
+
+  // Черновик: запоминаем заполненную форму и шаг, пока визард открыт
+  useEffect(() => {
+    if (open && phase === 'form') saveDraft(form, step);
+  }, [open, phase, form, step]);
+
+  // Ошибки валидации — прокрутить к ним, их легко не заметить внизу
+  useEffect(() => {
+    if (errors.length && typeof errorRef.current?.scrollIntoView === 'function') {
+      errorRef.current.scrollIntoView({ block: 'nearest' });
+    }
+  }, [errors]);
+
+  // Закрыли визард — при следующем открытии снова форма (не «Готово!»)
+  useEffect(() => {
+    if (open) return;
+    setPhase('form');
+    setResolved(false);
+    setErrors([]);
+  }, [open]);
+
+  // Клавиатура: Esc — закрыть (если не идёт генерация), Enter — далее/создать
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        if (!busy) {
+          e.preventDefault();
+          onClose();
+        }
+        return;
+      }
+      if (phase !== 'form' || e.key !== 'Enter' || e.shiftKey || busy) return;
+      const t = e.target;
+      const tag = t?.tagName;
+      if (tag === 'TEXTAREA' || tag === 'BUTTON' || tag === 'SELECT' || tag === 'A') return;
+      if (tag === 'INPUT' && !['text', 'number', 'tel', 'email', 'search', 'url'].includes(t.type)) return;
+      e.preventDefault();
+      if (step < WIZARD_STEPS.length - 1) goto(step + 1);
+      else submit();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  if (!open) return null;
 
   // ─── поэтапный прогресс (§16) ──────────────────────────────
   if (phase === 'progress') {
@@ -174,8 +270,11 @@ export default function SiteWizard({ open, onClose, business, products = [], bus
             {WIZARD_STEPS.map((s, i) => (
               <div
                 key={s.id}
-                title={s.title}
-                className={`h-1.5 flex-1 rounded-full ${i <= step ? 'bg-violet-500' : 'bg-slate-800'}`}
+                title={i < step ? `Вернуться: ${s.title}` : s.title}
+                onClick={i < step ? () => { setErrors([]); setStep(i); } : undefined}
+                className={`h-1.5 flex-1 rounded-full ${i <= step ? 'bg-violet-500' : 'bg-slate-800'} ${
+                  i < step ? 'cursor-pointer hover:bg-violet-400 transition-colors' : ''
+                }`}
               />
             ))}
           </div>
@@ -241,6 +340,7 @@ export default function SiteWizard({ open, onClose, business, products = [], bus
                   className={inputCls}
                   value={form.heroTitle}
                   maxLength={80}
+                  autoFocus
                   placeholder={business?.name || 'Например: Магазин-AD'}
                   onChange={(e) => patch({ heroTitle: e.target.value })}
                 />
@@ -254,6 +354,26 @@ export default function SiteWizard({ open, onClose, business, products = [], bus
                   placeholder="Продажа спортивной обуви и одежды в Душанбе"
                   onChange={(e) => patch({ heroDescription: e.target.value })}
                 />
+              </div>
+              {/* Живое превью первого экрана в выбранном стиле — сразу видно результат */}
+              <div className="rounded-2xl border border-slate-700 overflow-hidden">
+                <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-slate-500 bg-slate-800/60">
+                  Как увидят посетители — «{theme.label}»
+                </div>
+                <div className="p-4 space-y-2.5" style={{ background: theme.gradient, color: theme.text }}>
+                  <p data-testid="preview-hero-title" className="text-base font-black leading-tight">
+                    {form.heroTitle.trim() || business?.name || 'Название сайта'}
+                  </p>
+                  <p data-testid="preview-hero-desc" className="text-xs leading-snug opacity-80">
+                    {form.heroDescription.trim() || 'Короткое описание бизнеса появится здесь'}
+                  </p>
+                  <span
+                    className="inline-block px-3 py-1.5 text-[11px] font-black"
+                    style={{ background: theme.primary, color: theme.dark ? '#0f172a' : '#fff', borderRadius: theme.radius }}
+                  >
+                    Заказать
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -421,7 +541,7 @@ export default function SiteWizard({ open, onClose, business, products = [], bus
           )}
 
           {errors.length > 0 && (
-            <ul className="space-y-1">
+            <ul ref={errorRef} className="space-y-1">
               {errors.map((e) => (
                 <li key={e} className="text-xs font-bold text-red-400">• {e}</li>
               ))}

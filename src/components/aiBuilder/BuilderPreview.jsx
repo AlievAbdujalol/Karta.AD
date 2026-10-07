@@ -1,4 +1,5 @@
-import { Monitor, Tablet, Smartphone, Globe, GlobeLock, Download, Copy, Check, RefreshCw, FolderArchive } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Monitor, Tablet, Smartphone, Globe, GlobeLock, Download, Copy, Check, RefreshCw, FolderArchive, ExternalLink } from 'lucide-react';
 
 const WIDTHS = { desktop: '100%', tablet: 768, mobile: 390 };
 
@@ -10,6 +11,12 @@ export default function BuilderPreview({
   isPublished, onPublish, publicUrl, copied, onCopyLink, onExport, onExportProject,
   onRefreshData, refreshingData, empty,
 }) {
+  // При смене версии iframe пересоздаётся — прячем белую пустоту скелетоном
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    setLoading(true);
+  }, [versionKey]);
+
   return (
     <div className="flex flex-col h-full min-h-0 bg-white dark:bg-slate-900 md:rounded-2xl border-0 md:border border-slate-200 dark:border-slate-800 overflow-hidden">
       <div className="flex items-center gap-1.5 px-3 py-2 border-b border-slate-100 dark:border-slate-800 flex-wrap">
@@ -52,34 +59,57 @@ export default function BuilderPreview({
               {isPublished ? 'Опубликован' : 'Publish'}
             </button>
             {isPublished && publicUrl && (
-              <button onClick={onCopyLink} title="Скопировать ссылку"
-                className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
-              </button>
+              <>
+                <button
+                  onClick={() => window.open(publicUrl, '_blank', 'noopener,noreferrer')}
+                  title="Открыть сайт в новой вкладке"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  <ExternalLink size={13} />
+                </button>
+                <button onClick={onCopyLink} title="Скопировать ссылку"
+                  className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                  {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                </button>
+              </>
             )}
           </>
         )}
       </div>
-      <div className="flex-1 overflow-auto scrollbar-ui bg-slate-100 dark:bg-slate-950 p-3 flex justify-center min-h-[280px]">
+      <div className="relative flex-1 overflow-auto scrollbar-ui bg-slate-100 dark:bg-slate-950 p-3 flex justify-center min-h-[280px]">
         {!html ? (
           empty
         ) : (
-          <iframe
-            key={versionKey}
-            title="Website preview"
-            srcDoc={html}
-            sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
-            style={{
-              width: previewMode === 'desktop' ? '100%' : Math.min(WIDTHS[previewMode], 900),
-              maxWidth: '100%',
-              height: '100%',
-              minHeight: 420,
-              borderRadius: 12,
-              border: '1px solid rgba(148,163,184,.3)',
-              background: '#fff',
-              flexShrink: 0,
-            }}
-          />
+          <>
+            {loading && (
+              <div data-testid="preview-loading"
+                className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+                <div className="w-full max-w-sm mx-auto p-4 space-y-3 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800">
+                  <div className="h-4 w-2/3 rounded bg-slate-200 dark:bg-slate-700 animate-pulse" />
+                  <div className="h-3 w-full rounded bg-slate-200 dark:bg-slate-700 animate-pulse" />
+                  <div className="h-3 w-5/6 rounded bg-slate-200 dark:bg-slate-700 animate-pulse" />
+                  <div className="h-16 w-full rounded bg-slate-200 dark:bg-slate-700 animate-pulse" />
+                </div>
+              </div>
+            )}
+            <iframe
+              key={versionKey}
+              title="Website preview"
+              srcDoc={html}
+              sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+              onLoad={() => setLoading(false)}
+              style={{
+                width: previewMode === 'desktop' ? '100%' : Math.min(WIDTHS[previewMode], 900),
+                maxWidth: '100%',
+                height: '100%',
+                minHeight: 420,
+                borderRadius: 12,
+                border: '1px solid rgba(148,163,184,.3)',
+                background: '#fff',
+                flexShrink: 0,
+              }}
+            />
+          </>
         )}
       </div>
     </div>
