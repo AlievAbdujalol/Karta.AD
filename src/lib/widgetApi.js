@@ -3,6 +3,7 @@
  * anon-ключ publishable, встраивается в сборку через vite define.
  */
 import { reverseGeocodeUrl } from '@/lib/geo';
+import { storeOrderErrorMessage, STORE_ORDER_FALLBACK } from '@/lib/orderErrors';
 
 export function restHeaders(anonKey, { representation = true } = {}) {
   return {
@@ -41,32 +42,35 @@ export async function fetchBusiness(cfg) {
   return res.json();
 }
 
-/** Заказ + позиции. Ошибка на любом шаге → исключение (без половинчатых заказов). */
-export async function createOrder(cfg, { order, rows = [] }) {
-  const res = await req(
-    `${cfg.supabaseUrl}/rest/v1/orders`,
-    {
+/**
+ * Заказ через RPC create_store_order: сервер берёт цены из каталога,
+ * считает доставку из настроек сайта, проверяет остатки, минимальную сумму
+ * и rate-limit. Аргументы собирает buildStoreOrderArgs — без цен и total.
+ * Серверные коды ошибок превращаются в понятные сообщения.
+ */
+export async function createStoreOrder(cfg, args) {
+  let res;
+  try {
+    res = await fetch(`${cfg.supabaseUrl}/rest/v1/rpc/create_store_order`, {
       method: 'POST',
-      headers: restHeaders(cfg.anonKey),
-      body: JSON.stringify(order),
-    },
-    'create order',
-  );
-  const created = await res.json();
-  const row = Array.isArray(created) ? created[0] : created;
-
-  if (rows.length) {
-    await req(
-      `${cfg.supabaseUrl}/rest/v1/order_items`,
-      {
-        method: 'POST',
-        headers: restHeaders(cfg.anonKey),
-        body: JSON.stringify(rows.map((r) => ({ ...r, order_id: row?.id }))),
-      },
-      'order items',
+      headers: restHeaders(cfg.anonKey, { representation: false }),
+      body: JSON.stringify(args),
+    });
+  } catch (e) {
+    throw new Error(`create_store_order: ${e.message}`);
+  }
+  if (!res.ok) {
+    const text = await (res.text ? res.text() : '').catch(() => '');
+    let message = text;
+    try {
+      message = JSON.parse(text).message || text;
+    } catch { /* не JSON — оставляем сырой текст */ }
+    const friendly = storeOrderErrorMessage(message);
+    throw new Error(
+      friendly === STORE_ORDER_FALLBACK ? `${friendly} (HTTP ${res.status})` : friendly,
     );
   }
-  return row;
+  return res.json();
 }
 
 /** Обратное геокодирование: пин на карте → JSON Nominatim (best-effort). */

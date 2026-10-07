@@ -363,29 +363,50 @@ document.addEventListener('click', function(e){
   if (CFG.preview) { msg.textContent = 'Демо-режим: заказы работают на опубликованном сайте'; return; }
   if (!name || !phone) { msg.textContent = 'Укажи имя и телефон'; return; }
   msg.textContent = 'Отправляю…';
-  var rows = Object.keys(cart).map(function(k){
-    var p = DATA.items[+k];
-    return { product_id: p.id, product_name: p.name, quantity: cart[k], price: p.price, total: p.price * cart[k] };
-  });
   var isPickup = dtype === 'pickup';
-  var headers = { 'Content-Type': 'application/json', 'apikey': CFG.key, 'Authorization': 'Bearer ' + CFG.key, 'Prefer': 'return=representation' };
-  fetch(CFG.url + '/rest/v1/orders', {
+  // Цены не отправляем: сервер (create_store_order) берёт их из каталога,
+  // сам считает доставку, проверяет остатки, мин. сумму и rate-limit.
+  var items = Object.keys(cart).map(function(k){
+    return { product_id: DATA.items[+k].id, quantity: cart[k] };
+  });
+  var RU = {
+    bad_items:'Корзина пуста или слишком велика', bad_phone:'Проверьте номер телефона',
+    bad_quantity:'Недопустимое количество товара', bad_payment_method:'Способ оплаты не поддерживается',
+    business_unavailable:'Магазин временно не принимает заказы',
+    unknown_product:'Один из товаров больше не продаётся', out_of_stock:'Товар закончился',
+    min_order_not_met:'Не достигнута минимальная сумма заказа',
+    too_many_orders:'Слишком много заказов — попробуйте чуть позже'
+  };
+  var headers = { 'Content-Type': 'application/json', 'apikey': CFG.key, 'Authorization': 'Bearer ' + CFG.key };
+  fetch(CFG.url + '/rest/v1/rpc/create_store_order', {
     method: 'POST', headers: headers,
-    body: JSON.stringify({ business_id: CFG.businessId, customer_name: name, customer_phone: phone, delivery_type: isPickup ? 'pickup' : 'delivery', delivery_address: addr || null, delivery_lat: (isPickup || geo.lat == null) ? null : geo.lat, delivery_lng: (isPickup || geo.lng == null) ? null : geo.lng, payment_method: pm === 'card' ? 'card' : 'cash', total: total(), status: 'pending' })
-  }).then(function(r){ if (!r.ok) throw new Error('order ' + r.status); return r.json(); })
-  .then(function(ord){
-    var order = Array.isArray(ord) ? ord[0] : ord;
-    return fetch(CFG.url + '/rest/v1/order_items', {
-      method: 'POST', headers: headers,
-      body: JSON.stringify(rows.map(function(x){ x.order_id = order.id; return x; }))
-    }).then(function(r2){ if (!r2.ok) throw new Error('items ' + r2.status); return order; });
-  }).then(function(order){
+    body: JSON.stringify({
+      p_business_id: CFG.businessId,
+      p_items: items,
+      p_customer: { name: name, phone: phone, notes: '' },
+      p_delivery: {
+        type: isPickup ? 'pickup' : 'delivery',
+        address: isPickup ? '' : (addr || ''),
+        lat: (isPickup || geo.lat == null) ? null : geo.lat,
+        lng: (isPickup || geo.lng == null) ? null : geo.lng
+      },
+      p_payment_method: pm === 'card' ? 'card' : 'cash'
+    })
+  }).then(function(r){
+    if (!r.ok) return r.text().then(function(t){
+      var m = t;
+      try { m = JSON.parse(t).message || t; } catch (e2) {}
+      var code = Object.keys(RU).filter(function(c){ return String(m).indexOf(c) >= 0; })[0];
+      throw new Error(code ? RU[code] : 'Не удалось отправить заказ (HTTP ' + r.status + ')');
+    });
+    return r.json();
+  }).then(function(res){
     cart = {}; render();
     document.getElementById('checkout').style.display = 'none';
     msg.textContent = '';
-    alert('Заказ принят! Номер: ' + String(order.id).slice(0, 8));
-  }).catch(function(){
-    msg.textContent = 'Не удалось отправить. Позвони нам напрямую.';
+    alert('Заказ принят! Номер: ' + String(res.order_id).slice(0, 8) + ' · К оплате: ' + money(res.total));
+  }).catch(function(err){
+    msg.textContent = (err && err.message) || 'Не удалось отправить. Позвони нам напрямую.';
   });
 });
 render();

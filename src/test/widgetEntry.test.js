@@ -15,7 +15,7 @@ const BIZ = {
 
 const makeApi = (overrides = {}) => ({
   fetchBusiness: vi.fn(async () => ({ ...BIZ })),
-  createOrder: vi.fn(async () => ({ id: 'ord-1' })),
+  createStoreOrder: vi.fn(async () => ({ order_id: 'ord-1', total: 90, delivery_cost: 0 })),
   reverseGeocode: vi.fn(async () => null),
   ...overrides,
 });

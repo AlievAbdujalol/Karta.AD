@@ -7,7 +7,7 @@ import { WIDGET_CSS } from './styles';
 import { t } from './i18n';
 import { findAnchors } from '@/lib/widgetConfig';
 import { addToCart, setQty, cartCount, cartTotal } from '@/lib/widgetCart';
-import { validateCheckout, buildOrderPayload } from '@/lib/widgetCheckout';
+import { validateCheckout, buildStoreOrderArgs } from '@/lib/widgetCheckout';
 import { mountMap } from './mapPicker';
 
 const DEFAULT_CENTER = [38.5581, 68.7738];
@@ -263,11 +263,11 @@ export function createWidget({ doc = document, cfg, api }) {
     state.submitting = true;
     render();
     try {
-      const { order, rows } = buildOrderPayload({
+      const args = buildStoreOrderArgs({
         businessId: cfg.businessId, form: state.form, cart: state.cart, items: products(),
       });
-      const created = await api.createOrder(cfg, { order, rows });
-      state.orderNo = created?.id ? String(created.id).slice(0, 8) : '';
+      const created = await api.createStoreOrder(cfg, args);
+      state.orderNo = created?.order_id ? String(created.order_id).slice(0, 8) : '';
       state.cart = {};
       state.view = 'done';
     } catch (err) {

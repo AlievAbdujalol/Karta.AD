@@ -5,28 +5,9 @@
  * проверяет stock/минимальную сумму и rate-limit. Клиенту нельзя доверять total.
  */
 import { supabase } from '@/api/supabase';
+import { storeOrderErrorMessage } from '@/lib/orderErrors';
 
-/** Человекочитаемые сообщения серверных кодов ошибок RPC. */
-export const STORE_ORDER_ERRORS = {
-  bad_items: 'Корзина пуста или содержит слишком много позиций',
-  bad_phone: 'Проверьте номер телефона',
-  bad_quantity: 'Количество товара — от 1 до 99',
-  bad_payment_method: 'Способ оплаты не поддерживается',
-  business_unavailable: 'Магазин временно не принимает заказы',
-  unknown_product: 'Один из товаров больше не продаётся',
-  out_of_stock: 'Товар закончился',
-  min_order_not_met: 'Не достигнута минимальная сумма заказа',
-  too_many_orders: 'Слишком много заказов. Попробуйте чуть позже',
-};
-
-/** Преобразовать ошибку RPC в понятный текст для пользователя. */
-export function storeOrderErrorMessage(err) {
-  const msg = String(err?.message || err || '');
-  for (const [code, text] of Object.entries(STORE_ORDER_ERRORS)) {
-    if (msg.includes(code)) return text;
-  }
-  return 'Не удалось создать заказ. Попробуйте ещё раз';
-}
+export { STORE_ORDER_ERRORS, storeOrderErrorMessage, STORE_ORDER_FALLBACK } from '@/lib/orderErrors';
 
 /**
  * Создать заказ.

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchBusiness, createOrder, restHeaders } from '../lib/widgetApi';
+import { fetchBusiness, createStoreOrder, restHeaders } from '../lib/widgetApi';
 
 const cfg = {
   supabaseUrl: 'https://proj.supabase.co',
@@ -54,51 +54,57 @@ describe('fetchBusiness', () => {
   });
 });
 
-describe('createOrder', () => {
-  const payload = {
-    order: {
-      business_id: 'b1', customer_name: 'Али', customer_phone: '+992900000000',
-      delivery_type: 'delivery', delivery_address: 'адрес', delivery_lat: 38.5,
-      delivery_lng: 68.7, payment_method: 'cash', total: 90, status: 'pending',
-    },
-    rows: [{ product_id: 'p1', product_name: 'Пицца', quantity: 2, price: 45, total: 90 }],
+describe('createStoreOrder (RPC create_store_order)', () => {
+  const args = {
+    p_business_id: 'b1',
+    p_items: [{ product_id: 'p1', quantity: 2 }],
+    p_customer: { name: 'Али', phone: '+992900000000', notes: '' },
+    p_delivery: { type: 'delivery', address: 'адрес', lat: 38.5, lng: 68.7 },
+    p_payment_method: 'cash',
   };
 
-  it('создаёт заказ, затем позиции', async () => {
-    fetchMock
-      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: 'ord-1' }] })
-      .mockResolvedValueOnce({ ok: true, json: async () => [] });
+  it('одним запросом создаёт заказ на сервере (цены считает сервер)', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ order_id: 'ord-1', total: 90, delivery_cost: 0 }),
+    });
 
-    const order = await createOrder(cfg, payload);
-    expect(order.id).toBe('ord-1');
+    const res = await createStoreOrder(cfg, args);
+    expect(res).toEqual({ order_id: 'ord-1', total: 90, delivery_cost: 0 });
 
-    const [u1, o1] = fetchMock.mock.calls[0];
-    expect(u1).toBe('https://proj.supabase.co/rest/v1/orders');
-    expect(JSON.parse(o1.body)).toMatchObject({ business_id: 'b1', delivery_lat: 38.5 });
-
-    const [u2, o2] = fetchMock.mock.calls[1];
-    expect(u2).toBe('https://proj.supabase.co/rest/v1/order_items');
-    expect(JSON.parse(o2.body)).toEqual([{
-      order_id: 'ord-1', product_id: 'p1', product_name: 'Пицца',
-      quantity: 2, price: 45, total: 90,
-    }]);
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://proj.supabase.co/rest/v1/rpc/create_store_order');
+    expect(opts.method).toBe('POST');
+    expect(JSON.parse(opts.body)).toEqual(args);
+    expect(opts.headers.apikey).toBe('sb_publishable_test');
+    // ответ сервера, а не репрезентация строки
+    expect(opts.headers.Prefer).toBeUndefined();
+    // клиент не отправляет цен и total
+    expect(opts.body).not.toContain('total');
+    expect(opts.body).not.toContain('price');
   });
 
-  it('пустые строки → только заказ, без второго запроса', async () => {
-    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => [{ id: 'ord-2' }] });
-    await createOrder(cfg, { ...payload, rows: [] });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+  it('серверный код ошибки → понятное русское сообщение', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ code: 'P0001', message: 'out_of_stock' }),
+    });
+    await expect(createStoreOrder(cfg, args)).rejects.toThrow('Товар закончился');
   });
 
-  it('ошибка создания заказа → исключение', async () => {
-    fetchMock.mockResolvedValue({ ok: false, status: 403, text: async () => 'forbidden' });
-    await expect(createOrder(cfg, payload)).rejects.toThrow(/403/);
+  it('неизвестная ошибка → общее сообщение + статус (без утечки SQL)', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 403,
+      text: async () => JSON.stringify({ message: 'permission denied for table orders' }),
+    });
+    await expect(createStoreOrder(cfg, args))
+      .rejects.toThrow('Не удалось создать заказ. Попробуйте ещё раз (HTTP 403)');
   });
 
-  it('заказ создан, но позиции упали → исключение (не тихий половинчатый заказ)', async () => {
-    fetchMock
-      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: 'ord-3' }] })
-      .mockResolvedValueOnce({ ok: false, status: 400, text: async () => 'bad' });
-    await expect(createOrder(cfg, payload)).rejects.toThrow(/400/);
+  it('сетевая ошибка → исключение с именем функции', async () => {
+    fetchMock.mockRejectedValue(new Error('offline'));
+    await expect(createStoreOrder(cfg, args)).rejects.toThrow('create_store_order: offline');
   });
 });

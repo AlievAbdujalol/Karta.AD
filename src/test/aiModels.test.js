@@ -290,12 +290,13 @@ describe('buildFileModuleMessages — модули в файлы', () => {
     ({ buildFileModuleMessages } = await import('../lib/openrouter'));
   });
 
-  it('db-модуль несёт REST-конфиг', () => {
+  it('db-модуль несёт RPC-конфиг заказа', () => {
     const msgs = buildFileModuleMessages(['index.html'], { 'index.html': '<h1>x</h1>' }, 'db', {
       supabaseUrl: 'https://x.supabase.co', anonKey: 'anon', businessId: 'b1',
     });
     const body = msgs[1].content;
-    expect(body).toContain('/rest/v1/orders');
+    expect(body).toContain('/rest/v1/rpc/create_store_order');
+    expect(body).not.toContain('/rest/v1/orders');
     expect(body).toContain('b1');
     expect(body).toContain('index.html');
   });

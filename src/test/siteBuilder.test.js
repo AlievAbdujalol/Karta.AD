@@ -282,11 +282,16 @@ describe('чекаут: адрес на карте и способ оплаты'
     expect(html()).toContain('unpkg.com/leaflet@1.9.4/dist/leaflet.css');
   });
 
-  it('заказ несёт delivery_lat/delivery_lng и payment_method', () => {
+  it('заказ уходит через RPC: координаты в p_delivery, p_payment_method, без клиентских цен', () => {
     const h = html();
-    expect(h).toContain('delivery_lat');
-    expect(h).toContain('delivery_lng');
-    expect(h).toContain('payment_method');
+    expect(h).toContain('/rest/v1/rpc/create_store_order');
+    expect(h).toContain('p_delivery');
+    expect(h).toContain('lat:');
+    expect(h).toContain('lng:');
+    expect(h).toContain('p_payment_method');
+    // прямой INSERT в orders больше не используется
+    expect(h).not.toContain('/rest/v1/orders');
+    expect(h).not.toContain('status: \'pending\'');
   });
 
   it('пин → обратное геокодирование Nominatim подставляет текст адреса', () => {

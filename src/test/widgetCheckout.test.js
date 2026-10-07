@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateCheckout, buildOrderPayload } from '../lib/widgetCheckout';
+import { validateCheckout, buildStoreOrderArgs } from '../lib/widgetCheckout';
 
 const items = [{ id: 'p1', name: 'Пицца', price: 45 }];
 const cart = { p1: 2 };
@@ -48,78 +48,85 @@ describe('validateCheckout', () => {
   });
 });
 
-describe('buildOrderPayload', () => {
-  it('собирает заказ с координатами и строками товаров', () => {
-    const { order, rows } = buildOrderPayload({
+describe('buildStoreOrderArgs (RPC create_store_order)', () => {
+  it('собирает аргументы с координатами и списком позиций', () => {
+    const args = buildStoreOrderArgs({
       businessId: 'b1',
       form: { ...baseForm, lat: 38.56, lng: 68.78 },
       cart,
       items,
     });
-    expect(order).toMatchObject({
-      business_id: 'b1',
-      customer_name: 'Али',
-      customer_phone: '+992 90 000 00 00',
-      delivery_type: 'delivery',
-      delivery_address: 'пр. Рудаки 1',
-      delivery_lat: 38.56,
-      delivery_lng: 68.78,
-      payment_method: 'cash',
-      status: 'pending',
-      total: 90,
+    expect(args).toEqual({
+      p_business_id: 'b1',
+      p_items: [{ product_id: 'p1', quantity: 2 }],
+      p_customer: { name: 'Али', phone: '+992 90 000 00 00', notes: '' },
+      p_delivery: { type: 'delivery', address: 'пр. Рудаки 1', lat: 38.56, lng: 68.78 },
+      p_payment_method: 'cash',
     });
-    expect(rows).toHaveLength(1);
-    expect(rows[0].product_id).toBe('p1');
   });
 
-  it('без координат — null, а не undefined (колонка numeric)', () => {
-    const { order } = buildOrderPayload({ businessId: 'b1', form: baseForm, cart, items });
-    expect(order.delivery_lat).toBeNull();
-    expect(order.delivery_lng).toBeNull();
+  it('цены, total и status не передаются — их считает сервер', () => {
+    const args = buildStoreOrderArgs({ businessId: 'b1', form: baseForm, cart, items });
+    const flat = JSON.stringify(args);
+    expect(flat).not.toContain('total');
+    expect(flat).not.toContain('price');
+    expect(flat).not.toContain('status');
+    expect(flat).not.toContain('product_name');
   });
 
-  it('самовывоз без адреса — адрес и координаты null', () => {
-    const { order } = buildOrderPayload({
+  it('без координат — null, а не undefined (не ломает числовой cast)', () => {
+    const args = buildStoreOrderArgs({ businessId: 'b1', form: baseForm, cart, items });
+    expect(args.p_delivery.lat).toBeNull();
+    expect(args.p_delivery.lng).toBeNull();
+  });
+
+  it('самовывоз без адреса — тип pickup, адрес и координаты пустые', () => {
+    const args = buildStoreOrderArgs({
       businessId: 'b1',
       form: { ...baseForm, deliveryType: 'pickup', address: '', lat: '', lng: '' },
       cart,
       items,
     });
-    expect(order.delivery_type).toBe('pickup');
-    expect(order.delivery_address).toBeNull();
-    expect(order.delivery_lat).toBeNull();
+    expect(args.p_delivery.type).toBe('pickup');
+    expect(args.p_delivery.address).toBe('');
+    expect(args.p_delivery.lat).toBeNull();
   });
 
   it('карта: пока шлюза нет, для покупателя всегда cash', () => {
-    const { order } = buildOrderPayload({
+    const args = buildStoreOrderArgs({
       businessId: 'b1',
       form: { ...baseForm, paymentMethod: 'card' },
       cart,
       items,
     });
-    expect(order.payment_method).toBe('cash');
+    expect(args.p_payment_method).toBe('cash');
   });
 
   it('с включённым шлюзом карта проходит (шов под будущий gateway)', () => {
-    const { order } = buildOrderPayload({
+    const args = buildStoreOrderArgs({
       businessId: 'b1',
       form: { ...baseForm, paymentMethod: 'card' },
       cart,
       items,
       gatewayEnabled: true,
     });
-    expect(order.payment_method).toBe('card');
+    expect(args.p_payment_method).toBe('card');
   });
 
-  it('итог согласован со стоимостью строк (цена округляется до 2 знаков)', () => {
-    const { order, rows } = buildOrderPayload({
+  it('товары не из каталога отфильтровываются, количество сохраняется', () => {
+    const args = buildStoreOrderArgs({
       businessId: 'b1',
       form: baseForm,
-      cart: { p1: 3 },
-      items: [{ id: 'p1', name: 'Пицца', price: 30.333 }],
+      cart: { p1: 3, ghost: 5 },
+      items,
     });
-    expect(rows[0].price).toBe(30.33);
-    expect(rows[0].total).toBe(90.99);
-    expect(order.total).toBe(90.99);
+    expect(args.p_items).toEqual([{ product_id: 'p1', quantity: 3 }]);
+  });
+
+  it('мусор в количестве приводится к числу (сервер валидирует 1–99)', () => {
+    const args = buildStoreOrderArgs({
+      businessId: 'b1', form: baseForm, cart: { p1: '7' }, items,
+    });
+    expect(args.p_items[0].quantity).toBe(7);
   });
 });
