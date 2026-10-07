@@ -154,14 +154,17 @@ export function wizardToSettings(state, bizId) {
  * Собрать промпт для AI из ответов визарда: тип, стиль, инфо,
  * пожелания. Товары/доставка/оплата идут в контекст бизнеса и
  * настройки сайта отдельно, в промпт не дублируются.
+ * @param {object[]} [productNames] — выбранные в шаге 4 названия товаров
  */
-export function buildWizardPrompt(state, biz = {}) {
+export function buildWizardPrompt(state, biz = {}, productNames = []) {
   const typeLabel = SITE_TYPES.find((t) => t.id === state.siteType)?.label || 'Сайт';
   const theme = getTheme(state.style);
+  const picked = productNames.filter(Boolean).slice(0, 20);
   const parts = [
     `Создай сайт: ${typeLabel.toLowerCase()} «${state.heroTitle.trim() || biz.name || 'Бизнес'}».`,
     state.heroDescription.trim() && `О бизнесе: ${state.heroDescription.trim()}`,
     `Оформление: ${theme.label} (${theme.description.toLowerCase()}).`,
+    picked.length && `Акцент в каталоге: ${picked.join(', ')}.`,
     state.prompt.trim() && `Пожелания: ${state.prompt.trim()}`,
     'Нужны: каталог товаров с корзиной, форма заказа с доставкой, контакты.',
   ];

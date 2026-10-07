@@ -5,7 +5,7 @@ import { useCurrentUser } from '@/lib/useCurrentUser';
 import { toast } from 'sonner';
 import {
   Plus, FolderOpen, Trash2, Undo2, Redo2, History,
-  KeyRound, Globe, ArrowLeft, Upload, FolderArchive, Files,
+  KeyRound, Globe, ArrowLeft, Upload, FolderArchive, Files, Sparkles, Copy, Check,
 } from 'lucide-react';
 import { loadUserKeys, saveUserKey } from '@/lib/userKeys';
 import {
@@ -30,7 +30,11 @@ import {
   applyFileEdits, extractFileEdits, isTextFile,
   MAX_FILES, MAX_FILE_SIZE, MAX_TOTAL_SIZE,
 } from '@/lib/projectFiles';
-import { normalizeWidgetUrls, canonicalOrigin } from '@/lib/widgetSnippet';
+import { normalizeWidgetUrls, canonicalOrigin, buildWidgetSnippet } from '@/lib/widgetSnippet';
+import SiteWizard from '@/components/aiBuilder/SiteWizard';
+import { wizardToSettings, buildWizardPrompt } from '@/lib/wizardConfig';
+import { saveWebsiteSettings, publishProject } from '@/lib/api/website';
+import { buildStoreProject } from '@/lib/storeProject';
 
 function aiSummary(structure, version) {
   try {
@@ -106,6 +110,10 @@ export default function BusinessAI() {
   const [copied, setCopied] = useState(false);
   const [refreshingData, setRefreshingData] = useState(false);
 
+  // Визард «Создать сайт» + сниппет виджета на стартовом экране
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [snippetCopied, setSnippetCopied] = useState(false);
+
   // Ключ
   const [keyInput, setKeyInput] = useState('');
   const [keySaving, setKeySaving] = useState(false);
@@ -151,7 +159,7 @@ export default function BusinessAI() {
   const loadProjects = async () => {
     const { data } = await supabase
       .from('ai_projects')
-      .select('id, name, description, business_id, created_at')
+      .select('id, name, description, business_id, slug, created_at')
       .order('created_at', { ascending: false });
     if (data) setProjects(data);
   };
@@ -590,7 +598,7 @@ export default function BusinessAI() {
         htmlOverride = extractHtml(raw);
         if (!/<html/i.test(htmlOverride)) {
           toast.error('Модель вернула не сайт — переформулируй правку');
-          return;
+          return false;
         }
         structure = validateStructure(editStructure);
       } else if (editStructure) {
@@ -599,7 +607,7 @@ export default function BusinessAI() {
         const parsed = extractSiteJson(raw);
         if (!parsed) {
           toast.error('Модель вернула не структуру — переформулируй правку');
-          return;
+          return false;
         }
         // правка могла выкинуть модули Karta-AD — возвращаем их
         structure = withKartaModules(parsed, { products });
@@ -610,7 +618,7 @@ export default function BusinessAI() {
         const parsed = extractSiteJson(raw);
         if (!parsed?.site?.pages?.[0]?.sections?.length) {
           toast.error('Модель вернула пустую структуру — опиши подробнее');
-          return;
+          return false;
         }
         // доставка, такси, контакты и карта подключаются к сайту сразу,
         // даже если AI про них не вспомнил
@@ -622,6 +630,7 @@ export default function BusinessAI() {
       setDraft(null);
       setPrompt('');
       toast.success(editStructure ? 'Версия обновлена' : 'Сайт создан');
+      return true;
     } catch (e) {
       const code = e.code || (e instanceof OpenRouterError ? e.type : 'unknown');
       // Прокси упал, а личный ключ есть — одна попытка напрямую
@@ -637,7 +646,7 @@ export default function BusinessAI() {
         if (confirm('This model may incur charges.\n\nИспользовать платную модель за свой счёт?')) {
           toast.info('Платные модели пока только через backend — выбери бесплатную');
         }
-        return;
+        return false;
       }
       if (code === 'credits') {
         const firstFree = models[0]?.id;
@@ -651,6 +660,7 @@ export default function BusinessAI() {
       } else {
         toast.error(friendlyError(code, msg));
       }
+      return false;
     } finally {
       setBusy(false);
       setStage('');
@@ -1060,11 +1070,12 @@ export default function BusinessAI() {
   const handlePublish = async () => {
     if (!current) return;
     try {
-      await supabase.from('ai_project_versions').update({ is_published: false }).eq('project_id', activeProjectId);
-      const { error } = await supabase.from('ai_project_versions').update({ is_published: true }).eq('id', current.id);
-      if (error) throw error;
+      // Сервер снимает публикацию с остальных версий, публикует текущую
+      // и гарантирует slug проекта (триггер ensure_project_slug).
+      const { slug } = await publishProject(activeProjectId, current.id);
       setVersions((prev) => prev.map((v) => ({ ...v, is_published: v.id === current.id })));
-      toast.success('Опубликован');
+      setProjects((prev) => prev.map((p) => (p.id === activeProjectId ? { ...p, slug } : p)));
+      toast.success(`Опубликован · /store/${slug}`);
     } catch (e) {
       toast.error(e.message || 'Не удалось опубликовать');
     }
@@ -1101,12 +1112,85 @@ export default function BusinessAI() {
 
   const copyLink = () => {
     if (!current) return;
-    const url = `${window.location.origin}/s/${current.id}`;
+    // Опубликованный проект с slug открывается по адресу /store/:slug,
+    // старые версии без slug — по /s/:id.
+    const url = current.is_published && activeProject?.slug
+      ? `${window.location.origin}/store/${activeProject.slug}`
+      : `${window.location.origin}/s/${current.id}`;
     navigator.clipboard?.writeText(url).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
       toast.success('Ссылка скопирована');
     }).catch(() => toast.info(url));
+  };
+
+  // ─── визард «Создать сайт» ─────────────────────────────────
+  /** Сниппет виджета для стартового экрана (§4). */
+  const widgetSnippet = selectedBusiness
+    ? buildWidgetSnippet(selectedBusiness.id, canonicalOrigin())
+    : '';
+
+  const copySnippet = () => {
+    if (!widgetSnippet) return;
+    navigator.clipboard?.writeText(widgetSnippet).then(() => {
+      setSnippetCopied(true);
+      setTimeout(() => setSnippetCopied(false), 1500);
+      toast.success('Сниппет скопирован');
+    }).catch(() => toast.info(widgetSnippet));
+  };
+
+  /**
+   * Финал визарда: сохранить website_settings → сгенерировать сайт
+   * существующим конвейером (runGeneration). Возвращает успех,
+   * чтобы визард закрылся или вернулся к форме с ошибкой.
+   */
+  const handleWizardSubmit = async (state) => {
+    if (!model) {
+      toast.error('Выбери бесплатную модель (список в чате справа)');
+      return false;
+    }
+    try {
+      setStage('Сохраняю настройки сайта…');
+      if (selectedBusiness) {
+        await saveWebsiteSettings(wizardToSettings(state, selectedBusiness.id));
+      }
+      const picked = products
+        .filter((p) => state.productIds.includes(p.id))
+        .map((p) => p.name);
+      const promptText = buildWizardPrompt(state, selectedBusiness || {}, picked);
+      return await runGeneration(promptText);
+    } catch (e) {
+      toast.error(e.message || 'Не удалось сохранить настройки сайта');
+      return false;
+    } finally {
+      setStage('');
+    }
+  };
+
+  // ─── ZIP полного React-проекта магазина (§9) ───────────────
+  const handleExportProject = async () => {
+    try {
+      const { default: JSZip } = await import('jszip');
+      const projectFiles = buildStoreProject({
+        name: activeProject?.name || selectedBusiness?.name || 'Магазин',
+        description: selectedBusiness?.description || '',
+        businessId: selectedBusiness?.id || '',
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+        anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        appOrigin: canonicalOrigin(),
+      });
+      const zip = new JSZip();
+      Object.entries(projectFiles).forEach(([p, c]) => zip.file(p, c));
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'store-project.zip';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      toast.success('store-project.zip скачан');
+    } catch (e) {
+      toast.error(e.message || 'Не удалось собрать ZIP проекта');
+    }
   };
 
   const handleConnectKey = async () => {
@@ -1173,6 +1257,10 @@ export default function BusinessAI() {
           <button onClick={() => setShowVersions((v) => !v)} title="History"
             className="p-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 flex items-center gap-1 text-[11px] font-bold">
             <History size={14} /> {versions.length}
+          </button>
+          <button onClick={() => setWizardOpen(true)} title="Визард: создать сайт с помощью AI"
+            className="p-2 rounded-lg bg-gradient-to-r from-violet-600 to-blue-600 text-white hover:opacity-90 flex items-center gap-1 text-[11px] font-black">
+            <Sparkles size={14} /> Создать сайт
           </button>
           <button onClick={newProject} title="New Project"
             className="p-2 rounded-lg bg-violet-600 text-white hover:bg-violet-500 flex items-center gap-1 text-[11px] font-bold">
@@ -1241,6 +1329,47 @@ export default function BusinessAI() {
           ))}
         </div>
 
+        {/* Стартовый экран (§4): создание сайта + встраивание виджета */}
+        {!activeProjectId && (
+          <div className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-900 to-violet-950/50 p-5 md:p-6 space-y-4">
+            <div className="max-w-2xl space-y-2">
+              <h2 className="text-xl md:text-3xl font-black text-white leading-tight">
+                Создайте магазин с помощью AI
+              </h2>
+              <p className="text-sm text-slate-400">
+                Ответьте на 7 простых вопросов — конструктор соберёт сайт с каталогом, корзиной,
+                доставкой и оплатой, а потом опубликует его по постоянному адресу.
+              </p>
+            </div>
+            <button
+              onClick={() => setWizardOpen(true)}
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 text-white text-sm font-black hover:opacity-90 transition-opacity active:scale-95"
+            >
+              <Sparkles size={16} /> Создать сайт
+            </button>
+
+            {widgetSnippet && (
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-black uppercase tracking-wide text-slate-400">
+                  Или встройте виджет заказов на свой сайт
+                </p>
+                <div className="flex items-start gap-2">
+                  <pre className="flex-1 min-w-0 overflow-x-auto scrollbar-ui rounded-xl bg-black/50 border border-slate-800 px-3 py-2.5 text-[11px] font-mono text-emerald-300 whitespace-pre">
+                    {widgetSnippet}
+                  </pre>
+                  <button
+                    onClick={copySnippet}
+                    title="Скопировать сниппет"
+                    className="p-2.5 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 shrink-0"
+                  >
+                    {snippetCopied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Main grid */}
         <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,1.25fr)] lg:flex-1 lg:min-h-0">
           {/* Sidebar */}
@@ -1303,10 +1432,13 @@ export default function BusinessAI() {
                   setPreviewMode={setPreviewMode}
                   isPublished={!!current?.is_published}
                   onPublish={handlePublish}
-                  publicUrl={current ? `${window.location.origin}/s/${current.id}` : ''}
+                  publicUrl={current ? (current.is_published && activeProject?.slug
+                    ? `${window.location.origin}/store/${activeProject.slug}`
+                    : `${window.location.origin}/s/${current.id}`) : ''}
                   copied={copied}
                   onCopyLink={copyLink}
                   onExport={handleExport}
+                  onExportProject={handleExportProject}
                   onRefreshData={handleRefreshData}
                   refreshingData={refreshingData}
                   empty={(
@@ -1436,6 +1568,16 @@ export default function BusinessAI() {
             )}
           </div>
         </div>
+
+        <SiteWizard
+          open={wizardOpen}
+          onClose={() => setWizardOpen(false)}
+          business={selectedBusiness}
+          products={products}
+          busy={busy}
+          stage={stage}
+          onSubmit={handleWizardSubmit}
+        />
       </div>
     </div>
   );

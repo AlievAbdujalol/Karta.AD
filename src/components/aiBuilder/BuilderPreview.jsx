@@ -1,4 +1,4 @@
-import { Monitor, Tablet, Smartphone, Globe, GlobeLock, Download, Copy, Check, RefreshCw } from 'lucide-react';
+import { Monitor, Tablet, Smartphone, Globe, GlobeLock, Download, Copy, Check, RefreshCw, FolderArchive } from 'lucide-react';
 
 const WIDTHS = { desktop: '100%', tablet: 768, mobile: 390 };
 
@@ -7,7 +7,7 @@ const WIDTHS = { desktop: '100%', tablet: 768, mobile: 390 };
  */
 export default function BuilderPreview({
   html, versionKey, previewMode, setPreviewMode,
-  isPublished, onPublish, publicUrl, copied, onCopyLink, onExport,
+  isPublished, onPublish, publicUrl, copied, onCopyLink, onExport, onExportProject,
   onRefreshData, refreshingData, empty,
 }) {
   return (
@@ -40,6 +40,12 @@ export default function BuilderPreview({
               className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200">
               <Download size={12} /> Export
             </button>
+            {onExportProject && (
+              <button onClick={onExportProject} title="Скачать полный React-проект магазина (ZIP)"
+                className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200">
+                <FolderArchive size={12} /> Проект
+              </button>
+            )}
             <button onClick={onPublish}
               className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-bold ${isPublished ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300' : 'bg-violet-600 text-white hover:bg-violet-500'}`}>
               {isPublished ? <Globe size={12} /> : <GlobeLock size={12} />}

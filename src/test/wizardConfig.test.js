@@ -146,4 +146,11 @@ describe('wizardConfig: промпт для AI', () => {
     expect(p).not.toContain('О бизнесе:');
     expect(p).toContain('«X»');
   });
+
+  it('выбранные товары попадают в промпт, пустой выбор — нет', () => {
+    const p = buildWizardPrompt(good(), BIZ, ['Кроссовки', 'Куртка']);
+    expect(p).toContain('Акцент в каталоге: Кроссовки, Куртка');
+    const none = buildWizardPrompt(good(), BIZ, []);
+    expect(none).not.toContain('Акцент в каталоге');
+  });
 });

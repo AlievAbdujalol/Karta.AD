@@ -34,6 +34,7 @@ const BusinessAnalytics = lazy(() => import('./pages/BusinessAnalytics'));
 const BusinessSettings = lazy(() => import('./pages/BusinessSettings'));
 const BusinessAI = lazy(() => import('./pages/BusinessAI'));
 const SiteView = lazy(() => import('./pages/SiteView'));
+const StoreView = lazy(() => import('./pages/StoreView'));
 
 import ErrorBoundary, { BusMapErrorFallback } from '@/components/ErrorBoundary';
 import { TripProvider } from '@/lib/TripContext';
@@ -153,6 +154,20 @@ function App() {
                       }
                     >
                       <SiteView />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/store/:slug"
+                  element={
+                    <Suspense
+                      fallback={
+                        <div className="fixed inset-0 flex items-center justify-center">
+                          <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin" />
+                        </div>
+                      }
+                    >
+                      <StoreView />
                     </Suspense>
                   }
                 />
