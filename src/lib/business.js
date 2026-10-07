@@ -4,7 +4,7 @@ import { supabase } from '@/api/supabase';
 // Допустимые переходы — зеркало серверного set_order_status().
 export const ORDER_FLOW = {
   pending: ['confirmed', 'cancelled'],
-  confirmed: ['preparing', 'cancelled'],
+  confirmed: ['preparing', 'in_transit', 'cancelled'],
   paid: ['preparing', 'cancelled'],
   preparing: ['ready', 'cancelled'],
   ready: ['picked_up', 'completed', 'cancelled'],
@@ -32,6 +32,47 @@ export function nextStatuses(status) {
   return ORDER_FLOW[status] || [];
 }
 
+// ─── Админ-конвейер: 4 понятных этапа поверх полного ORDER_FLOW ──
+// pending → confirmed → in_transit («в доставке») → delivered (+ cancelled)
+export const ADMIN_FLOW = {
+  pending: ['confirmed', 'cancelled'],
+  confirmed: ['in_transit', 'preparing', 'cancelled'],
+  in_transit: ['delivered', 'cancelled'],
+  delivered: [],
+  cancelled: [],
+};
+
+export const ADMIN_STATUS_LABEL = {
+  pending: 'Новый',
+  confirmed: 'Подтверждён',
+  in_transit: 'В доставке',
+  delivered: 'Доставлен',
+  cancelled: 'Отменён',
+};
+
+const ADMIN_ACTION_LABEL = {
+  confirmed: 'Подтвердить',
+  in_transit: 'В доставку',
+  preparing: 'Готовить',
+  delivered: 'Доставлен',
+  cancelled: 'Отменить',
+};
+
+/** Какие кнопки показывать админу для текущего статуса заказа. */
+export function adminNextStatuses(status) {
+  return ADMIN_FLOW[status] || [];
+}
+
+/** Короткая подпись статуса для бейджа. */
+export function adminStatusLabel(status) {
+  return ADMIN_STATUS_LABEL[status] || status;
+}
+
+/** Подпись кнопки действия в админ-конвейере. */
+export function adminActionLabel(status) {
+  return ADMIN_ACTION_LABEL[status] || status;
+}
+
 /**
  * Смена статуса через серверный RPC (проверяет роль и переходы).
  * Возвращает true если применено, false если переход запрещён/нет доступа.
@@ -45,8 +86,43 @@ export async function setOrderStatus(orderId, status) {
   return !!data;
 }
 
+/**
+ * Редактирование заказа (владелец/менеджер — проверка на сервере).
+ * patch: { customerName, customerPhone, deliveryAddress, deliveryLat,
+ *          deliveryLng, notes, paymentMethod, total } — передаются только заданные.
+ */
+const ORDER_PATCH_MAP = {
+  customerName: 'p_customer_name',
+  customerPhone: 'p_customer_phone',
+  deliveryAddress: 'p_delivery_address',
+  deliveryLat: 'p_delivery_lat',
+  deliveryLng: 'p_delivery_lng',
+  notes: 'p_notes',
+  paymentMethod: 'p_payment_method',
+  total: 'p_total',
+};
+
+export async function updateOrder(orderId, patch = {}) {
+  const args = { p_order_id: orderId };
+  for (const [key, col] of Object.entries(ORDER_PATCH_MAP)) {
+    if (patch[key] !== undefined) args[col] = patch[key];
+  }
+  const { data, error } = await supabase.rpc('update_business_order', args);
+  if (error) throw error;
+  return !!data;
+}
+
+/** Удалить заказ (только владелец; order_items уходят каскадом). */
+export async function deleteOrder(orderId) {
+  const { data, error } = await supabase.rpc('delete_business_order', {
+    p_order_id: orderId,
+  });
+  if (error) throw error;
+  return !!data;
+}
+
 /** Создать заказ вручную (продавец). items: [{product_id, product_name, quantity, price}]. */
-export async function createOrder(businessId, { customerName, customerPhone, deliveryType = 'delivery', deliveryAddress = '', notes = '', items = [] }) {
+export async function createOrder(businessId, { customerName, customerPhone, deliveryType = 'delivery', deliveryAddress = '', notes = '', paymentMethod = 'cash', items = [] }) {
   const total = items.reduce((s, it) => s + Number(it.price || 0) * Number(it.quantity || 1), 0);
   const { data: order, error } = await supabase
     .from('orders')
@@ -57,6 +133,7 @@ export async function createOrder(businessId, { customerName, customerPhone, del
       delivery_type: deliveryType,
       delivery_address: deliveryAddress?.trim() || null,
       notes: notes?.trim() || null,
+      payment_method: paymentMethod === 'card' ? 'card' : 'cash',
       total,
       status: 'pending',
     })

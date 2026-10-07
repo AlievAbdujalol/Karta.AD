@@ -78,6 +78,23 @@ export function formatDuration(s) {
   return `${m} мин`;
 }
 
+// ─── Обратное геокодирование (пин на карте → текст адреса) ──────────
+
+/** URL обратного геокодирования Nominatim; null, если координаты не числа. */
+export function reverseGeocodeUrl(lat, lng) {
+  if (lat === null || lat === undefined || lat === '' || lng === null || lng === undefined || lng === '') return null;
+  const la = Number(lat);
+  const lo = Number(lng);
+  if (!Number.isFinite(la) || !Number.isFinite(lo)) return null;
+  return `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${la.toFixed(6)}&lon=${lo.toFixed(6)}&zoom=18&accept-language=ru`;
+}
+
+/** Адрес из ответа Nominatim; пустой ответ → введённый вручную текст. */
+export function pickAddressText(result, fallback = '') {
+  const name = typeof result?.display_name === 'string' ? result.display_name.trim() : '';
+  return name || (fallback || '');
+}
+
 export function smoothPositions(positions, windowSize = 3) {
   if (positions.length < windowSize) return positions;
   const out = [];

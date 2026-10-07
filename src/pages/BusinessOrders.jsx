@@ -6,9 +6,11 @@ import { toast } from 'sonner';
 import { ClipboardList, Search, ChevronRight, Package, MapPin, Phone, Clock, Plus, Minus, X } from 'lucide-react';
 import BusinessSubHeader from '@/components/BusinessSubHeader';
 import {
-  nextStatuses, NEXT_STATUS_LABEL, setOrderStatus, createOrder,
+  adminNextStatuses, adminActionLabel, setOrderStatus, createOrder,
+  updateOrder, deleteOrder,
   formatCurrency, formatTimeAgo,
 } from '@/lib/business';
+import OrderEditForm from '@/components/business/OrderEditForm';
 
 const STATUS_LABELS = {
   pending: { ru: 'Ожидает', tg: 'Интизор', en: 'Pending' },
@@ -70,8 +72,11 @@ export default function BusinessOrders() {
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [products, setProducts] = useState([]);
-  const [newOrder, setNewOrder] = useState({ customer_name: '', customer_phone: '', delivery_type: 'delivery', delivery_address: '', notes: '' });
+  const [newOrder, setNewOrder] = useState({ customer_name: '', customer_phone: '', delivery_type: 'delivery', delivery_address: '', notes: '', payment_method: 'cash' });
   const [picked, setPicked] = useState({});
+  const [editingId, setEditingId] = useState(null);
+  const [savingId, setSavingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   const loadBusinesses = async () => {
     const { data, error } = await supabase.rpc('get_my_businesses');
@@ -144,6 +149,56 @@ export default function BusinessOrders() {
     }
   };
 
+  /** Редактирование заказа: патч camelCase → обновление строки в списке. */
+  const handleSaveEdit = async (order, patch) => {
+    setSavingId(order.id);
+    try {
+      const ok = await updateOrder(order.id, patch);
+      if (!ok) {
+        toast.error('Нет доступа или заказ уже изменён');
+        return false;
+      }
+      toast.success('Заказ обновлён');
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? {
+        ...o,
+        customer_name: patch.customerName !== undefined ? (patch.customerName || null) : o.customer_name,
+        customer_phone: patch.customerPhone !== undefined ? (patch.customerPhone || null) : o.customer_phone,
+        delivery_address: patch.deliveryAddress !== undefined ? (patch.deliveryAddress || null) : o.delivery_address,
+        delivery_lat: patch.deliveryLat !== undefined ? patch.deliveryLat : o.delivery_lat,
+        delivery_lng: patch.deliveryLng !== undefined ? patch.deliveryLng : o.delivery_lng,
+        notes: patch.notes !== undefined ? (patch.notes || null) : o.notes,
+        payment_method: patch.paymentMethod !== undefined ? patch.paymentMethod : o.payment_method,
+        total: patch.total !== undefined ? patch.total : o.total,
+      } : o)));
+      setEditingId(null);
+      return true;
+    } catch (e) {
+      toast.error(e.message || 'Не удалось сохранить заказ');
+      return false;
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const handleDelete = async (order) => {
+    if (!confirm(`Удалить заказ #${order.id.slice(0, 8)}? Действие необратимо.`)) return;
+    setDeletingId(order.id);
+    try {
+      const ok = await deleteOrder(order.id);
+      if (!ok) {
+        toast.error('Удалять заказ может только владелец');
+        return;
+      }
+      toast.success('Заказ удалён');
+      setOrders((prev) => prev.filter((o) => o.id !== order.id));
+      if (editingId === order.id) setEditingId(null);
+    } catch (e) {
+      toast.error(e.message || 'Не удалось удалить заказ');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const openCreate = async () => {
     setShowCreate(true);
     if (selectedBusiness && products.length === 0) {
@@ -188,11 +243,12 @@ export default function BusinessOrders() {
         deliveryType: newOrder.delivery_type,
         deliveryAddress: newOrder.delivery_address,
         notes: newOrder.notes,
+        paymentMethod: newOrder.payment_method,
         items,
       });
       toast.success('Заказ создан');
       setShowCreate(false);
-      setNewOrder({ customer_name: '', customer_phone: '', delivery_type: 'delivery', delivery_address: '', notes: '' });
+      setNewOrder({ customer_name: '', customer_phone: '', delivery_type: 'delivery', delivery_address: '', notes: '', payment_method: 'cash' });
       setPicked({});
       loadOrders(selectedBusiness.id, filter);
     } catch (e) {
@@ -246,6 +302,10 @@ export default function BusinessOrders() {
                 <option value="courier">Курьер Karta-AD</option>
               </select>
               <input value={newOrder.delivery_address} onChange={(e) => setNewOrder({ ...newOrder, delivery_address: e.target.value })} placeholder="Адрес доставки" className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-transparent text-sm text-slate-800 dark:text-slate-100" />
+              <select value={newOrder.payment_method} onChange={(e) => setNewOrder({ ...newOrder, payment_method: e.target.value })} className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-transparent text-sm text-slate-800 dark:text-slate-100">
+                <option value="cash">Оплата: наличные</option>
+                <option value="card">Оплата: карта</option>
+              </select>
             </div>
             <textarea value={newOrder.notes} onChange={(e) => setNewOrder({ ...newOrder, notes: e.target.value })} placeholder="Примечание" rows={2} className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-transparent text-sm text-slate-800 dark:text-slate-100" />
             {products.length > 0 && (
@@ -348,6 +408,9 @@ export default function BusinessOrders() {
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${STATUS_COLORS[order.status] || 'bg-slate-100 text-slate-500'}`}>
                         {STATUS_LABELS[order.status]?.[lang] || order.status}
                       </span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                        {order.payment_method === 'card' ? '💳 Карта' : 'Наличные'}
+                      </span>
                     </div>
                     <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-400">
                       <span className="flex items-center gap-1">
@@ -385,6 +448,11 @@ export default function BusinessOrders() {
                         <div className="flex items-center gap-2 text-sm sm:col-span-2">
                           <MapPin size={14} className="text-slate-400 shrink-0" />
                           <span className="font-medium text-slate-700 dark:text-slate-200">{order.delivery_address}</span>
+                          {order.delivery_lat != null && order.delivery_lng != null && (
+                            <span className="text-[10px] font-mono text-slate-400">
+                              {Number(order.delivery_lat).toFixed(4)}, {Number(order.delivery_lng).toFixed(4)}
+                            </span>
+                          )}
                         </div>
                       )}
                       {order.notes && (
@@ -412,25 +480,48 @@ export default function BusinessOrders() {
                       </div>
                     )}
 
-                    {/* Status actions */}
-                    {nextStatuses(order.status).length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {nextStatuses(order.status).map((st) => (
-                          <button
-                            key={st}
-                            onClick={() => handleStatus(order, st)}
-                            disabled={updatingId === order.id}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition active:scale-95 disabled:opacity-50 ${
-                              st === 'cancelled'
-                                ? 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/20'
-                                : 'bg-blue-600 hover:bg-blue-700 text-white'
-                            }`}
-                          >
-                            {NEXT_STATUS_LABEL[st] || st}
-                          </button>
-                        ))}
-                      </div>
+                    {/* Редактирование заказа */}
+                    {editingId === order.id && (
+                      <OrderEditForm
+                        order={order}
+                        saving={savingId === order.id}
+                        onCancel={() => setEditingId(null)}
+                        onSave={(patch) => handleSaveEdit(order, patch)}
+                      />
                     )}
+
+                    {/* Действия: статусный конвейер + изменить/удалить */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      {adminNextStatuses(order.status).map((st) => (
+                        <button
+                          key={st}
+                          onClick={() => handleStatus(order, st)}
+                          disabled={updatingId === order.id}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition active:scale-95 disabled:opacity-50 ${
+                            st === 'cancelled'
+                              ? 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/20'
+                              : 'bg-blue-600 hover:bg-blue-700 text-white'
+                          }`}
+                        >
+                          {adminActionLabel(st)}
+                        </button>
+                      ))}
+                      {editingId !== order.id && (
+                        <button
+                          onClick={() => setEditingId(order.id)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition active:scale-95"
+                        >
+                          Изменить
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDelete(order)}
+                        disabled={deletingId === order.id}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-slate-900 border border-red-200 dark:border-red-500/30 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition active:scale-95 disabled:opacity-50"
+                      >
+                        {deletingId === order.id ? 'Удаляем…' : 'Удалить'}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
