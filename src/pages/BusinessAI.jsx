@@ -1134,7 +1134,7 @@ export default function BusinessAI() {
   };
 
   return (
-    <div className="h-full overflow-y-auto lg:overflow-hidden bg-[#0b1120] dark:bg-[#0b1120]">
+    <div className="h-full overflow-y-auto lg:overflow-hidden scrollbar-ui bg-[#0b1120] dark:bg-[#0b1120]">
       <div className="max-w-[1400px] mx-auto p-3 md:p-4 space-y-3 lg:h-full lg:flex lg:flex-col">
         {/* Header */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -1244,7 +1244,7 @@ export default function BusinessAI() {
             <p className="px-3 py-2.5 text-[11px] font-black uppercase tracking-wide text-slate-400 border-b border-slate-800">
               My Projects
             </p>
-            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            <div className="flex-1 overflow-y-auto scrollbar-ui p-2 space-y-1">
               {projects.length === 0 && (
                 <p className="px-2 py-3 text-xs text-slate-500">Проектов пока нет</p>
               )}
@@ -1289,7 +1289,7 @@ export default function BusinessAI() {
           </div>
 
           {/* Preview + sections + versions */}
-          <div className="flex flex-col gap-3 min-h-0 lg:overflow-y-auto lg:pr-0.5">
+          <div className="flex flex-col gap-3 min-h-0 lg:overflow-y-auto lg:pr-0.5 scrollbar-ui">
             <div className="min-h-[480px] lg:min-h-[420px] lg:flex-1 flex">
               <div className="flex-1 min-w-0">
                 <BuilderPreview
@@ -1384,7 +1384,7 @@ export default function BusinessAI() {
             {showVersions && (
               <div className="rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden">
                 <p className="px-3 py-2 text-[11px] font-black uppercase tracking-wide text-slate-400 border-b border-slate-800">History</p>
-                <div className="divide-y divide-slate-800 max-h-48 overflow-y-auto">
+                <div className="divide-y divide-slate-800 max-h-48 overflow-y-auto scrollbar-ui">
                   {versions.map((v) => (
                     <button key={v.id} onClick={() => { setRedoStack([]); openVersion(v, activeProjectId); }}
                       className={`w-full text-left px-3 py-2 hover:bg-slate-800 flex items-center gap-2 ${v.id === currentId ? 'bg-violet-600/15' : ''}`}>

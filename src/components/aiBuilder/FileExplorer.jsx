@@ -105,7 +105,7 @@ export default function FileExplorer({
           <button onClick={submitCreate} className="px-2.5 rounded-lg bg-violet-600 text-white text-xs font-bold">OK</button>
         </div>
       )}
-      <div className="flex-1 overflow-y-auto p-1.5">
+      <div className="flex-1 overflow-y-auto scrollbar-ui p-1.5">
         {Object.keys(files || {}).length === 0 && (
           <p className="px-2 py-3 text-[11px] text-slate-500">Файлов нет — создай первый кнопкой +</p>
         )}

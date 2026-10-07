@@ -12,7 +12,7 @@ export default function BuilderChat({
   return (
     <div className="flex flex-col h-full min-h-0 bg-white dark:bg-slate-900 md:rounded-2xl border-0 md:border border-slate-200 dark:border-slate-800 overflow-hidden">
       {/* История */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2.5 min-h-[180px]">
+      <div className="flex-1 overflow-y-auto scrollbar-ui p-3 space-y-2.5 min-h-[180px]">
         {messages.length === 0 && (
           <div className="text-center pt-6 pb-2">
             <div className="text-4xl mb-2">🤖</div>

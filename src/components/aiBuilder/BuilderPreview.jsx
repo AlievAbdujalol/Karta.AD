@@ -54,7 +54,7 @@ export default function BuilderPreview({
           </>
         )}
       </div>
-      <div className="flex-1 overflow-auto bg-slate-100 dark:bg-slate-950 p-3 flex justify-center min-h-[280px]">
+      <div className="flex-1 overflow-auto scrollbar-ui bg-slate-100 dark:bg-slate-950 p-3 flex justify-center min-h-[280px]">
         {!html ? (
           empty
         ) : (

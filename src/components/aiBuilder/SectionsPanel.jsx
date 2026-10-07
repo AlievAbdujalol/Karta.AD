@@ -75,7 +75,7 @@ export default function SectionsPanel({ sections, userId, imported = false, onMo
       )}
 
       {!imported && (
-      <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-72 overflow-y-auto">
+      <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-72 overflow-y-auto scrollbar-ui">
         {sections.length === 0 && (
           <p className="px-3 py-4 text-center text-xs text-slate-400">Секций пока нет</p>
         )}

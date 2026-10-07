@@ -167,6 +167,20 @@
 .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
 .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; }
 
+/* Крупные ПОСТОЯННО видимые полосы прокрутки: собственная CSS-стилизация
+   отключает автоскрытие полос в Windows, а 12px + контрастный бегунок
+   легко хватаются мышью на светлом и тёмном фоне. */
+.scrollbar-ui::-webkit-scrollbar { width: 12px; height: 12px; }
+.scrollbar-ui::-webkit-scrollbar-track { background: rgba(148, 163, 184, 0.15); border-radius: 9999px; }
+.scrollbar-ui::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.scrollbar-ui::-webkit-scrollbar-thumb:hover { background: #64748b; background-clip: padding-box; }
+.scrollbar-ui::-webkit-scrollbar-corner { background: transparent; }
+
 @keyframes bounce {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-6px); }
