@@ -30,6 +30,7 @@ import {
   applyFileEdits, extractFileEdits, isTextFile,
   MAX_FILES, MAX_FILE_SIZE, MAX_TOTAL_SIZE,
 } from '@/lib/projectFiles';
+import { normalizeWidgetUrls, canonicalOrigin } from '@/lib/widgetSnippet';
 
 function aiSummary(structure, version) {
   try {
@@ -94,7 +95,7 @@ export default function BusinessAI() {
       return;
     }
     try {
-      setPreviewDoc(buildInlineDoc(files, entry));
+      setPreviewDoc(normalizeWidgetUrls(buildInlineDoc(files, entry)));
     } catch {
       setPreviewDoc('');
     }
@@ -123,16 +124,19 @@ export default function BusinessAI() {
   const shopOpts = (preview) => ({
     supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
     anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-    // абсолютный адрес приложения — модули такси открывают его в новой вкладке,
-    // а не навигацией внутри sandbox-iframe (origin null → CORS)
-    appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
+    // канонический абсолютный адрес приложения — модули такси открывают его
+    // в новой вкладке, а не навигацией внутри sandbox-iframe (origin null → CORS);
+    // на dev это прод-адрес, чтобы в HTML не зашивался http://localhost…
+    appOrigin: canonicalOrigin(),
     preview,
   });
   const shownHtml = draft
     ? compileSite(draft, { ...(selectedBusiness || {}), products }, shopOpts(true))
     : (current?.html || '');
   const currentStructure = shownStructure;
-  const currentHtml = shownHtml;
+  // Превью/экспорт: любые localhost- и относительные ссылки на widget.js
+  // приводим к каноническому адресу (в srcdoc origin null → CORS)
+  const currentHtml = normalizeWidgetUrls(shownHtml);
   const sections = shownStructure?.site?.pages?.[0]?.sections || [];
 
   // ─── загрузка ──────────────────────────────────────────────

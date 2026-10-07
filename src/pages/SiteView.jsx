@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/api/supabase';
 import { resolveEntry, buildInlineDoc } from '@/lib/projectFiles';
+import { normalizeWidgetUrls } from '@/lib/widgetSnippet';
 
 /** Публичная страница AI-сайта: /s/:id (только опубликованные). */
 export default function SiteView() {
@@ -67,7 +68,7 @@ export default function SiteView() {
   return (
     <iframe
       title="Сайт"
-      srcDoc={html}
+      srcDoc={normalizeWidgetUrls(html)}
       sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
       style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', border: 'none', background: '#fff' }}
     />

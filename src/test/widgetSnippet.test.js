@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { buildWidgetSnippet, buildAnchorHints } from '../lib/widgetSnippet';
+import {
+  buildWidgetSnippet, buildAnchorHints,
+  canonicalOrigin, normalizeWidgetUrls, PUBLIC_ORIGIN,
+} from '../lib/widgetSnippet';
 
 const BIZ = '3c565078-140c-4d95-b9d3-bf478a108404';
 
@@ -41,5 +44,43 @@ describe('buildAnchorHints', () => {
     expect(h).toContain('data-karta="catalog"');
     expect(h).toContain('data-karta="cart"');
     expect(h).toContain('data-karta="checkout"');
+  });
+});
+
+describe('canonicalOrigin / normalizeWidgetUrls', () => {
+  it('на dev-окружении возвращает публичный origin, а не localhost', () => {
+    // jsdom-тесты бегут на http://localhost — ровно тот случай
+    expect(canonicalOrigin()).toBe(PUBLIC_ORIGIN);
+  });
+
+  it('переписывает http://localhost…/widget.js на канонический адрес', () => {
+    const html = '<script src="http://localhost:5173/widget.js" data-business="x" defer></script>';
+    const out = normalizeWidgetUrls(html);
+    expect(out).toContain(`src="${PUBLIC_ORIGIN}/widget.js"`);
+    expect(out).not.toContain('localhost');
+    expect(out).toContain('data-business="x"');
+  });
+
+  it('переписывает относительный /widget.js (srcdoc с origin null)', () => {
+    const out = normalizeWidgetUrls('<script src="/widget.js" defer></script>');
+    expect(out).toBe(`<script src="${PUBLIC_ORIGIN}/widget.js" defer></script>`);
+  });
+
+  it('явный origin перекрывает дефолт', () => {
+    const out = normalizeWidgetUrls('<script src="https://old.app/widget.js"></script>', 'https://new.app');
+    expect(out).toBe('<script src="https://new.app/widget.js"></script>');
+  });
+
+  it('чужие script-теги и атрибуты не трогает', () => {
+    const html = '<script src="https://cdn.example.com/app.js"></script><script src="https://x/widget.js?v=2"></script>';
+    const out = normalizeWidgetUrls(html, 'https://new.app');
+    expect(out).toContain('https://cdn.example.com/app.js');
+    // query после widget.js не матчится — ссылка остаётся исходной, не ломается
+    expect(out).toContain('https://x/widget.js?v=2');
+  });
+
+  it('null и пустая строка возвращаются как есть', () => {
+    expect(normalizeWidgetUrls(null)).toBe(null);
+    expect(normalizeWidgetUrls('')).toBe('');
   });
 });
