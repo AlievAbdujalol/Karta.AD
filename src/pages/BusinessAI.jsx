@@ -17,7 +17,7 @@ import {
   buildFileEditMessages, buildFileModuleMessages, SITE_MODULES,
 } from '@/lib/openrouter';
 import {
-  validateStructure, extractSiteJson, compileSite,
+  validateStructure, extractSiteJson, compileSite, withKartaModules,
   buildStructureMessages, buildStructureEditMessages,
 } from '@/lib/siteBuilder';
 import BuilderChat from '@/components/aiBuilder/BuilderChat';
@@ -580,7 +580,8 @@ export default function BusinessAI() {
           toast.error('Модель вернула не структуру — переформулируй правку');
           return;
         }
-        structure = parsed;
+        // правка могла выкинуть модули Karta-AD — возвращаем их
+        structure = withKartaModules(parsed, { products });
       } else {
         setStage('Analyzing request…');
         const raw = await callModel(buildStructureMessages(bizContext(), q), 0.7, useProxy);
@@ -590,7 +591,9 @@ export default function BusinessAI() {
           toast.error('Модель вернула пустую структуру — опиши подробнее');
           return;
         }
-        structure = parsed;
+        // доставка, такси, контакты и карта подключаются к сайту сразу,
+        // даже если AI про них не вспомнил
+        structure = withKartaModules(parsed, { products });
       }
       setStage('Сохраняю версию…');
       const projectId = await ensureProject(q);

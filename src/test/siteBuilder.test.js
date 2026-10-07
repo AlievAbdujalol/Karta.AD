@@ -3,6 +3,7 @@ import {
   validateStructure,
   extractSiteJson,
   compileSite,
+  withKartaModules,
   SECTION_TYPES,
 } from '../lib/siteBuilder';
 
@@ -22,6 +23,116 @@ const good = {
     }],
   },
 };
+
+describe('auto modules are actionable', () => {
+  const structure = () => withKartaModules({
+    site: { name: 'Кафе', pages: [{ name: 'Home', sections: [{ type: 'hero', title: 'Кафе' }] }] },
+  });
+
+  it('такси получает ссылку на заказ в приложении', () => {
+    const html = compileSite(structure(), { name: 'Кафе' });
+    expect(html).toContain('Вызвать такси');
+    expect(html).toContain('href="/taxi"');
+  });
+
+  it('доставка получает кнопку оформления, когда есть каталог с корзиной', () => {
+    const s = withKartaModules(
+      { site: { name: 'Кафе', pages: [{ name: 'Home', sections: [{ type: 'hero', title: 'Кафе' }] }] } },
+      { products: [{ name: 'Пицца', price: 45 }] },
+    );
+    const html = compileSite(s, { name: 'Кафе', id: 'b1' }, {
+      supabaseUrl: 'https://x.supabase.co', anonKey: 'anon', preview: true,
+    });
+    expect(html).toContain('Оформить доставку');
+  });
+
+  it('без телефона и каталога доставка не рисует пустых ссылок', () => {
+    const html = compileSite(structure(), { name: 'Кафе' });
+    expect(html).not.toContain('href="tel:"');
+    expect(html).toContain('Доставка Karta-AD');
+  });
+});
+
+describe('withKartaModules', () => {
+  const base = {
+    site: {
+      name: 'Магазин',
+      theme: { primary: '#ff0000', dark: true },
+      pages: [{
+        name: 'Home',
+        sections: [
+          { type: 'hero', title: 'Магазин' },
+          { type: 'features', title: 'Плюсы' },
+        ],
+      }],
+    },
+  };
+
+  it('дописывает доставку, такси, контакты и карту автоматически', () => {
+    const out = withKartaModules(base);
+    expect(out.site.pages[0].sections.map((s) => s.type))
+      .toEqual(['hero', 'features', 'delivery', 'taxi', 'contact', 'map']);
+  });
+
+  it('не дублирует модуль, который AI уже добавил', () => {
+    const src = {
+      site: {
+        ...base.site,
+        pages: [{ name: 'Home', sections: [{ type: 'hero', title: 'A' }, { type: 'delivery', title: 'Моя доставка' }] }],
+      },
+    };
+    const out = withKartaModules(src);
+    const deliveries = out.site.pages[0].sections.filter((s) => s.type === 'delivery');
+    expect(deliveries).toHaveLength(1);
+    expect(deliveries[0].title).toBe('Моя доставка'); // AI-вариант не трогаем
+  });
+
+  it('каталог добавляется только если у бизнеса есть товары', () => {
+    expect(withKartaModules(base).site.pages[0].sections.some((s) => s.type === 'products')).toBe(false);
+    const withProducts = withKartaModules(base, { products: [{ name: 'Телефон', price: 800 }] });
+    expect(withProducts.site.pages[0].sections.some((s) => s.type === 'products')).toBe(true);
+  });
+
+  it('не трогает импортированный сайт (ручной HTML)', () => {
+    const imported = { site: { ...base.site, imported: true, pages: [{ name: 'Home', sections: [{ type: 'hero', title: 'A' }] }] } };
+    const out = withKartaModules(imported);
+    expect(out.site.pages[0].sections).toHaveLength(1);
+    expect(out.site.imported).toBe(true);
+  });
+
+  it('уважает лимит в 20 секций на страницу', () => {
+    const many = {
+      site: {
+        ...base.site,
+        pages: [{ name: 'Home', sections: Array.from({ length: 20 }, (_, i) => ({ type: 'features', title: `F${i}` })) }],
+      },
+    };
+    expect(withKartaModules(many).site.pages[0].sections.length).toBeLessThanOrEqual(20);
+  });
+
+  it('не ломает остальную структуру и идемпотентен', () => {
+    const once = withKartaModules(base);
+    const twice = withKartaModules(once);
+    expect(twice.site.pages[0].sections.map((s) => s.type))
+      .toEqual(once.site.pages[0].sections.map((s) => s.type));
+    expect(twice.site.theme.primary).toBe('#ff0000');
+    expect(twice.site.name).toBe('Магазин');
+  });
+
+  it('пустая структура не падает — модули всё равно добавляются', () => {
+    const out = withKartaModules({ site: { pages: [{ name: 'Home', sections: [] }] } });
+    expect(out.site.pages[0].sections.map((s) => s.type)).toEqual(['delivery', 'taxi', 'contact', 'map']);
+  });
+
+  it('доставка и такси попадают в HTML без просьбы в промпте', () => {
+    const structure = validateStructure({
+      site: { name: 'Кафе', pages: [{ name: 'Home', sections: [{ type: 'hero', title: 'Кафе' }] }] },
+    });
+    const html = compileSite(withKartaModules(structure), { name: 'Кафе', address: 'Худжанд' });
+    expect(html).toContain('Доставка Karta-AD');
+    expect(html).toContain('Такси Karta-AD');
+  });
+});
 
 describe('validateStructure', () => {
   it('чистит мусор и дефолты', () => {

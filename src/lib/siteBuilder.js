@@ -57,6 +57,51 @@ export function validateStructure(raw) {
   };
 }
 
+/** Модули Karta-AD, которые подключаются к каждому сайту автоматически. */
+export const KARTA_MODULE_SECTIONS = [
+  { type: 'products', title: 'Каталог' },
+  { type: 'delivery', title: 'Доставка Karta-AD' },
+  { type: 'taxi', title: 'Такси Karta-AD' },
+  { type: 'contact', title: 'Контакты' },
+  { type: 'map', title: 'Как нас найти' },
+];
+
+const MAX_SECTIONS = 20;
+
+/**
+ * Дописать недостающие модули Karta-AD в первый пейдж структуры.
+ * AI о них может не знать, а бизнесу они нужны сразу: доставка, такси,
+ * контакты и карта. Уже добавленные секции не трогаем, импортированный
+ * сайт (ручной HTML) не меняем.
+ */
+export function withKartaModules(structure, { products = [] } = {}) {
+  const clean = validateStructure(structure);
+  if (clean.site.imported) return clean;
+
+  const pages = clean.site.pages.map((p, idx) => {
+    if (idx !== 0) return p; // компилируется только первый пейдж
+    const present = new Set(p.sections.map((s) => s.type));
+    const needed = KARTA_MODULE_SECTIONS.filter((m) => {
+      if (m.type === 'products' && !(products?.length)) return false;
+      return !present.has(m.type);
+    });
+    if (!needed.length) return p;
+    const room = Math.max(0, MAX_SECTIONS - p.sections.length);
+    const added = needed.slice(0, room).map((m) => ({
+      type: m.type,
+      title: m.title,
+      description: '',
+      buttons: [],
+      items: [],
+      image: '',
+      background: '',
+    }));
+    return { ...p, sections: [...p.sections, ...added] };
+  });
+
+  return { site: { ...clean.site, pages } };
+}
+
 /** Извлечь { site } из ответа модели (JSON в fences или голый). */
 export function extractSiteJson(raw) {
   if (!raw) return null;
@@ -123,10 +168,20 @@ function sectionHtml(sec, biz, theme, cfg) {
       const wa = biz.phone ? biz.phone.replace(/\D/g, '').replace(/^8(?=\d{10}$)/, '7') : '';
       return wrap(`<div id="contact">${t || '<h2>Контакты</h2>'}${biz.phone ? `<p>📞 <a href="tel:${esc(biz.phone)}">${esc(biz.phone)}</a></p>` : ''}${wa ? `<p><a class="btn" href="https://wa.me/${esc(wa)}" target="_blank" rel="noreferrer">💬 WhatsApp</a></p>` : ''}${biz.address ? `<p>📍 ${esc(biz.address)}</p>` : ''}${d}${btns}</div>`);
     }
-    case 'delivery':
-      return wrap(`${t || '<h2>Доставка Karta-AD</h2>'}${d || '<p class="muted">🚚 Быстрая доставка по городу через Karta-AD Delivery</p>'}${btns}`);
-    case 'taxi':
-      return wrap(`${t || '<h2>Такси Karta-AD</h2>'}${d || '<p class="muted">🚕 Подача рядом, цена видна сразу — во вкладке «Такси» приложения Karta-AD</p>'}${btns}`);
+    case 'delivery': {
+      // Автоматический модуль доставки должен быть рабочим: если есть корзина —
+      // ведём в оформление, иначе звоним на телефон бизнеса
+      const auto = !btns && cfg
+        ? '<p><a class="btn" href="#checkout">Оформить доставку</a></p>'
+        : (!btns && biz.phone ? `<p><a class="btn" href="tel:${esc(biz.phone)}">Заказать доставку</a></p>` : '');
+      return wrap(`${t || '<h2>Доставка Karta-AD</h2>'}${d || '<p class="muted">🚚 Быстрая доставка по городу через Karta-AD Delivery</p>'}${auto}${btns}`);
+    }
+    case 'taxi': {
+      const auto = !btns
+        ? '<p><a class="btn" href="/taxi">Вызвать такси Karta-AD</a></p>'
+        : '';
+      return wrap(`${t || '<h2>Такси Karta-AD</h2>'}${d || '<p class="muted">🚕 Подача рядом, цена видна сразу — во вкладке «Такси» приложения Karta-AD</p>'}${auto}${btns}`);
+    }
     case 'footer':
       return `<footer>${t || `<b>${esc(biz.name)}</b>`}${d}</footer>`;
     default:
