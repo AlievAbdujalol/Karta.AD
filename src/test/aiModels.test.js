@@ -204,6 +204,19 @@ describe('fetchFreeModels — кэш localStorage', () => {
     await fetchFreeModels({ force: true });
     expect(fetch).toHaveBeenCalledTimes(2);
   });
+
+  it('viaProxy: ответ прокси — true, локальный кэш — false', async () => {
+    fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, models: [], cached: false }),
+    });
+    const r1 = await fetchFreeModels();
+    expect(r1.viaProxy).toBe(true);
+    const r2 = await fetchFreeModels();
+    expect(r2.viaProxy).toBe(false);
+    const r3 = await fetchFreeModels({ force: true });
+    expect(r3.viaProxy).toBe(true);
+  });
 });
 
 describe('fetchFreeModelsDirect — публичный каталог без ключа', () => {

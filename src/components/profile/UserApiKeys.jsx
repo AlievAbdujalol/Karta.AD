@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { KeyRound, Eye, EyeOff, Save, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  loadUserKeys, saveUserKey, deleteUserKey, hasOwnKey,
+  loadUserKeys, saveUserKey, deleteUserKey, hasOwnKey, getOwnKey,
 } from '@/lib/userKeys';
 import { validateOpenRouterKey } from '@/lib/openrouter';
 
@@ -31,6 +31,7 @@ export default function UserApiKeys({ userId }) {
   const [values, setValues] = useState({ openrouter: '', gemini: '' });
   const [saved, setSaved] = useState({ openrouter: '', gemini: '' });
   const [show, setShow] = useState({ openrouter: false, gemini: false });
+  const [revealed, setRevealed] = useState({ openrouter: false, gemini: false });
   const [saving, setSaving] = useState(null);
 
   useEffect(() => {
@@ -69,6 +70,18 @@ export default function UserApiKeys({ userId }) {
     }
   };
 
+  const handleReveal = (id) => {
+    const k = getOwnKey(id);
+    if (!k) {
+      toast.error('Ключ не загружен — обнови страницу');
+      return;
+    }
+    const next = !revealed[id];
+    setRevealed((r) => ({ ...r, [id]: next }));
+    setShow((s) => ({ ...s, [id]: next }));
+    setValues((v) => ({ ...v, [id]: next ? k : '' }));
+  };
+
   const handleDelete = async (id) => {
     if (!confirm('Удалить свой ключ? Будет использоваться общий.')) return;
     try {
@@ -97,6 +110,16 @@ export default function UserApiKeys({ userId }) {
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
                 свой ключ ✓
               </span>
+            )}
+            {saved[p.id] && (
+              <button
+                onClick={() => handleReveal(p.id)}
+                title={revealed[p.id] ? 'Скрыть ключ' : 'Показать сохранённый ключ'}
+                aria-label={revealed[p.id] ? 'Скрыть ключ' : 'Показать сохранённый ключ'}
+                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+              >
+                {revealed[p.id] ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
             )}
             <a href={p.link} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline">
               Взять ключ

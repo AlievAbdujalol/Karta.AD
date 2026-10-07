@@ -144,20 +144,22 @@ async function proxyFetch(path, { method = 'GET', body } = {}) {
 }
 
 /**
- * Список бесплатных моделей (кэш 10 мин). Возвращает { models, cached, updatedAt }.
+ * Список бесплатных моделей (кэш 10 мин). Возвращает { models, cached, updatedAt, viaProxy }.
+ * viaProxy=true — ответ реально пришёл от backend (можно доверять статусу подключения);
+ * viaProxy=false — отдан локальный кэш, про backend ничего не известно.
  * Бросает { code: 'no_server_key' } если на сервере нет ключа.
  */
 export async function fetchFreeModels({ force = false } = {}) {
   if (!force) {
     const cache = readCache();
     if (isCacheFresh(cache)) {
-      return { models: cache.models, cached: true, updatedAt: cache.at };
+      return { models: cache.models, cached: true, viaProxy: false, updatedAt: cache.at };
     }
   }
   const data = await proxyFetch('?action=models');
   const models = sortFreeModels(data.models || []);
   writeCache(models);
-  return { models, cached: !!data.cached, updatedAt: Date.now() };
+  return { models, cached: !!data.cached, viaProxy: true, updatedAt: Date.now() };
 }
 
 /** Прямой каталог из OpenRouter (публичный GET, ключ не нужен). */

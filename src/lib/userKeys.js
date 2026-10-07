@@ -62,6 +62,15 @@ export function hasOwnKey(provider) {
   return !!(memCache[provider] || '').trim();
 }
 
+/**
+ * Показать сохранённый личный ключ его владельцу (полное значение).
+ * Только своё — env-фолбэк НЕ подставляется: чужой/общий ключ не показываем.
+ */
+export function getOwnKey(provider) {
+  const k = (memCache[provider] || '').trim();
+  return k || null;
+}
+
 /** Маскированный хвост для отображения: ••••abcd */
 export function maskKey(key) {
   const k = (key || '').trim();

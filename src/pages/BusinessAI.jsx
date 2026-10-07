@@ -454,9 +454,25 @@ export default function BusinessAI() {
       }
     };
     try {
-      const { models: list, updatedAt } = await fetchFreeModels({ force });
+      const { models: list, updatedAt, viaProxy } = await fetchFreeModels({ force });
       applyList(list, updatedAt);
-      setProxyReady(true);
+      if (viaProxy) {
+        setProxyReady(true);
+      } else {
+        // Локальный кэш ничего не знает про backend — уточняем статус фоном,
+        // иначе шапка врёт «OpenRouter подключён ✓» при мёртвом ключе
+        fetchFreeModels({ force: true })
+          .then((fresh) => {
+            applyList(fresh.models, fresh.updatedAt);
+            setProxyReady(true);
+          })
+          .catch(() => {
+            setProxyReady(false);
+            if (!hasDirectFallback()) {
+              setModelsError({ code: 'no_server_key', message: 'Серверный ключ не задан — вставь свой ниже' });
+            }
+          });
+      }
     } catch {
       try {
         const { models: list, updatedAt } = await fetchFreeModelsDirect();
