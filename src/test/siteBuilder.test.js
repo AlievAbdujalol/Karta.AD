@@ -24,15 +24,46 @@ const good = {
   },
 };
 
+describe('ссылки модулей не ломают sandbox-превью', () => {
+  const structure = () => withKartaModules({
+    site: { name: 'Кафе', pages: [{ name: 'Home', sections: [{ type: 'hero', title: 'Кафе' }] }] },
+  });
+
+  it('такси: абсолютная ссылка в новой вкладке, когда передан адрес приложения', () => {
+    const html = compileSite(structure(), { name: 'Кафе' }, { appOrigin: 'https://karta-ad.vercel.app' });
+    expect(html).toContain('href="https://karta-ad.vercel.app/taxi"');
+    expect(html).toContain('target="_blank"');
+  });
+
+  it('такси: без адреса приложения — никаких относительных ссылок', () => {
+    const html = compileSite(structure(), { name: 'Кафе' });
+    expect(html).not.toContain('href="/taxi"');
+    expect(html).toContain('Такси Karta-AD');
+  });
+
+  it('доставка ведёт внутри документа (якорь), а не навигацией', () => {
+    const s = withKartaModules(
+      { site: { name: 'Кафе', pages: [{ name: 'Home', sections: [{ type: 'hero', title: 'Кафе' }] }] } },
+      { products: [{ name: 'Пицца', price: 45 }] },
+    );
+    const html = compileSite(s, { name: 'Кафе', id: 'b1' }, {
+      supabaseUrl: 'https://x.supabase.co', anonKey: 'anon', preview: true,
+      appOrigin: 'https://karta-ad.vercel.app',
+    });
+    expect(html).toContain('href="#checkout"');
+    expect(html).not.toContain('target="_blank" rel="noreferrer">Оформить доставку');
+  });
+});
+
 describe('auto modules are actionable', () => {
   const structure = () => withKartaModules({
     site: { name: 'Кафе', pages: [{ name: 'Home', sections: [{ type: 'hero', title: 'Кафе' }] }] },
   });
 
-  it('такси получает ссылку на заказ в приложении', () => {
+  it('такси без адреса приложения не даёт ссылок — только подсказка', () => {
     const html = compileSite(structure(), { name: 'Кафе' });
-    expect(html).toContain('Вызвать такси');
-    expect(html).toContain('href="/taxi"');
+    expect(html).not.toContain('href="/taxi"');
+    expect(html).toContain('Такси Karta-AD');
   });
 
   it('доставка получает кнопку оформления, когда есть каталог с корзиной', () => {

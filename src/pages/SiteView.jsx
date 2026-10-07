@@ -68,7 +68,7 @@ export default function SiteView() {
     <iframe
       title="Сайт"
       srcDoc={html}
-      sandbox="allow-scripts"
+      sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
       style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', border: 'none', background: '#fff' }}
     />
   );

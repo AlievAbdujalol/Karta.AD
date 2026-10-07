@@ -125,6 +125,9 @@ export default function BusinessAI() {
   const shopOpts = (preview) => ({
     supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
     anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+    // абсолютный адрес приложения — модули такси открывают его в новой вкладке,
+    // а не навигацией внутри sandbox-iframe (origin null → CORS)
+    appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
     preview,
   });
   const shownHtml = draft

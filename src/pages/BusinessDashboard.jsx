@@ -406,7 +406,7 @@ export default function BusinessDashboard() {
                     <iframe
                       title="Опубликованный сайт"
                       srcDoc={publishedSite.html}
-                      sandbox="allow-scripts"
+                      sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
                       style={{ width: '100%', height: 480, borderRadius: 12, border: '1px solid rgba(148,163,184,.3)', background: '#fff' }}
                     />
                   </div>

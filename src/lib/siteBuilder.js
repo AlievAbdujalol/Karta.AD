@@ -122,7 +122,7 @@ export function extractSiteJson(raw) {
 
 // ─── compile: structure → single HTML ─────────────────────────
 
-function sectionHtml(sec, biz, theme, cfg) {
+function sectionHtml(sec, biz, theme, cfg, appOrigin = '') {
   const t = sec.title ? `<h2>${esc(sec.title)}</h2>` : '';
   const d = sec.description ? `<p class="muted">${esc(sec.description)}</p>` : '';
   const btns = (sec.buttons || []).map((b) => `<a class="btn" href="#contact">${esc(b)}</a>`).join('');
@@ -177,9 +177,12 @@ function sectionHtml(sec, biz, theme, cfg) {
       return wrap(`${t || '<h2>Доставка Karta-AD</h2>'}${d || '<p class="muted">🚚 Быстрая доставка по городу через Karta-AD Delivery</p>'}${auto}${btns}`);
     }
     case 'taxi': {
-      const auto = !btns
-        ? '<p><a class="btn" href="/taxi">Вызвать такси Karta-AD</a></p>'
-        : '';
+      // Ссылка только абсолютная и в новой вкладке: сайт показывается в
+      // iframe с sandbox="allow-scripts", у него origin null — переход внутри
+      // фрейма ломает превью (CORS на модулях приложения)
+      const auto = !btns && appOrigin
+        ? `<p><a class="btn" href="${esc(appOrigin)}/taxi" target="_blank" rel="noreferrer">Вызвать такси Karta-AD</a></p>`
+        : (!btns ? '<p class="muted">🚕 Такси Karta-AD — во вкладке «Такси» приложения</p>' : '');
       return wrap(`${t || '<h2>Такси Karta-AD</h2>'}${d || '<p class="muted">🚕 Подача рядом, цена видна сразу — во вкладке «Такси» приложения Karta-AD</p>'}${auto}${btns}`);
     }
     case 'footer':
@@ -215,7 +218,7 @@ export function compileSite(structured, biz = {}, opts = {}) {
     .map((s, i) => `<a href="#s${i}">${esc(s.title)}</a>`)
     .join('');
   const body = page.sections
-    .map((s, i) => `<div id="s${i}">${sectionHtml(s, b, theme, cfg)}</div>`)
+    .map((s, i) => `<div id="s${i}">${sectionHtml(s, b, theme, cfg, opts.appOrigin || '')}</div>`)
     .join('\n');
   const cartScript = cfg ? cartJs(cfg, b.products) : '';
   return `<!DOCTYPE html>

@@ -62,7 +62,7 @@ export default function BuilderPreview({
             key={versionKey}
             title="Website preview"
             srcDoc={html}
-            sandbox="allow-scripts"
+            sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
             style={{
               width: previewMode === 'desktop' ? '100%' : Math.min(WIDTHS[previewMode], 900),
               maxWidth: '100%',
