@@ -2,7 +2,7 @@ import { Layers, Crosshair, Plus, Minus, Navigation, Share2, LocateFixed, Route,
 import { useMap } from 'react-leaflet';
 import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
-import { cartoRaster, withCartoKey, OSM_URL, CARTO_KEY, googleTiles } from '@/lib/tiles';
+import { cartoRaster, cartoLabels, OSM_URL, CARTO_KEY, googleTiles } from '@/lib/tiles';
 
 const TILE_LAYERS = [
   { labelKey: 'mapControls.layerStandard', url: cartoRaster('rastertiles/voyager'), isHybrid: false, needsKey: true },
@@ -16,7 +16,7 @@ const TILE_LAYERS = [
   { labelKey: 'mapControls.layerGoogleHybrid', url: googleTiles('y'), isHybrid: true },
 ];
 
-const LABEL_OVERLAY_URL = withCartoKey('https://{s}.basemaps.cartocdn.com/rastertiles/light_only_labels/{z}/{x}/{y}{r}.png');
+const LABEL_OVERLAY_URL = cartoLabels();
 const TRANSPORT_OVERLAY_URL = 'https://tile.memomaps.de/tilegen/{z}/{x}/{y}.png';
 
 export default function MapControls({ tileIndex, setTileIndex, finderActive, onFinderToggle, onShareTrip, rightOffset, isNavigating, onLocate, tiltEnabled: _tiltEnabled, onToggleTilt: _onToggleTilt, autoCenter, onToggleAutoCenter, overviewActive, onToggleOverview, showTraffic, onToggleTraffic, showTransport, onToggleTransport }) {

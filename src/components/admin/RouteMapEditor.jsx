@@ -5,7 +5,7 @@ import { Route, City } from '@/api/entities';
 import { Save, Trash2, MapPin, Plus, X, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '@/lib/useLanguage';
-import { cartoRaster, withCartoKey } from '@/lib/tiles';
+import { cartoRaster, cartoLabels } from '@/lib/tiles';
 import 'leaflet/dist/leaflet.css';
 
 delete L.Icon.Default.prototype._getIconUrl;
@@ -227,7 +227,7 @@ export default function RouteMapEditor() {
             />
             {satellite && (
               <TileLayer
-                url={withCartoKey('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png')}
+                url={cartoLabels()}
                 attribution='&copy; OpenStreetMap contributors &copy; CARTO'
                 opacity={1}
               />

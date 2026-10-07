@@ -14,7 +14,22 @@ export function withCartoKey(url) {
 
 /** CARTO raster tile URL, e.g. cartoRaster('rastertiles/voyager'). */
 export function cartoRaster(style) {
+  // Без ключа CARTO отдаёт тайлы с водяным знаком — откатываемся на keyless OSM.
+  if (!CARTO_KEY) return OSM_URL;
   return withCartoKey(`https://{s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}{r}.png`);
+}
+
+// keyless-подписи: Esri reference-слой (без ключа и без водяного знака)
+const ESRI_REFERENCE_LABELS_URL =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}';
+
+/**
+ * Labels-only overlay для карты: CARTO-подписи, когда есть ключ,
+ * иначе — Esri reference, чтобы не рисовать «API KEY REQUIRED».
+ */
+export function cartoLabels() {
+  if (!CARTO_KEY) return ESRI_REFERENCE_LABELS_URL;
+  return withCartoKey('https://{s}.basemaps.cartocdn.com/rastertiles/light_only_labels/{z}/{x}/{y}{r}.png');
 }
 
 export const OSM_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
