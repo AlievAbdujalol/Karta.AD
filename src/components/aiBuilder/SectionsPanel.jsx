@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pencil, Trash2, Sparkles, ChevronDown, Plus, X, Check, ImagePlus, Loader2, Plug } from 'lucide-react';
+import { Pencil, Trash2, Sparkles, ChevronDown, ArrowUp, ArrowDown, Plus, X, Check, ImagePlus, Loader2, Plug } from 'lucide-react';
 import { SECTION_TYPES } from '@/lib/siteBuilder';
 import { SITE_MODULES } from '@/lib/openrouter';
 import { uploadSiteImage } from '@/lib/siteImages';
@@ -9,12 +9,18 @@ import { toast } from 'sonner';
  * Панель секций: список, ручное редактирование полей, Ask AI по секции, удаление.
  * Preview-интроспекция невозможна (sandbox без same-origin) — выбор через список.
  */
-export default function SectionsPanel({ sections, userId, imported = false, onModuleConnect, onUpdateSection, onDeleteSection, onAddSection, onAskAi, busy }) {
+export default function SectionsPanel({ sections, userId, imported = false, onModuleConnect, onUpdateSection, onDeleteSection, onAddSection, onMoveSection, onAskAi, busy }) {
   const [openIdx, setOpenIdx] = useState(null);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiTarget, setAiTarget] = useState(null);
   const [adding, setAdding] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  // Секция «переезжает» вместе со строкой: раскрытая остаётся раскрытой
+  const handleMove = (i, dir) => {
+    onMoveSection?.(i, dir);
+    setOpenIdx((cur) => (cur === i ? i + dir : cur === i + dir ? i : cur));
+  };
 
   const handlePhoto = async (idx, file) => {
     if (!file) return;
@@ -81,15 +87,35 @@ export default function SectionsPanel({ sections, userId, imported = false, onMo
         )}
         {sections.map((s, i) => (
           <div key={i} className="px-3 py-2">
-            <button onClick={() => setOpenIdx(openIdx === i ? null : i)} className="w-full flex items-center gap-2 text-left">
-              <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300 shrink-0">
-                {s.type}
-              </span>
-              <span className="flex-1 min-w-0 text-[12px] font-bold text-slate-700 dark:text-slate-200 truncate">
-                {s.title || `Блок ${i + 1}`}
-              </span>
-              <ChevronDown size={13} className={`text-slate-400 shrink-0 transition-transform ${openIdx === i ? 'rotate-180' : ''}`} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setOpenIdx(openIdx === i ? null : i)} className="flex-1 min-w-0 flex items-center gap-2 text-left">
+                <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300 shrink-0">
+                  {s.type}
+                </span>
+                <span className="flex-1 min-w-0 text-[12px] font-bold text-slate-700 dark:text-slate-200 truncate">
+                  {s.title || `Блок ${i + 1}`}
+                </span>
+                <ChevronDown size={13} className={`text-slate-400 shrink-0 transition-transform ${openIdx === i ? 'rotate-180' : ''}`} />
+              </button>
+              <div className="flex items-center gap-0.5 shrink-0">
+                <button
+                  title="Поднять блок"
+                  onClick={() => handleMove(i, -1)}
+                  disabled={busy || i === 0}
+                  className="p-1 rounded-md text-slate-400 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-500/10 disabled:opacity-30 disabled:pointer-events-none"
+                >
+                  <ArrowUp size={13} />
+                </button>
+                <button
+                  title="Опустить блок"
+                  onClick={() => handleMove(i, 1)}
+                  disabled={busy || i === sections.length - 1}
+                  className="p-1 rounded-md text-slate-400 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-500/10 disabled:opacity-30 disabled:pointer-events-none"
+                >
+                  <ArrowDown size={13} />
+                </button>
+              </div>
+            </div>
 
             {openIdx === i && (
               <div className="mt-2 space-y-1.5 pb-1">

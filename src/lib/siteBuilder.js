@@ -59,6 +59,24 @@ export function validateStructure(raw) {
   };
 }
 
+/**
+ * Поднять/опустить секцию страницы 0: вернуть НОВУЮ структуру,
+ * где секция idx меняется местами с соседом (dir: -1 вверх, +1 вниз).
+ * За границами списка или dir=0 — исходная ссылка: вызывающий
+ * не создаёт «пустую» версию проекта.
+ */
+export function swapSections(structure, idx, dir) {
+  const base = validateStructure(structure);
+  const list = base.site.pages[0].sections;
+  if (!Number.isInteger(idx) || idx < 0 || idx >= list.length) return structure;
+  const target = idx + dir;
+  if (!Number.isInteger(target) || target < 0 || target >= list.length || target === idx) return structure;
+  const tmp = list[idx];
+  list[idx] = list[target];
+  list[target] = tmp;
+  return base;
+}
+
 /** Модули Karta-AD, которые подключаются к каждому сайту автоматически. */
 export const KARTA_MODULE_SECTIONS = [
   { type: 'products', title: 'Каталог' },

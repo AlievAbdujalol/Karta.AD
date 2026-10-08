@@ -1,0 +1,76 @@
+import React from 'react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('@/lib/siteImages', () => ({ uploadSiteImage: vi.fn() }));
+vi.mock('@/lib/openrouter', () => ({
+  SITE_MODULES: [{ id: 'cart', label: 'Корзина', icon: '🛒' }],
+}));
+
+import SectionsPanel from '../components/aiBuilder/SectionsPanel';
+
+afterEach(cleanup);
+
+const SECTIONS = [
+  { type: 'hero', title: 'Первый', description: '' },
+  { type: 'features', title: 'Второй', description: '' },
+  { type: 'products', title: 'Третий', description: '' },
+];
+
+const baseProps = (over = {}) => ({
+  sections: SECTIONS,
+  userId: 'u1',
+  onUpdateSection: vi.fn(),
+  onDeleteSection: vi.fn(),
+  onAddSection: vi.fn(),
+  onMoveSection: vi.fn(),
+  onAskAi: vi.fn(),
+  busy: false,
+  ...over,
+});
+
+describe('SectionsPanel: поднять/опустить секцию', () => {
+  it('стрелки есть у каждой строки, у границ отключены', () => {
+    render(<SectionsPanel {...baseProps()} />);
+    const up = screen.getAllByTitle('Поднять блок');
+    const down = screen.getAllByTitle('Опустить блок');
+    expect(up).toHaveLength(3);
+    expect(down).toHaveLength(3);
+    expect(up[0].disabled).toBe(true);   // первый вверх не может
+    expect(up[1].disabled).toBe(false);
+    expect(down[0].disabled).toBe(false);
+    expect(down[2].disabled).toBe(true); // последний вниз не может
+  });
+
+  it('клик отдаёт onMoveSection(индекс, направление)', () => {
+    const onMoveSection = vi.fn();
+    render(<SectionsPanel {...baseProps({ onMoveSection })} />);
+    fireEvent.click(screen.getAllByTitle('Опустить блок')[1]);
+    expect(onMoveSection).toHaveBeenCalledWith(1, 1);
+    fireEvent.click(screen.getAllByTitle('Поднять блок')[2]);
+    expect(onMoveSection).toHaveBeenCalledWith(2, -1);
+  });
+
+  it('при busy перемещение отключено (идёт генерация/сохранение)', () => {
+    render(<SectionsPanel {...baseProps({ busy: true })} />);
+    expect(screen.getAllByTitle('Поднять блок')[1].disabled).toBe(true);
+    expect(screen.getAllByTitle('Опустить блок')[0].disabled).toBe(true);
+  });
+
+  it('раскрытая секция «переезжает» вместе со своей строкой', () => {
+    const { rerender } = render(<SectionsPanel {...baseProps()} />);
+    // раскрыть первую секцию
+    fireEvent.click(screen.getByText('Первый'));
+    expect(screen.getByDisplayValue('Первый')).toBeTruthy();
+
+    // поднять/опустить — родитель пересчитал порядок секций
+    fireEvent.click(screen.getAllByTitle('Опустить блок')[0]);
+    rerender(<SectionsPanel {...baseProps({ sections: [SECTIONS[1], SECTIONS[0], SECTIONS[2]] })} />);
+
+    // открытой остаётся та же секция «Первый», а не та, что теперь на месте i=0
+    const openInputs = screen.getAllByPlaceholderText('Title');
+    expect(openInputs).toHaveLength(1);
+    expect(openInputs[0].value).toBe('Первый');
+  });
+});

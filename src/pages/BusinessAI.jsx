@@ -18,7 +18,7 @@ import {
 } from '@/lib/openrouter';
 import {
   validateStructure, extractSiteJson, compileSite, withKartaModules,
-  buildStructureMessages, buildStructureEditMessages,
+  buildStructureMessages, buildStructureEditMessages, swapSections,
 } from '@/lib/siteBuilder';
 import BuilderChat from '@/components/aiBuilder/BuilderChat';
 import BuilderPreview from '@/components/aiBuilder/BuilderPreview';
@@ -841,6 +841,15 @@ export default function BusinessAI() {
     await flushDraft(base, `+ ${type}`);
   };
 
+  const moveSection = (idx, dir) => {
+    if (!shownStructure || busy) return;
+    const base = swapSections(shownStructure, idx, dir);
+    if (base === shownStructure) return; // за границу списка — не двигаем и не пишем версию
+    setDraft(base);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    scheduleSave(base, 'Порядок секций');
+  };
+
   const askAiSection = (idx, text) => {
     if (!text?.trim() || !currentStructure) return;
     const sec = sections[idx];
@@ -1469,6 +1478,7 @@ export default function BusinessAI() {
                 onUpdateSection={updateSection}
                 onDeleteSection={deleteSection}
                 onAddSection={addSection}
+                onMoveSection={moveSection}
                 onAskAi={askAiSection}
               />
             )}

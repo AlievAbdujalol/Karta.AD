@@ -5,6 +5,7 @@ import {
   compileSite,
   withKartaModules,
   SECTION_TYPES,
+  swapSections,
 } from '../lib/siteBuilder';
 import { cartoRaster, CARTO_ATTRIBUTION } from '../lib/tiles';
 
@@ -323,5 +324,47 @@ describe('чекаут: адрес на карте и способ оплаты'
 
   it('без shop-конфига карты в чекауте нет (как и корзины)', () => {
     expect(compileSite(s, biz)).not.toContain('id="co_mapbtn"');
+  });
+});
+
+describe('swapSections — поднять/опустить блок', () => {
+  const struct = () => ({
+    site: {
+      name: 'S',
+      description: '',
+      theme: { primary: '#7c3aed', dark: true },
+      pages: [{
+        name: 'Home',
+        sections: [
+          { type: 'hero', title: 'A', description: '' },
+          { type: 'features', title: 'B', description: '' },
+          { type: 'products', title: 'C', description: '' },
+        ],
+      }],
+    },
+  });
+  const titles = (st) => st.site.pages[0].sections.map((x) => x.title);
+
+  it('dir=-1 поднимает секцию выше соседа', () => {
+    expect(titles(swapSections(struct(), 1, -1))).toEqual(['B', 'A', 'C']);
+    expect(titles(swapSections(struct(), 2, -1))).toEqual(['A', 'C', 'B']);
+  });
+
+  it('dir=1 опускает секцию ниже соседа', () => {
+    expect(titles(swapSections(struct(), 0, 1))).toEqual(['B', 'A', 'C']);
+  });
+
+  it('выход за границы — та же ссылка, без «пустых» версий', () => {
+    const s = struct();
+    expect(swapSections(s, 0, -1)).toBe(s);
+    expect(swapSections(s, 2, 1)).toBe(s);
+    expect(swapSections(s, 99, 1)).toBe(s);
+    expect(swapSections(s, 1, 0)).toBe(s);
+  });
+
+  it('исходная структура не мутируется', () => {
+    const s = struct();
+    swapSections(s, 0, 1);
+    expect(titles(s)).toEqual(['A', 'B', 'C']);
   });
 });
