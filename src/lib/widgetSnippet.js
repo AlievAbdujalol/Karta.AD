@@ -2,6 +2,7 @@
  * widgetSnippet — генератор встройки виджета на чужой сайт.
  * Используется в BusinessDashboard (кнопка «Копировать») и в тестах.
  */
+import { stripDevScripts } from './projectFiles';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -44,7 +45,10 @@ const WIDGET_SRC_RE = /(<script\b[^>]*\bsrc=["'])[^"']*\/widget\.js(["'])/gi;
  */
 export function normalizeWidgetUrls(html, origin = canonicalOrigin()) {
   if (!html || !origin) return html;
-  return String(html).replace(WIDGET_SRC_RE, (_m, head, tail) => `${head}${origin}/widget.js${tail}`);
+  const rewritten = String(html).replace(WIDGET_SRC_RE, (_m, head, tail) => `${head}${origin}/widget.js${tail}`);
+  // Плюс вычистка dev-скриптов Vite: srcdoc живёт с origin null,
+  // их загрузка там падает с CORS и оставляет страницу белой.
+  return stripDevScripts(rewritten);
 }
 
 /** Примеры якорей для секционного встраивания. */

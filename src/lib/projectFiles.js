@@ -3,6 +3,34 @@
  * применение AI-правок. Чистые функции покрыты тестами.
  */
 
+// ─── dev-скрипты Vite в опубликованном HTML ─────────────────────────────
+// Сохранённая/импортированная страница dev-сервера содержит
+// <script src="/@vite/client">, преамбулу @react-refresh и /src/main.jsx.
+// В sandbox-iframe (origin null) они дают CORS-ошибки и блокируют страницу,
+// на проде/Vercel их быть не может — вычищаем при любой сборке srcDoc.
+
+// Значение src: корневой путь dev-сервера либо абсолютный на localhost.
+const DEV_SRC_VALUE_RE =
+  /^(?:https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?)?\/(?:@vite\/client|@react-refresh|src\/[^?#"']+\.jsx?)(?:[?#].*)?$/i;
+const REACT_REFRESH_BODY_RE = /@react-refresh|\$RefreshRuntime\$/;
+
+/** Удалить dev-only скрипты/линки Vite. Чистая функция, ничего не ломает. */
+export function stripDevScripts(html) {
+  if (!html || typeof html !== 'string') return html;
+  let out = html.replace(/<script\b([^>]*)>\s*<\/script\s*>/gi, (tag, attrs) => {
+    const m = attrs.match(/\bsrc\s*=\s*["']([^"']+)["']/i);
+    return m && DEV_SRC_VALUE_RE.test(m[1].trim()) ? '' : tag;
+  });
+  out = out.replace(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi, (tag, _attrs, body) =>
+    (REACT_REFRESH_BODY_RE.test(body) ? '' : tag));
+  // modulepreload на dev-модули — тоже CORS-ошибка в origin null
+  out = out.replace(/<link\b[^>]*rel\s*=\s*["']modulepreload["'][^>]*>/gi, (tag) => {
+    const m = tag.match(/\bhref\s*=\s*["']([^"']+)["']/i);
+    return m && DEV_SRC_VALUE_RE.test(m[1].trim()) ? '' : tag;
+  });
+  return out;
+}
+
 export const TEXT_EXTS = ['html', 'htm', 'css', 'js', 'mjs', 'json', 'txt', 'md', 'svg'];
 export const MAX_FILES = 60;
 export const MAX_FILE_SIZE = 500 * 1024;
@@ -148,7 +176,7 @@ export function buildInlineDoc(files, entryPath) {
       return js != null ? `<script>\n${js}\n</script>` : tag;
     },
   );
-  return doc;
+  return stripDevScripts(doc);
 }
 
 /**
