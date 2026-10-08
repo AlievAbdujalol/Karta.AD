@@ -158,12 +158,14 @@ npm install
 
 # 3. Муҳити зист (аз намуна нусха кунед)
 cp .env.example .env.local
-# дар .env.local пур кунед:
+# дар .env.local пур кунед (рӯйхати пурр дар .env.example):
 # VITE_SUPABASE_URL=https://eotkmnwneivithfkweds.supabase.co
-# VITE_SUPABASE_ANON_KEY=eyJ...
-# SUPABASE_SERVICE_ROLE_KEY=eyJ... (танҳо сервер)
-# VITE_GOOGLE_MAPS_KEY=AIza... (ихтиёрӣ)
-# VITE_YANDEX_GEOCODER_KEY=0917... (ихтиёрӣ)
+# VITE_SUPABASE_ANON_KEY=sb_publishable_...
+# VITE_CARTO_API_KEY=... (ихтиёрӣ — тайлҳои CARTO)
+# VITE_GOOGLE_MAPS_KEY=... (ихтиёрӣ — Google)
+# VITE_GEMINI_API_KEY=... (ихтиёрӣ — ИИ)
+# Сиррҳои серверӣ (SUPABASE_SERVICE_ROLE_KEY, OPENROUTER_API_KEY) — танҳо
+# дар Supabase Edge Functions, ҳеҷ гоҳ дар Vercel ё бандли фронтенд.
 
 # 4. Роҳандозӣ
 npm run dev        # http://localhost:5173
@@ -226,7 +228,7 @@ npm run test       # vitest
 
 ## 12. Ҷойгиркунӣ
 
-`vercel.json` + `VITE_SUPABASE_*` дар Vercel Env. Ҳар push ба `main` — авто-deploy тавассути GitHub.
+`vercel.json` (build `npm run build` → `dist`, SPA rewrites). Дар Vercel → Settings → Environment Variables ворид кунед ҳамаи `VITE_*` аз `.env.example` (маҷбурӣ: `VITE_SUPABASE_URL` ва `VITE_SUPABASE_ANON_KEY`). Сиррҳо (`SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`) — танҳо дар Supabase, ҳеҷ гоҳ дар Vercel. Ҳар push ба `main` — авто-deploy тавассути GitHub.
 
 ---
 

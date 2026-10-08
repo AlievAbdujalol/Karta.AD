@@ -2,6 +2,8 @@
 .env
 .env.local
 .env.*.local
+.vercel
+.vite
 
 # Logs
 /logs
@@ -28,5 +30,3 @@ dist-ssr
 *.sln
 *.sw?
 
-.env
-.vite
