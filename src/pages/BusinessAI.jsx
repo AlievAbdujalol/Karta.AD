@@ -28,8 +28,8 @@ import FileExplorer from '@/components/aiBuilder/FileExplorer';
 import FileEditor from '@/components/aiBuilder/FileEditor';
 import {
   normalizePath, resolveEntry, buildInlineDoc,
-  applyFileEdits, extractFileEdits, isTextFile,
-  MAX_FILES, MAX_FILE_SIZE, MAX_TOTAL_SIZE,
+  applyFileEdits, extractFileEdits, isTextFile, isImageFile,
+  readZipEntryContent, MAX_FILES, MAX_TOTAL_SIZE,
 } from '@/lib/projectFiles';
 import { normalizeWidgetUrls, canonicalOrigin, buildWidgetSnippet } from '@/lib/widgetSnippet';
 import SiteWizard from '@/components/aiBuilder/SiteWizard';
@@ -344,7 +344,7 @@ export default function BusinessAI() {
   // ─── импорт проекта: ZIP / файлы / папка ───────────────────
   const ingestMulti = async (map, sourceName) => {
     if (!Object.keys(map).length) {
-      toast.error('Текстовых файлов не найдено');
+      toast.error('Файлов проекта не найдено');
       return;
     }
     setBusy(true);
@@ -419,15 +419,14 @@ export default function BusinessAI() {
       let total = 0;
       for (let i = 0; i < rawNames.length; i++) {
         const rel = normalizePath(stripped[i]);
-        if (!rel || !isTextFile(rel) || rel in out) continue;
+        if (!rel || rel in out) continue;
         const entry = zip.files[rawNames[i]];
-        const approx = entry._data?.uncompressedSize ?? 0;
-        if (approx > MAX_FILE_SIZE) continue;
         if (Object.keys(out).length >= MAX_FILES || total > MAX_TOTAL_SIZE) break;
         try {
-          const text = await entry.async('string');
-          out[rel] = text.slice(0, MAX_FILE_SIZE);
-          total += approx;
+          const content = await readZipEntryContent(entry, rel);
+          if (content == null) continue;
+          out[rel] = content;
+          total += entry._data?.uncompressedSize ?? 0;
         } catch {
           // пропускаем нечитаемое
         }
@@ -1120,7 +1119,12 @@ export default function BusinessAI() {
       try {
         const { default: JSZip } = await import('jszip');
         const zip = new JSZip();
-        Object.entries(files).forEach(([p, c]) => zip.file(p, c));
+        Object.entries(files).forEach(([p, c]) => {
+          // data-URI картинки выгружаем бинарно, а не текстом base64
+          const m = typeof c === 'string' && /^data:image\/[^;]+;base64,(.*)$/s.exec(c);
+          if (m) zip.file(p, m[1], { base64: true });
+          else zip.file(p, c);
+        });
         const blob = await zip.generateAsync({ type: 'blob' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
@@ -1543,12 +1547,25 @@ export default function BusinessAI() {
                   </div>
                   <div className="flex-1 min-w-0">
                     {activeFile && files[activeFile] != null ? (
-                      <FileEditor
-                        path={activeFile}
-                        content={files[activeFile]}
-                        onSave={handleSaveFile}
-                        busy={busy}
-                      />
+                      isImageFile(activeFile) && files[activeFile].startsWith('data:') ? (
+                        <div className="h-full flex flex-col items-center justify-center gap-2 p-4">
+                          <img
+                            src={files[activeFile]}
+                            alt={activeFile}
+                            className="max-h-56 max-w-full rounded-lg object-contain"
+                          />
+                          <p className="text-[11px] text-slate-500 text-center">
+                            {activeFile} — картинка, встраивается в сайт при сборке
+                          </p>
+                        </div>
+                      ) : (
+                        <FileEditor
+                          path={activeFile}
+                          content={files[activeFile]}
+                          onSave={handleSaveFile}
+                          busy={busy}
+                        />
+                      )
                     ) : (
                       <div className="h-full flex items-center justify-center">
                         <p className="text-xs text-slate-500">Выбери файл слева</p>

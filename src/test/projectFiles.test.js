@@ -5,9 +5,15 @@ import {
   resolveEntry,
   rewriteRefs,
   buildInlineDoc,
+  buildPreviewDoc,
   applyFileEdits,
   extractFileEdits,
   isTextFile,
+  isImageFile,
+  imageMime,
+  collectProjectFiles,
+  readZipEntryContent,
+  MAX_IMAGE_SIZE,
 } from '../lib/projectFiles';
 
 describe('normalizePath', () => {
@@ -113,5 +119,128 @@ describe('isTextFile', () => {
     expect(isTextFile('a.png')).toBe(false);
     expect(isTextFile('a.HTML')).toBe(true);
     expect(isTextFile('js/app.js')).toBe(true);
+  });
+});
+
+describe('isImageFile / imageMime', () => {
+  it('растровые распознаются, svg остаётся текстовым', () => {
+    expect(isImageFile('img/sneakers.png')).toBe(true);
+    expect(isImageFile('FOTO.JPG')).toBe(true);
+    expect(isImageFile('a.webp')).toBe(true);
+    expect(isImageFile('index.html')).toBe(false);
+    expect(isImageFile('a.svg')).toBe(false);
+    expect(isTextFile('a.svg')).toBe(true);
+  });
+  it('MIME по расширению', () => {
+    expect(imageMime('a.png')).toBe('image/png');
+    expect(imageMime('a.jpg')).toBe('image/jpeg');
+    expect(imageMime('a.jpeg')).toBe('image/jpeg');
+    expect(imageMime('a.ico')).toBe('image/x-icon');
+    expect(imageMime('a.avif')).toBe('image/avif');
+  });
+});
+
+describe('collectProjectFiles — картинки в imporте папки', () => {
+  const textFile = (name, text) => ({ name, size: text.length, text: async () => text });
+  const imageFile = (name, size, bytes) => ({
+    name,
+    size,
+    arrayBuffer: async () => Uint8Array.from(bytes).buffer,
+  });
+
+  it('картинка становится data-URI, текст остаётся текстом', async () => {
+    const map = await collectProjectFiles([
+      textFile('index.html', '<img src="/a.png">'),
+      imageFile('a.png', 3, [1, 2, 3]),
+    ]);
+    expect(map['index.html']).toBe('<img src="/a.png">');
+    expect(map['a.png']).toBe('data:image/png;base64,AQID');
+  });
+  it('картинка сверх лимита пропускается, текст цел', async () => {
+    const map = await collectProjectFiles([
+      imageFile('big.png', MAX_IMAGE_SIZE + 1, [1]),
+      textFile('ok.css', 'body{}'),
+    ]);
+    expect(map['big.png']).toBeUndefined();
+    expect(map['ok.css']).toBe('body{}');
+  });
+  it('незнакомые расширения не берутся', async () => {
+    const map = await collectProjectFiles([
+      { name: 'a.psd', size: 4, text: async () => 'x', arrayBuffer: async () => new ArrayBuffer(4) },
+    ]);
+    expect(map).toEqual({});
+  });
+});
+
+describe('readZipEntryContent — записи ZIP', () => {
+  const entry = (size, results) => ({
+    _data: { uncompressedSize: size },
+    async: async (fmt) => results[fmt],
+  });
+
+  it('картинка → data-URI через base64', async () => {
+    expect(await readZipEntryContent(entry(100, { base64: 'QUJD' }), 'img/a.png'))
+      .toBe('data:image/png;base64,QUJD');
+  });
+  it('текст → строка', async () => {
+    expect(await readZipEntryContent(entry(5, { string: 'body{}' }), 'a.css')).toBe('body{}');
+  });
+  it('картинка сверх лимита → null', async () => {
+    expect(await readZipEntryContent(entry(MAX_IMAGE_SIZE + 1, { base64: 'QUJD' }), 'a.png')).toBeNull();
+  });
+  it('неизвестный бинарник → null', async () => {
+    expect(await readZipEntryContent(entry(5, { string: 'x' }), 'a.psd')).toBeNull();
+  });
+});
+
+describe('buildInlineDoc — локальные картинки', () => {
+  it('инлайнит локальные картинки как data-URI', () => {
+    const out = buildInlineDoc({
+      'index.html': '<img src="img/a.png"><img src="/img/b.png"><img src="https://x/y.png">',
+      'img/a.png': 'data:image/png;base64,QUJD',
+      'img/b.png': 'data:image/png;base64,QUJD',
+    }, 'index.html');
+    expect(out).toContain('<img src="data:image/png;base64,QUJD">');
+    expect(out).not.toContain('/img/b.png');
+    expect(out).toContain('https://x/y.png');
+  });
+  it('svg-текст превращается в data-URI', () => {
+    const out = buildInlineDoc({
+      'index.html': '<img src="i/logo.svg">',
+      'i/logo.svg': '<svg><rect/></svg>',
+    }, 'index.html');
+    expect(out).toContain('src="data:image/svg+xml;charset=utf-8,');
+    expect(out).not.toContain('src="i/logo.svg"');
+  });
+  it('картинки нет в files — ссылка не трогается', () => {
+    const out = buildInlineDoc({ 'index.html': '<img src="miss.png">' }, 'index.html');
+    expect(out).toBe('<img src="miss.png">');
+  });
+});
+
+describe('buildPreviewDoc — data-URI', () => {
+  it('проходит напрямую, blob не создаётся', () => {
+    const { doc, revoke } = buildPreviewDoc({
+      'index.html': '<img src="a.png">',
+      'a.png': 'data:image/png;base64,QUJD',
+    }, 'index.html');
+    expect(doc).toContain('data:image/png;base64,QUJD');
+    expect(doc).not.toContain('blob:');
+    revoke();
+  });
+});
+
+describe('applyFileEdits — защита data-URI картинок', () => {
+  it('текстовая правка image-файла отклоняется, delete разрешён', () => {
+    const r = applyFileEdits({ 'a.png': 'data:image/png;base64,QUJD', 'b.html': 'B' }, [
+      { op: 'update', path: 'a.png', content: 'сломанная правка' },
+      { op: 'create', path: 'new.png', content: 'тоже мусор' },
+      { op: 'delete', path: 'b.html' },
+    ]);
+    expect(r.files['a.png']).toBe('data:image/png;base64,QUJD');
+    expect(r.files['new.png']).toBeUndefined();
+    expect(r.files['b.html']).toBeUndefined();
+    expect(r.applied).toHaveLength(1);
+    expect(r.skipped).toHaveLength(2);
   });
 });

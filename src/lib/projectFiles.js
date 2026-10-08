@@ -32,8 +32,10 @@ export function stripDevScripts(html) {
 }
 
 export const TEXT_EXTS = ['html', 'htm', 'css', 'js', 'mjs', 'json', 'txt', 'md', 'svg'];
+export const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif', 'ico'];
 export const MAX_FILES = 60;
 export const MAX_FILE_SIZE = 500 * 1024;
+export const MAX_IMAGE_SIZE = 300 * 1024;
 export const MAX_TOTAL_SIZE = 3 * 1024 * 1024;
 
 /** Нормализация пути: без ведущего ./, /, схлопнуть .. */
@@ -58,6 +60,40 @@ export function extOf(path) {
 
 export function isTextFile(path) {
   return TEXT_EXTS.includes(extOf(path));
+}
+
+export function isImageFile(path) {
+  return IMAGE_EXTS.includes(extOf(path));
+}
+
+const IMAGE_MIME = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  avif: 'image/avif',
+  ico: 'image/x-icon',
+};
+
+/** MIME-тип картинки по расширению (для data-URI). */
+export function imageMime(path) {
+  return IMAGE_MIME[extOf(path)] || 'application/octet-stream';
+}
+
+/** bytes → base64 чанками: по 32 КБ, без переполнения стека. */
+function bytesToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(bin);
+}
+
+/** data-URI картинки из base64-строки. */
+function imageDataUri(path, b64) {
+  return `data:${imageMime(path)};base64,${b64}`;
 }
 
 /** Дерево {name, path, children[]} из плоского списка путей. */
@@ -126,6 +162,11 @@ export function buildPreviewDoc(files, entryPath) {
   const blobByPath = {};
   for (const [path, content] of Object.entries(files)) {
     if (path === entryPath || typeof content !== 'string') continue;
+    // data-URI уже самодостаточен — не оборачиваем текст в blob
+    if (content.startsWith('data:')) {
+      blobByPath[path] = content;
+      continue;
+    }
     const mime = extOf(path) === 'css' ? 'text/css'
       : extOf(path) === 'svg' ? 'image/svg+xml'
       : extOf(path) === 'json' ? 'application/json'
@@ -176,6 +217,21 @@ export function buildInlineDoc(files, entryPath) {
       return js != null ? `<script>\n${js}\n</script>` : tag;
     },
   );
+  // локальные картинки из files: data-URI проходит как есть, svg-текст кодируется
+  doc = doc.replace(
+    /(<img\b[^>]*?\ssrc\s*=\s*["'])([^"']+)(["'])/gi,
+    (tag, pre, ref, post) => {
+      const content = pick(ref.trim());
+      if (content == null) return tag;
+      let uri = null;
+      if (content.startsWith('data:')) {
+        uri = content;
+      } else if (extOf(ref.split('#')[0].split('?')[0]) === 'svg') {
+        uri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(content)}`;
+      }
+      return uri ? `${pre}${uri}${post}` : tag;
+    },
+  );
   return stripDevScripts(doc);
 }
 
@@ -195,6 +251,11 @@ export function applyFileEdits(files, edits) {
     if (e.op === 'create' || e.op === 'update') {
       const path = normalizePath(e.path);
       if (!path || typeof e.content !== 'string') {
+        skipped.push(e);
+        continue;
+      }
+      // бинарник нельзя переписать текстом — теряем картинку
+      if (isImageFile(path) && !e.content.startsWith('data:')) {
         skipped.push(e);
         continue;
       }
@@ -257,16 +318,36 @@ export async function collectProjectFiles(fileList) {
   for (const f of files) {
     const rawPath = f.webkitRelativePath || f.name;
     const path = normalizePath(rawPath.replace(/^[^/]+\//, ''));
-    if (!path || !isTextFile(path)) continue;
+    if (!path) continue;
+    const image = isImageFile(path);
+    if (!image && !isTextFile(path)) continue;
     if (Object.keys(out).length >= MAX_FILES) break;
-    if (f.size > MAX_FILE_SIZE || total + f.size > MAX_TOTAL_SIZE) continue;
+    const limit = image ? MAX_IMAGE_SIZE : MAX_FILE_SIZE;
+    if (f.size > limit || total + f.size > MAX_TOTAL_SIZE) continue;
     try {
-      const text = await f.text();
-      out[path] = text.slice(0, MAX_FILE_SIZE);
+      if (image) {
+        out[path] = imageDataUri(path, bytesToBase64(await f.arrayBuffer()));
+      } else {
+        out[path] = (await f.text()).slice(0, MAX_FILE_SIZE);
+      }
       total += f.size;
     } catch {
       // пропускаем нечитаемое
     }
   }
   return out;
+}
+
+/**
+ * Прочитать запись ZIP (JSZip-like entry) как значение files:
+ * картинка → data-URI, текст → строка; null — не берём (чужой тип/лимит).
+ */
+export async function readZipEntryContent(entry, path) {
+  const size = entry?._data?.uncompressedSize ?? 0;
+  if (isImageFile(path)) {
+    if (size > MAX_IMAGE_SIZE) return null;
+    return imageDataUri(path, await entry.async('base64'));
+  }
+  if (!isTextFile(path) || size > MAX_FILE_SIZE) return null;
+  return (await entry.async('string')).slice(0, MAX_FILE_SIZE);
 }

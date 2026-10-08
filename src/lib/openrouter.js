@@ -207,12 +207,19 @@ const FILE_EDIT_SYSTEM = `Ты — веб-разработчик. Дан спи�
 {"edits":[{"op":"create|update|delete|rename","path":"...","to":"...","content":"..."}]}
 Правила: меняй только то, чего касается правка; create — только новые пути; content — полный новый текст файла; без объяснений и markdown.`;
 
-export function buildFileEditMessages(tree, files, prompt) {
-  const listing = tree.join('\n');
-  const packed = Object.entries(files)
-    .map(([p, c]) => `--- ${p} ---\n${String(c).slice(0, 6000)}`)
+/** Содержимое файлов для промпта: картинки (data-URI) — плейсхолдером, не base64. */
+function packFilesForPrompt(files) {
+  return Object.entries(files)
+    .map(([p, c]) => (String(c).startsWith('data:image/')
+      ? `--- ${p} ---\n[изображение (data-URI) — не вставляй и не изменяй этот файл]`
+      : `--- ${p} ---\n${String(c).slice(0, 6000)}`))
     .join('\n')
     .slice(0, 16000);
+}
+
+export function buildFileEditMessages(tree, files, prompt) {
+  const listing = tree.join('\n');
+  const packed = packFilesForPrompt(files);
   return [
     { role: 'system', content: FILE_EDIT_SYSTEM },
     { role: 'user', content: `ФАЙЛЫ:\n${listing}\n\nСОДЕРЖИМОЕ:\n${packed}\n\nПРАВКА: ${prompt}` },
@@ -239,10 +246,7 @@ export function buildFileModuleMessages(tree, files, moduleId, ctx = {}) {
     dark: `Тёмная тема, структуру и контент сохранить.`,
   };
   const listing = tree.join('\n');
-  const packed = Object.entries(files)
-    .map(([p, c]) => `--- ${p} ---\n${String(c).slice(0, 6000)}`)
-    .join('\n')
-    .slice(0, 16000);
+  const packed = packFilesForPrompt(files);
   return [
     { role: 'system', content: FILE_EDIT_SYSTEM },
     { role: 'user', content: `${base}\n\nЗАДАЧА: подключи ${names[moduleId] || moduleId}. ${details[moduleId] || ''}\nВерни СТРОГО JSON {"edits":[...]} — меняй только нужные файлы.\n\nФАЙЛЫ:\n${listing}\n\nСОДЕРЖИМОЕ:\n${packed}` },

@@ -305,6 +305,18 @@ describe('buildFileModuleMessages — модули в файлы', () => {
     const msgs = buildFileModuleMessages([], {}, 'zzz', {});
     expect(msgs[1].content).not.toContain('undefined');
   });
+
+  it('data-URI картинки уходит в промпт плейсхолдером, не base64', () => {
+    const msgs = buildFileModuleMessages(
+      ['index.html', 'a.png'],
+      { 'index.html': '<h1>x</h1>', 'a.png': 'data:image/png;base64,QUJDQUJDQUJD' },
+      'cart', {},
+    );
+    const body = msgs[1].content;
+    expect(body).toContain('a.png');
+    expect(body).not.toContain('QUJDQUJDQUJD');
+    expect(body).toMatch(/изображени/i);
+  });
 });
 
 describe('buildFileEditMessages — промпт правок по файлам', () => {
@@ -318,5 +330,17 @@ describe('buildFileEditMessages — промпт правок по файлам'
     expect(msgs).toHaveLength(2);
     expect(msgs[1].content).toContain('a.html');
     expect(msgs[1].content).toContain('поменяй цвет');
+  });
+
+  it('data-URI картинки уходит в промпт плейсхолдером, не base64', () => {
+    const msgs = buildFileEditMessages(
+      ['index.html', 'a.png'],
+      { 'index.html': '<h1>x</h1>', 'a.png': 'data:image/png;base64,QUJDQUJDQUJD' },
+      'поменяй заголовок',
+    );
+    const body = msgs[1].content;
+    expect(body).toContain('a.png');
+    expect(body).not.toContain('QUJDQUJDQUJD');
+    expect(body).toMatch(/изображени/i);
   });
 });
