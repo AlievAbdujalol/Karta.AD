@@ -1,9 +1,25 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Pencil, Trash2, Sparkles, ChevronDown, ArrowUp, ArrowDown, Plus, X, Check, ImagePlus, Loader2, Plug } from 'lucide-react';
 import { SECTION_TYPES } from '@/lib/siteBuilder';
 import { SITE_MODULES } from '@/lib/openrouter';
 import { uploadSiteImage } from '@/lib/siteImages';
 import { toast } from 'sonner';
+
+// ─── высота панели: границу с превью тянем мышью/пальцем ───────
+export const PANEL_MIN_H = 96;
+export const PANEL_MAX_H = 560;
+export const PANEL_DEFAULT_H = 288; // прежний max-h-72
+const HEIGHT_KEY = 'karta-edit-section-height';
+
+function loadPanelH() {
+  try {
+    const v = parseInt(sessionStorage.getItem(HEIGHT_KEY), 10);
+    if (Number.isNaN(v)) return PANEL_DEFAULT_H;
+    return Math.min(PANEL_MAX_H, Math.max(PANEL_MIN_H, v));
+  } catch {
+    return PANEL_DEFAULT_H; // приватный режим — дефолт
+  }
+}
 
 /**
  * Панель секций: список, ручное редактирование полей, Ask AI по секции, удаление.
@@ -15,6 +31,46 @@ export default function SectionsPanel({ sections, userId, imported = false, onMo
   const [aiTarget, setAiTarget] = useState(null);
   const [adding, setAdding] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [listH, setListH] = useState(loadPanelH);
+  const stopResizeRef = useRef(null);
+
+  // перетаскивание оборвано размонтированием — снимаем слушатели
+  useEffect(() => () => stopResizeRef.current?.(), []);
+
+  const startResize = (startY) => {
+    if (typeof startY !== 'number') return;
+    const startH = listH;
+    const apply = (clientY) => {
+      const next = Math.min(PANEL_MAX_H, Math.max(PANEL_MIN_H, startH + (startY - clientY)));
+      setListH(next);
+      try {
+        sessionStorage.setItem(HEIGHT_KEY, String(next));
+      } catch {
+        // приватный режим — высота просто не запомнится
+      }
+    };
+    const onMove = (ev) => apply(ev.clientY);
+    const onTouchMove = (ev) => {
+      if (ev.touches?.[0]) {
+        ev.preventDefault();
+        apply(ev.touches[0].clientY);
+      }
+    };
+    const onStop = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onStop);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onStop);
+      document.body.style.userSelect = '';
+      stopResizeRef.current = null;
+    };
+    stopResizeRef.current = onStop;
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onStop);
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onStop);
+  };
 
   // Секция «переезжает» вместе со строкой: раскрытая остаётся раскрытой
   const handleMove = (i, dir) => {
@@ -40,6 +96,18 @@ export default function SectionsPanel({ sections, userId, imported = false, onMo
 
   return (
     <div className="bg-white dark:bg-slate-900 md:rounded-2xl border-0 md:border border-slate-200 dark:border-slate-800 overflow-hidden">
+      {!imported && (
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          title="Потянуть, чтобы изменить высоту панели"
+          onMouseDown={(e) => { e.preventDefault(); startResize(e.clientY); }}
+          onTouchStart={(e) => startResize(e.touches?.[0]?.clientY)}
+          className="h-2 flex items-center justify-center cursor-ns-resize bg-slate-50 dark:bg-slate-800/60 hover:bg-violet-50 dark:hover:bg-violet-500/10 group select-none touch-none"
+        >
+          <span className="w-10 h-1 rounded-full bg-slate-300 dark:bg-slate-600 group-hover:bg-violet-400 transition-colors" />
+        </div>
+      )}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-slate-100 dark:border-slate-800">
         <span className="text-[11px] font-black uppercase tracking-wide text-slate-400 flex-1">
           {imported ? 'AI-модули' : `Edit section · ${sections.length}`}
@@ -81,7 +149,11 @@ export default function SectionsPanel({ sections, userId, imported = false, onMo
       )}
 
       {!imported && (
-      <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-72 overflow-y-auto scrollbar-ui">
+      <div
+        data-testid="sections-list"
+        style={{ maxHeight: listH }}
+        className="divide-y divide-slate-100 dark:divide-slate-800 overflow-y-auto scrollbar-ui"
+      >
         {sections.length === 0 && (
           <p className="px-3 py-4 text-center text-xs text-slate-400">Секций пока нет</p>
         )}

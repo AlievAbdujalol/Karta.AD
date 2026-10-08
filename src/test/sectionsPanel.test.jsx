@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -8,8 +8,9 @@ vi.mock('@/lib/openrouter', () => ({
   SITE_MODULES: [{ id: 'cart', label: 'Корзина', icon: '🛒' }],
 }));
 
-import SectionsPanel from '../components/aiBuilder/SectionsPanel';
+import SectionsPanel, { PANEL_MIN_H, PANEL_MAX_H, PANEL_DEFAULT_H } from '../components/aiBuilder/SectionsPanel';
 
+beforeEach(() => sessionStorage.clear());
 afterEach(cleanup);
 
 const SECTIONS = [
@@ -72,5 +73,46 @@ describe('SectionsPanel: поднять/опустить секцию', () => {
     const openInputs = screen.getAllByPlaceholderText('Title');
     expect(openInputs).toHaveLength(1);
     expect(openInputs[0].value).toBe('Первый');
+  });
+});
+
+describe('SectionsPanel: высота панели (перетаскивание границы)', () => {
+  const HANDLE = 'Потянуть, чтобы изменить высоту панели';
+
+  it('разделитель высоты есть на верхней границе панели', () => {
+    render(<SectionsPanel {...baseProps()} />);
+    expect(screen.getByTitle(HANDLE)).toBeTruthy();
+  });
+
+  it('тянем вверх — список выше; тянем вниз — ниже; лимиты MIN/MAX соблюдаются', () => {
+    render(<SectionsPanel {...baseProps()} />);
+    const handle = screen.getByTitle(HANDLE);
+    const list = screen.getByTestId('sections-list');
+    expect(list.style.maxHeight).toBe(`${PANEL_DEFAULT_H}px`);
+
+    fireEvent.mouseDown(handle, { clientY: 300 });
+    fireEvent.mouseMove(window, { clientY: 250 }); // вверх на 50
+    expect(list.style.maxHeight).toBe(`${PANEL_DEFAULT_H + 50}px`);
+    fireEvent.mouseMove(window, { clientY: -99999 }); // потолок
+    expect(list.style.maxHeight).toBe(`${PANEL_MAX_H}px`);
+    fireEvent.mouseUp(window);
+
+    fireEvent.mouseDown(handle, { clientY: 0 });
+    fireEvent.mouseMove(window, { clientY: 99999 }); // пол до упора
+    expect(list.style.maxHeight).toBe(`${PANEL_MIN_H}px`);
+    fireEvent.mouseUp(window);
+  });
+
+  it('высота сохраняется в sessionStorage и переживает новый монтаж', () => {
+    const { unmount } = render(<SectionsPanel {...baseProps()} />);
+    const handle = screen.getByTitle(HANDLE);
+    fireEvent.mouseDown(handle, { clientY: 300 });
+    fireEvent.mouseMove(window, { clientY: 260 });
+    fireEvent.mouseUp(window);
+    expect(sessionStorage.getItem('karta-edit-section-height')).toBe(String(PANEL_DEFAULT_H + 40));
+
+    unmount();
+    render(<SectionsPanel {...baseProps()} />);
+    expect(screen.getByTestId('sections-list').style.maxHeight).toBe(`${PANEL_DEFAULT_H + 40}px`);
   });
 });
