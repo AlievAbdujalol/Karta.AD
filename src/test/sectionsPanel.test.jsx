@@ -116,3 +116,43 @@ describe('SectionsPanel: высота панели (перетаскивание
     expect(screen.getByTestId('sections-list').style.maxHeight).toBe(`${PANEL_DEFAULT_H + 40}px`);
   });
 });
+
+describe('SectionsPanel: высота блока (pad)', () => {
+  it('стрелки ↑/↓ зовут onUpdateSection с новым pad', () => {
+    const onUpdateSection = vi.fn();
+    const { rerender } = render(<SectionsPanel {...baseProps({ onUpdateSection })} />);
+    fireEvent.click(screen.getByText('Первый')); // раскрыть
+    expect(screen.getByText('Высота блока')).toBeTruthy();
+
+    fireEvent.click(screen.getByTitle('Сделать блок выше'));
+    expect(onUpdateSection).toHaveBeenCalledWith(0, { pad: 1 });
+
+    // родитель применил pad и перерендерил панель — теперь «ниже» возвращает к 0
+    rerender(
+      <SectionsPanel
+        {...baseProps({
+          onUpdateSection,
+          sections: [{ type: 'hero', title: 'Первый', description: '', pad: 1 }],
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByTitle('Сделать блок ниже'));
+    expect(onUpdateSection).toHaveBeenLastCalledWith(0, { pad: 0 });
+  });
+
+  it('у границ: компактная — «ниже» отключена, просторная — «выше» отключена', () => {
+    const sections = [
+      { type: 'hero', title: 'Низ', description: '', pad: -1 },
+      { type: 'about', title: 'Верх', description: '', pad: 1 },
+    ];
+    render(<SectionsPanel {...baseProps({ sections })} />);
+
+    fireEvent.click(screen.getByText('Низ'));
+    expect(screen.getByTitle('Сделать блок ниже').disabled).toBe(true);
+    expect(screen.getByTitle('Сделать блок выше').disabled).toBe(false);
+
+    fireEvent.click(screen.getByText('Верх'));
+    expect(screen.getByTitle('Сделать блок выше').disabled).toBe(true);
+    expect(screen.getByTitle('Сделать блок ниже').disabled).toBe(false);
+  });
+});

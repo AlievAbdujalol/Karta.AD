@@ -21,6 +21,10 @@ function loadPanelH() {
   }
 }
 
+// высота блока на сайте: pad -1 | 0 | 1
+const PAD_LABELS = { '-1': 'Компактная', 0: 'Обычная', 1: 'Просторная' };
+const normPad = (v) => ([-1, 0, 1].includes(Number(v)) ? Number(v) : 0);
+
 /**
  * Панель секций: список, ручное редактирование полей, Ask AI по секции, удаление.
  * Preview-интроспекция невозможна (sandbox без same-origin) — выбор через список.
@@ -76,6 +80,14 @@ export default function SectionsPanel({ sections, userId, imported = false, onMo
   const handleMove = (i, dir) => {
     onMoveSection?.(i, dir);
     setOpenIdx((cur) => (cur === i ? i + dir : cur === i + dir ? i : cur));
+  };
+
+  // Высота блока на сайте: поднять (просторнее) / опустить (компактнее)
+  const stepPad = (i, dir) => {
+    const cur = normPad(sections[i]?.pad);
+    const next = Math.max(-1, Math.min(1, cur + dir));
+    if (next === cur) return;
+    onUpdateSection?.(i, { pad: next });
   };
 
   const handlePhoto = async (idx, file) => {
@@ -204,6 +216,29 @@ export default function SectionsPanel({ sections, userId, imported = false, onMo
                   rows={2}
                   className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-transparent text-[12px] text-slate-800 dark:text-slate-100"
                 />
+                {/* Высота блока на сайте: ↑ поднять (просторнее), ↓ опустить (компактнее) */}
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 text-[11px] font-bold text-slate-500 dark:text-slate-400">Высота блока</span>
+                  <button
+                    title="Сделать блок ниже"
+                    onClick={() => stepPad(i, -1)}
+                    disabled={busy || normPad(s.pad) <= -1}
+                    className="p-1 rounded-md text-slate-400 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-500/10 disabled:opacity-30 disabled:pointer-events-none"
+                  >
+                    <ArrowDown size={13} />
+                  </button>
+                  <span className="min-w-[76px] text-center text-[11px] font-black text-slate-600 dark:text-slate-300">
+                    {PAD_LABELS[normPad(s.pad)]}
+                  </span>
+                  <button
+                    title="Сделать блок выше"
+                    onClick={() => stepPad(i, 1)}
+                    disabled={busy || normPad(s.pad) >= 1}
+                    className="p-1 rounded-md text-slate-400 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-500/10 disabled:opacity-30 disabled:pointer-events-none"
+                  >
+                    <ArrowUp size={13} />
+                  </button>
+                </div>
                 {/* Фото секции */}
                 <div className="flex items-center gap-2">
                   <input

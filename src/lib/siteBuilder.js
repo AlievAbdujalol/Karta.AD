@@ -42,6 +42,8 @@ export function validateStructure(raw) {
         items: Array.isArray(s?.items) ? s.items.slice(0, 12).map((it) => String(it).slice(0, 200)) : [],
         image: String(s?.image || '').slice(0, 500),
         background: String(s?.background || '').slice(0, 100),
+        // высота блока: -1 компактная, 0 обычная, 1 просторная
+        pad: [-1, 0, 1].includes(Number(s?.pad)) ? Number(s.pad) : 0,
       }))
       : [],
   }));
@@ -243,6 +245,19 @@ export function compileSite(structured, biz = {}, opts = {}) {
   const body = page.sections
     .map((s, i) => `<div id="s${i}">${sectionHtml(s, b, theme, cfg, opts.appOrigin || '')}</div>`)
     .join('\n');
+  // Высота секции (pad): переопределяем только вертикальные отступы корневого
+  // элемента блока; #id поднимает спецификацию над .hero/.block/footer
+  const padCss = page.sections
+    .map((s, i) => {
+      const step = [-1, 0, 1].includes(Number(s.pad)) ? Number(s.pad) : 0;
+      if (!step) return '';
+      const base = s.type === 'hero' ? 56 : s.type === 'footer' ? 24 : 32;
+      const delta = s.type === 'hero' ? 24 : s.type === 'footer' ? 8 : 16;
+      const v = Math.max(8, base + step * delta);
+      return `#s${i}>*{padding-top:${v}px;padding-bottom:${v}px}`;
+    })
+    .filter(Boolean)
+    .join('\n');
   const cartScript = cfg ? cartJs(cfg, b.products) : '';
   return `<!DOCTYPE html>
 <html lang="ru">
@@ -278,6 +293,7 @@ nav a{color:${theme.dark ? '#cbd5e1' : '#475569'};text-decoration:none;font-size
 #checkout input{padding:11px;border-radius:10px;border:1px solid ${theme.dark ? '#334155' : '#cbd5e1'};background:${theme.dark ? '#0f172a' : '#fff'};color:inherit;font-size:15px}
 #checkout button{background:${theme.primary};color:#fff;border:none;border-radius:12px;padding:12px;font-weight:800;cursor:pointer;font-size:15px}
 footer{padding:24px 20px;text-align:center;color:${theme.dark ? '#64748b' : '#94a3b8'};font-size:13px;border-top:1px solid ${theme.dark ? '#1e293b' : '#e2e8f0'}}
+${padCss}
 </style>
 </head>
 <body>

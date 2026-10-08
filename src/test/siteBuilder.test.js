@@ -368,3 +368,48 @@ describe('swapSections — поднять/опустить блок', () => {
     expect(titles(s)).toEqual(['A', 'B', 'C']);
   });
 });
+
+describe('высота секции (pad)', () => {
+  it('validateStructure нормализует pad: мусор → 0, −1/1 сохраняются', () => {
+    const s = {
+      site: {
+        pages: [{
+          name: 'Home',
+          sections: [
+            { type: 'hero', pad: 1 },
+            { type: 'about', pad: -1 },
+            { type: 'about', pad: 99 },
+            { type: 'about', pad: 'x' },
+            { type: 'about' },
+          ],
+        }],
+      },
+    };
+    const pads = validateStructure(s).site.pages[0].sections.map((x) => x.pad);
+    expect(pads).toEqual([1, -1, 0, 0, 0]);
+  });
+
+  it('pad=1 увеличивает вертикальные отступы секции (hero 56→80)', () => {
+    const s = {
+      site: {
+        pages: [{
+          name: 'Home',
+          sections: [
+            { type: 'hero', title: 'H', pad: 1 },
+            { type: 'about', title: 'A' },
+          ],
+        }],
+      },
+    };
+    const html = compileSite(s, {});
+    expect(html).toContain('#s0>*{padding-top:80px;padding-bottom:80px}');
+    expect(html).not.toContain('#s1>'); // без pad правила нет
+  });
+
+  it('pad=-1 уменьшает отступы (block 32→16)', () => {
+    const s = {
+      site: { pages: [{ name: 'Home', sections: [{ type: 'features', title: 'F', pad: -1 }] }] },
+    };
+    expect(compileSite(s, {})).toContain('#s0>*{padding-top:16px;padding-bottom:16px}');
+  });
+});
