@@ -44,6 +44,12 @@ export default function SectionsPanel({ sections, userId, imported = false, onMo
   const startResize = (startY) => {
     if (typeof startY !== 'number') return;
     const startH = listH;
+    // Щит поверх окна: курсор во время тянки уходит над iframe превью, а его
+    // события не всплывают в наше окно — без щита подъём зависает после ~20px
+    const shield = document.createElement('div');
+    shield.setAttribute('data-testid', 'resize-shield');
+    shield.style.cssText = 'position:fixed;inset:0;z-index:9999;cursor:ns-resize;touch-action:none';
+    document.body.appendChild(shield);
     const apply = (clientY) => {
       const next = Math.min(PANEL_MAX_H, Math.max(PANEL_MIN_H, startH + (startY - clientY)));
       setListH(next);
@@ -65,6 +71,8 @@ export default function SectionsPanel({ sections, userId, imported = false, onMo
       window.removeEventListener('mouseup', onStop);
       window.removeEventListener('touchmove', onTouchMove);
       window.removeEventListener('touchend', onStop);
+      window.removeEventListener('blur', onStop);
+      shield.remove();
       document.body.style.userSelect = '';
       stopResizeRef.current = null;
     };
@@ -74,6 +82,8 @@ export default function SectionsPanel({ sections, userId, imported = false, onMo
     window.addEventListener('mouseup', onStop);
     window.addEventListener('touchmove', onTouchMove, { passive: false });
     window.addEventListener('touchend', onStop);
+    // отпустили мимо окна — blur всё снимает, иначе щит застрянет
+    window.addEventListener('blur', onStop);
   };
 
   // Секция «переезжает» вместе со строкой: раскрытая остаётся раскрытой

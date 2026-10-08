@@ -76,7 +76,7 @@ export default function BuilderPreview({
           </>
         )}
       </div>
-      <div className="relative flex-1 overflow-auto scrollbar-ui bg-slate-100 dark:bg-slate-950 p-3 flex justify-center min-h-[280px]">
+      <div data-testid="preview-canvas" className="relative flex-1 overflow-auto scrollbar-ui bg-slate-100 dark:bg-slate-950 p-3 flex justify-center min-h-[160px] lg:min-h-[200px]">
         {!html ? (
           empty
         ) : (
@@ -102,7 +102,7 @@ export default function BuilderPreview({
                 width: previewMode === 'desktop' ? '100%' : Math.min(WIDTHS[previewMode], 900),
                 maxWidth: '100%',
                 height: '100%',
-                minHeight: 420,
+                minHeight: 160,
                 borderRadius: 12,
                 border: '1px solid rgba(148,163,184,.3)',
                 background: '#fff',

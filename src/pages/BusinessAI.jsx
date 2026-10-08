@@ -1440,7 +1440,7 @@ export default function BusinessAI() {
 
           {/* Preview + sections + versions */}
           <div className="flex flex-col gap-3 min-h-0 lg:overflow-y-auto lg:pr-0.5 scrollbar-ui">
-            <div className="min-h-[480px] lg:min-h-[420px] lg:flex-1 flex">
+            <div className="min-h-[480px] lg:min-h-[240px] lg:flex-1 flex">
               <div className="flex-1 min-w-0">
                 <BuilderPreview
                   html={isMulti ? previewDoc : currentHtml}

@@ -64,6 +64,15 @@ describe('BuilderPreview', () => {
     expect(onCopyLink).toHaveBeenCalledTimes(1);
   });
 
+  it('пол высоты превью: контент сжимается до 160/200px — панель можно поднять', () => {
+    render(<BuilderPreview {...baseProps()} />);
+    // контентная область отдаёт место вверх при нехватке высоты окна
+    const canvas = document.querySelector('[data-testid="preview-canvas"]');
+    expect(canvas.className).toContain('min-h-[160px]');
+    expect(canvas.className).toContain('lg:min-h-[200px]');
+    expect(canvas.className).not.toContain('min-h-[280px]');
+  });
+
   it('скелет загрузки виден до onLoad iframe и уходит после', () => {
     render(<BuilderPreview {...baseProps()} />);
     expect(screen.getByTestId('preview-loading')).toBeTruthy();

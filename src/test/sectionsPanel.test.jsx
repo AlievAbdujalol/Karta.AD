@@ -115,6 +115,37 @@ describe('SectionsPanel: высота панели (перетаскивание
     render(<SectionsPanel {...baseProps()} />);
     expect(screen.getByTestId('sections-list').style.maxHeight).toBe(`${PANEL_DEFAULT_H + 40}px`);
   });
+
+  it('в момент тянки — щит поверх окна, события идут через него', () => {
+    render(<SectionsPanel {...baseProps()} />);
+    fireEvent.mouseDown(screen.getByTitle(HANDLE), { clientY: 300 });
+
+    const shield = document.querySelector('[data-testid="resize-shield"]');
+    expect(shield).toBeTruthy(); // перекрывает iframe — иначе тянка вверх зависает
+    fireEvent.mouseMove(shield, { clientY: 250 });
+    expect(screen.getByTestId('sections-list').style.maxHeight).toBe(`${PANEL_DEFAULT_H + 50}px`);
+
+    fireEvent.mouseUp(shield);
+    expect(document.querySelector('[data-testid="resize-shield"]')).toBeNull();
+  });
+
+  it('отпустили мимо окна: blur снимает щит и слушатели', () => {
+    render(<SectionsPanel {...baseProps()} />);
+    fireEvent.mouseDown(screen.getByTitle(HANDLE), { clientY: 300 });
+    expect(document.querySelector('[data-testid="resize-shield"]')).toBeTruthy();
+
+    fireEvent.blur(window);
+    expect(document.querySelector('[data-testid="resize-shield"]')).toBeNull();
+  });
+
+  it('размонтирование во время тянки снимает щит', () => {
+    const { unmount } = render(<SectionsPanel {...baseProps()} />);
+    fireEvent.mouseDown(screen.getByTitle(HANDLE), { clientY: 300 });
+    expect(document.querySelector('[data-testid="resize-shield"]')).toBeTruthy();
+
+    unmount();
+    expect(document.querySelector('[data-testid="resize-shield"]')).toBeNull();
+  });
 });
 
 describe('SectionsPanel: высота блока (pad)', () => {
