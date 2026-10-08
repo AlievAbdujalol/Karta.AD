@@ -1,12 +1,18 @@
 // Единый список зеркал Overpass для всех потребителей (карта, остановки,
 // ИИ-поиск). Каждый запрос идёт сверху вниз, пока зеркало не ответит.
-// kumi/CORS-отказ падает мгновенно и не тормозит цепочку.
+// Порядок по замерам из браузера на localhost (08.10.2026):
+//  1. overpass-api.de — единственный живой: 200 за ~800 мс;
+//  2. maps.mail.ru — отвечает с CORS (бывает 504 при перегрузке);
+//  3-4. kumi/private.coffee — сейчас отдают 500/CORS-отказ, но быстро;
+//  5. openstreetmap.ru — таймаут ~7 с, поэтому строго последним.
+// Пока первое зеркало отвечает, консоль браузера чистая — ошибки сети
+// логируются браузером на каждом упавшем запросе, выкинуть их нельзя.
 export const OVERPASS_URLS = [
-  'https://overpass.kumi.systems/api/interpreter',
   'https://overpass-api.de/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
-  'https://overpass.openstreetmap.ru/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
+  'https://overpass.openstreetmap.ru/api/interpreter',
 ];
 
 export async function fetchOverpass(query, opts = {}) {
