@@ -22,3 +22,14 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   });
 }
+
+// Dev: снимаем SW, зарегистрированные до этой правки, — иначе падавший
+// офлайн-фолбэк продолжает отвечать network error'ом до авто-обновления.
+if ('serviceWorker' in navigator && import.meta.env.DEV) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((regs) => Promise.all(regs.map((r) => r.unregister())))
+      .catch(() => {});
+  });
+}

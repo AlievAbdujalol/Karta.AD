@@ -5,8 +5,10 @@
 // промис = TypeError «Failed to convert value to 'Response'» и network error
 // у навигации (регресс-тест src/test/serviceWorker.test.js).
 
-const CACHE = 'karta-ad-v1';
-const TILE_CACHE = 'karta-ad-tiles-v1';
+// Имена кешей — с версией: логика офлайн-фолбэка изменилась, а activate
+// чужие кеши не трогает — ядовитые записи старой версии должны уйти.
+const CACHE = 'karta-ad-v2';
+const TILE_CACHE = 'karta-ad-tiles-v2';
 const CORE = ['/', '/index.html', '/logo.png', '/manifest.webmanifest'];
 
 const OFFLINE_HTML =
