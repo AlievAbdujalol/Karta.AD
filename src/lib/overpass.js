@@ -1,7 +1,12 @@
-const OVERPASS_URLS = [
+// Единый список зеркал Overpass для всех потребителей (карта, остановки,
+// ИИ-поиск). Каждый запрос идёт сверху вниз, пока зеркало не ответит.
+// kumi/CORS-отказ падает мгновенно и не тормозит цепочку.
+export const OVERPASS_URLS = [
   'https://overpass.kumi.systems/api/interpreter',
   'https://overpass-api.de/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.openstreetmap.ru/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
 ];
 
 export async function fetchOverpass(query, opts = {}) {

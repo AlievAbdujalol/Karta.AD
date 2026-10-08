@@ -8,18 +8,13 @@
  *  6. Озвучка текста
  */
 import { geminiGenerate, geminiJSON, isGeminiConfigured, parseSearchIntent } from '@/lib/gemini';
+import { OVERPASS_URLS } from '@/lib/overpass';
 
 // ─── геокодинг ─────────────────────────────────────────────────────────
 
 import { haversineM } from '@/lib/geo';
 
 // ─── категории мест (Overpass вокруг точки) ────────────────────
-
-const OVERPASS_URLS = [
-  'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.openstreetmap.ru/api/interpreter',
-];
 
 const CATEGORY_TAGS = [
   { keys: ['ресторан', 'рестик', 'поесть', 'еда'], label: 'рестораны', clause: 'node["amenity"="restaurant"]' },

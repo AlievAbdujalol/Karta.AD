@@ -1,11 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMap } from 'react-leaflet';
+import { OVERPASS_URLS } from '../lib/overpass';
 
-const OVERPASS_URLS = [
-  'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.openstreetmap.ru/api/interpreter',
-];
 const LS_KEY = 'osm_stops_cache_v1';
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 
