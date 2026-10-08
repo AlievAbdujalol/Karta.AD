@@ -17,8 +17,9 @@ import {
   buildFileEditMessages, buildFileModuleMessages, SITE_MODULES,
 } from '@/lib/openrouter';
 import {
-  validateStructure, extractSiteJson, compileSite, withKartaModules,
+  validateStructure, extractSiteJson, withKartaModules,
   buildStructureMessages, buildStructureEditMessages, swapSections,
+  resolveSiteHtml,
 } from '@/lib/siteBuilder';
 import BuilderChat from '@/components/aiBuilder/BuilderChat';
 import BuilderPreview from '@/components/aiBuilder/BuilderPreview';
@@ -138,8 +139,15 @@ export default function BusinessAI() {
     appOrigin: canonicalOrigin(),
     preview,
   });
+  // Импортированный сайт при draft не пересобираем из структуры-заглушки —
+  // иначе черновик затирает сырой HTML пустой страницей (см. resolveSiteHtml)
   const shownHtml = draft
-    ? compileSite(draft, { ...(selectedBusiness || {}), products }, shopOpts(true))
+    ? resolveSiteHtml({
+        structure: draft,
+        currentHtml: current?.html || '',
+        biz: { ...(selectedBusiness || {}), products },
+        opts: shopOpts(true),
+      })
     : (current?.html || '');
   const currentStructure = shownStructure;
   // Превью/экспорт: любые localhost- и относительные ссылки на widget.js
@@ -514,7 +522,15 @@ export default function BusinessAI() {
   const bizContext = () => ({ ...(selectedBusiness || {}), products });
 
   const pushVersion = async ({ projectId, title, promptText, structure, bizOverride = null, htmlOverride = null, filesSnapshot = null }) => {
-    const html = htmlOverride ?? compileSite(structure, bizOverride || bizContext(), shopOpts(false));
+    // Для импорта (structure — заглушка, живой HTML в текущей версии)
+    // resolveSiteHtml не даёт компиляции затереть сырой контент
+    const html = resolveSiteHtml({
+      structure,
+      htmlOverride,
+      currentHtml: current?.html || '',
+      biz: bizOverride || bizContext(),
+      opts: shopOpts(false),
+    });
     const { data, error } = await supabase
       .from('ai_project_versions')
       .insert({
@@ -1056,6 +1072,14 @@ export default function BusinessAI() {
         setSelectedBusiness(freshBiz);
       }
       const structure = validateStructure(currentStructure);
+      // Импортированный сайт — живой HTML, структура лишь заглушка «Импорт»:
+      // компиляция затёрла бы контент пустой страницей (так и появилась
+      // опубликованная заглушка). Локальный refresh бизнеса/товаров выше уже
+      // выполнен — этого достаточно, данные в сайт попадают через виджет/модули.
+      if (structure.site.imported) {
+        toast.info('Импортированный сайт не пересобирается — данные подтягивает виджет, контент правится через AI.');
+        return;
+      }
       await pushVersion({
         projectId: activeProjectId,
         title: 'Обновление данных',

@@ -6,6 +6,7 @@ import {
   withKartaModules,
   SECTION_TYPES,
   swapSections,
+  resolveSiteHtml,
 } from '../lib/siteBuilder';
 import { cartoRaster, CARTO_ATTRIBUTION } from '../lib/tiles';
 
@@ -411,5 +412,53 @@ describe('высота секции (pad)', () => {
       site: { pages: [{ name: 'Home', sections: [{ type: 'features', title: 'F', pad: -1 }] }] },
     };
     expect(compileSite(s, {})).toContain('#s0>*{padding-top:16px;padding-bottom:16px}');
+  });
+});
+
+describe('resolveSiteHtml: импортированный сайт не пересобирается из заглушки', () => {
+  const RAW = '<!doctype html><html><head><title>AD-Sneakers-Store</title></head>'
+    + '<body><h1>Импортный контент из файла</h1></body></html>';
+
+  // Ровно то, что создаёт importedSkeleton() в BusinessAI
+  const importedStub = () => validateStructure({
+    site: {
+      name: 'AD-Sneakers-Store',
+      description: 'Сайт загружен файлом.',
+      theme: { primary: '#7c3aed', dark: true },
+      pages: [{ name: 'Home', sections: [{ type: 'about', title: 'Импорт', description: 'HTML загружен из файла.' }] }],
+      imported: true,
+    },
+  });
+
+  it('явный htmlOverride побеждает всё', () => {
+    const out = resolveSiteHtml({
+      structure: importedStub(),
+      htmlOverride: '<html><body>правка AI</body></html>',
+      currentHtml: RAW,
+    });
+    expect(out).toContain('правка AI');
+  });
+
+  it('без override — сохраняем сырой HTML импорта, а не компилируем заглушку', () => {
+    const out = resolveSiteHtml({ structure: importedStub(), currentHtml: RAW });
+    expect(out).toBe(RAW);
+    expect(out).not.toContain('HTML загружен из файла.');
+  });
+
+  it('импорт, но сырого HTML ещё нет — деградация в компиляцию структуры', () => {
+    const out = resolveSiteHtml({ structure: importedStub(), currentHtml: '' });
+    expect(out).toContain('<html');
+    expect(out).toContain('Импорт');
+  });
+
+  it('обычная структура без override — компилируется как раньше (не берём старый HTML)', () => {
+    const out = resolveSiteHtml({ structure: good, currentHtml: '<html>старый рендер</html>' });
+    expect(out).toContain('Торты');
+    expect(out).not.toContain('старый рендер');
+  });
+
+  it('htmlOverride = пустая строка — не подменяется компиляцией (паритет со старым ??)', () => {
+    const out = resolveSiteHtml({ structure: good, htmlOverride: '' });
+    expect(out).toBe('');
   });
 });

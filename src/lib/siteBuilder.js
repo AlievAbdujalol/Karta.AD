@@ -217,6 +217,21 @@ function sectionHtml(sec, biz, theme, cfg, appOrigin = '') {
   }
 }
 
+/**
+ * HTML для версии/preview. Приоритет: явный htmlOverride → сырой HTML
+ * импортированного сайта → компиляция структуры.
+ *
+ * Импорт (кнопка «HTML») сохраняет живой код в version.html, а структура —
+ * заглушка «Импорт» из importedSkeleton(): пересборка из неё затирала контент
+ * пустой страницей (баг «Обновление данных» → публикация-заглушка /s/:id).
+ * Чистая функция.
+ */
+export function resolveSiteHtml({ structure, htmlOverride = null, currentHtml = '', biz = {}, opts = {} }) {
+  if (htmlOverride != null) return htmlOverride;
+  if (structure?.site?.imported) return currentHtml || compileSite(structure, biz, opts);
+  return compileSite(structure, biz, opts);
+}
+
 /** Собрать полный HTML из структуры + данных бизнеса. Чистая функция. */
 export function compileSite(structured, biz = {}, opts = {}) {
   const { site } = validateStructure(structured);
