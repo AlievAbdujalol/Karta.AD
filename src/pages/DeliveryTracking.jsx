@@ -5,6 +5,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { supabase } from '@/api/supabase';
 import { buildOsrmRoute } from '@/lib/osrmClient';
+import { cartoRaster, CARTO_ATTRIBUTION } from '@/lib/tiles';
 import {
   Clock, CheckCircle, Search, Truck, Navigation, MapPin, Package,
   XCircle, AlertTriangle, RefreshCw, Loader2, Star, ArrowLeft,
@@ -197,8 +198,8 @@ export default function DeliveryTracking() {
             zoomControl={true}
           >
             <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution={CARTO_ATTRIBUTION}
+              url={cartoRaster('rastertiles/voyager')}
             />
             <FitBounds points={boundsPoints} />
             {typeof data.pickup_lat === 'number' && (

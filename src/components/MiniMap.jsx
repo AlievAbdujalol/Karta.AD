@@ -1,6 +1,7 @@
 import { MapContainer, TileLayer, Polyline, Marker, useMap } from 'react-leaflet';
 import { useEffect } from 'react';
 import L from 'leaflet';
+import { cartoRaster, CARTO_ATTRIBUTION } from '@/lib/tiles';
 
 // Вписывает весь маршрут от и до в круг миникарты при его появлении/смене
 function FitRoute({ route }) {
@@ -28,7 +29,7 @@ export default function MiniMap({ center, route, userPos, heading }){
   return (
     <div className="w-[92px] h-[92px] rounded-full overflow-hidden border-2 border-white dark:border-slate-700 shadow-xl bg-slate-200">
       <MapContainer center={center} zoom={13} style={{height:'100%', width:'100%'}} zoomControl={false} dragging={false} attributionControl={false} doubleClickZoom={false} scrollWheelZoom={false}>
-        <TileLayer url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <TileLayer url={cartoRaster('rastertiles/voyager')} attribution={CARTO_ATTRIBUTION} />
         <FitRoute route={route} />
         {geom && <Polyline positions={geom} color="#22c55e" weight={3} />}
         {geom && geom.length > 1 && (

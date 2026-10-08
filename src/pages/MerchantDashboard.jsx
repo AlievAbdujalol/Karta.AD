@@ -8,6 +8,7 @@ import {
   BarChart3, Webhook, Settings, RefreshCw, LogOut, Eye, EyeOff,
 } from 'lucide-react';
 import { supabase } from '@/api/supabase';
+import { cartoRaster, CARTO_ATTRIBUTION } from '@/lib/tiles';
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -314,8 +315,8 @@ function CourierMap({ couriers, orders }) {
       <div className="h-[420px] rounded-xl overflow-hidden border border-slate-200">
         <MapContainer center={center} zoom={13} style={{ height: '100%', width: '100%' }}>
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution={CARTO_ATTRIBUTION}
+            url={cartoRaster('rastertiles/voyager')}
           />
           {withPos.map((c) => (
             <Marker

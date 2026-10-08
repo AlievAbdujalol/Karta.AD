@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Download, Trash2, RefreshCw, Pause, Play, HardDrive, Check } from 'lucide-react';
 import { supabase } from '@/api/supabase';
 import { saveCache } from '@/lib/cache';
+import { cartoRaster } from '@/lib/tiles';
 import { toast } from 'sonner';
 
 const REGIONS = [
@@ -20,8 +21,8 @@ export default function OfflineMaps(){
     const { data:{user}} = await supabase.auth.getUser(); if(!user) return toast.error('Войдите');
     setDownloading(d=>({...d,[region.name]:{pct:0, paused:false}}));
     let pct=0;
-    const urls=[];
-    for(let z=10; z<=13; z++){ const n=Math.pow(2,z); const x1=Math.floor((region.bbox.minLng+180)/360*n), x2=Math.floor((region.bbox.maxLng+180)/360*n); const y1=Math.floor((1-Math.log(Math.tan(region.bbox.maxLat*Math.PI/180)+1/Math.cos(region.bbox.maxLat*Math.PI/180))/Math.PI)/2*n), y2=Math.floor((1-Math.log(Math.tan(region.bbox.minLat*Math.PI/180)+1/Math.cos(region.bbox.minLat*Math.PI/180))/Math.PI)/2*n); for(let x=Math.max(0,x1-1); x<=Math.min(n-1,x2+1); x++) for(let y=Math.max(0,y1-1); y<=Math.min(n-1,y2+1); y++) urls.push(`https://tile.openstreetmap.org/${z}/${x}/${y}.png`); if(urls.length>60) break; } urls.splice(60);
+    const urls=[]; const TILE = cartoRaster('rastertiles/voyager').replace('{r}','');
+    for(let z=10; z<=13; z++){ const n=Math.pow(2,z); const x1=Math.floor((region.bbox.minLng+180)/360*n), x2=Math.floor((region.bbox.maxLng+180)/360*n); const y1=Math.floor((1-Math.log(Math.tan(region.bbox.maxLat*Math.PI/180)+1/Math.cos(region.bbox.maxLat*Math.PI/180))/Math.PI)/2*n), y2=Math.floor((1-Math.log(Math.tan(region.bbox.minLat*Math.PI/180)+1/Math.cos(region.bbox.minLat*Math.PI/180))/Math.PI)/2*n); for(let x=Math.max(0,x1-1); x<=Math.min(n-1,x2+1); x++) for(let y=Math.max(0,y1-1); y<=Math.min(n-1,y2+1); y++) urls.push(TILE.replace('{z}',z).replace('{x}',x).replace('{y}',y)); if(urls.length>60) break; } urls.splice(60);
     let idx=0;
     const tick=async()=>{
       if(idx>=urls.length){ await supabase.from('offline_maps').insert({ user_id:user.id, region_name:region.name, bbox:region.bbox, size_mb: region.size, status:'ready', downloaded_at:new Date().toISOString() }); saveCache('offline_'+region.name, {region, tiles:urls.length, at:Date.now()}, 30*24*60*60*1000); try{ if('caches' in window){ const c=await caches.open('karta-tiles'); await Promise.all(urls.slice(0,30).map(u=> fetch(u).then(r=>c.put(u,r)).catch(()=>{}))); } }catch{} setDownloading(d=>{ const n={...d}; delete n[region.name]; return n; }); supabase.from('offline_maps').select('*').eq('user_id',user.id).then(({data})=>setOffline(data||[])); toast.success(region.name+' скачан · '+urls.length+' тайлов'); return; }

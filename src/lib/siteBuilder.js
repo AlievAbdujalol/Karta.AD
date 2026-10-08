@@ -5,6 +5,8 @@
  * Чистые функции compileSite/validateStructure покрыты тестами.
  */
 
+import { cartoRaster, CARTO_ATTRIBUTION } from './tiles';
+
 export const SECTION_TYPES = [
   'hero', 'features', 'products', 'services', 'about',
   'gallery', 'reviews', 'map', 'contact', 'delivery', 'taxi', 'footer',
@@ -301,7 +303,7 @@ function openMap(){
     var L = window.L;
     if (!L) { box.textContent = 'Карта не загрузилась — введи адрес текстом'; return; }
     var map = L.map(box).setView([38.5581, 68.7738], 13);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: 'OpenStreetMap' }).addTo(map);
+    L.tileLayer(${JSON.stringify(cartoRaster('rastertiles/voyager'))}, { maxZoom: 19, attribution: ${JSON.stringify(CARTO_ATTRIBUTION)} }).addTo(map);
     var mk = null;
     map.on('click', function(ev){
       geo.lat = Math.round(ev.latlng.lat * 1e6) / 1e6;

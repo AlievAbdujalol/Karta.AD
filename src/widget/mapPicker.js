@@ -1,9 +1,11 @@
 /**
  * mapPicker — карта выбора адреса доставки внутри Shadow DOM.
  * Leaflet подгружается с unpkg (на чужом хостинге своего бандла нет),
- * тайлы OpenStreetMap. При любой ошибке — фолбэк на ручной ввод адреса.
+ * тайлы — общий конвиг Karta-AD (lib/tiles: CARTO с ключом → OSM).
+ * При любой ошибке — фолбэк на ручной ввод адреса.
  */
 import { reverseGeocodeUrl, pickAddressText } from '@/lib/geo';
+import { cartoRaster, CARTO_ATTRIBUTION } from '@/lib/tiles';
 
 const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
 const LEAFLET_JS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
@@ -53,9 +55,9 @@ export async function mountMap({ shadow, container, center, doc, onPick, onFail 
 
     const map = L.map(container, { zoomControl: false, attributionControl: false, scrollWheelZoom: true });
     map.setView(center, 14);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    L.tileLayer(cartoRaster('rastertiles/voyager'), {
       maxZoom: 19,
-      attribution: '&copy; OpenStreetMap',
+      attribution: CARTO_ATTRIBUTION,
     }).addTo(map);
 
     let marker = null;

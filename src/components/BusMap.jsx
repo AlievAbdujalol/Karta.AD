@@ -8,7 +8,7 @@ import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'react-leaflet-cluster/lib/assets/MarkerCluster.css';
 import 'react-leaflet-cluster/lib/assets/MarkerCluster.Default.css';
 import MapControls, { TILE_LAYERS, LABEL_OVERLAY_URL, TRANSPORT_OVERLAY_URL } from './MapControls';
-import { CARTO_KEY } from '@/lib/tiles';
+import { CARTO_KEY, cartoRaster } from '@/lib/tiles';
 import RoutingPanel from './RoutingPanel';
 import BusinessMarkers from './BusinessMarkers';
 import StopInfoPopup, { collectUniqueStops } from './StopInfoPopup';
@@ -1207,7 +1207,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
 
       {showTraffic && (
         <TileLayer
-          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          url={cartoRaster('rastertiles/voyager')}
           zIndex={300}
           opacity={0.6}
         />

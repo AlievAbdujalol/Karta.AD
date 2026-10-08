@@ -6,6 +6,7 @@ import {
   withKartaModules,
   SECTION_TYPES,
 } from '../lib/siteBuilder';
+import { cartoRaster, CARTO_ATTRIBUTION } from '../lib/tiles';
 
 const good = {
   site: {
@@ -280,6 +281,18 @@ describe('чекаут: адрес на карте и способ оплаты'
   it('Leaflet подгружается лениво с unpkg (чужой хостинг не тащит наш бандл)', () => {
     expect(html()).toContain('unpkg.com/leaflet@1.9.4/dist/leaflet.js');
     expect(html()).toContain('unpkg.com/leaflet@1.9.4/dist/leaflet.css');
+  });
+
+  it('тайлы чекаута — из конвига Karta-AD (lib/tiles), не хардкод OSM', () => {
+    const h = html();
+    expect(h).toContain(cartoRaster('rastertiles/voyager'));
+    // атрибуция встраивается в inline-скрипт через JSON.stringify (кавычки экранированы)
+    expect(h).toContain(JSON.stringify(CARTO_ATTRIBUTION));
+    // карта в превью больше не упирается в заблокированный tile.openstreetmap.org,
+    // кроме случая явного fallback без CARTO-ключа (тоже через cartoRaster)
+    if (cartoRaster('rastertiles/voyager') !== 'https://tile.openstreetmap.org/{z}/{x}/{y}.png') {
+      expect(h).not.toContain("L.tileLayer('https://tile.openstreetmap.org");
+    }
   });
 
   it('заказ уходит через RPC: координаты в p_delivery, p_payment_method, без клиентских цен', () => {
