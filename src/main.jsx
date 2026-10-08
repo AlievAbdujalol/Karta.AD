@@ -9,25 +9,14 @@ import { initInstallPrompt } from "./lib/installPrompt";
 // и рано, а кнопка «Скачать приложение» живёт в профиле и монтируется позже.
 initInstallPrompt();
 
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then(reg => console.log('SW registered:', reg))
-      .catch(err => {
-        if (err.name !== 'AbortError') {
-          console.error('SW registration failed:', err);
-        }
-      });
-  });
-}
-
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>
 );
 
-// PWA: service worker только в проде (в dev он мешал бы HMR).
+// PWA: service worker только в проде — в dev он мешает HMR и кеширует
+// dev index.html (двойная регистрация и «SW registered» в консоли — были баги).
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
