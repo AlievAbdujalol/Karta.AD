@@ -191,6 +191,68 @@ describe('createWidget: трекинг после заказа', () => {
   });
 });
 
+describe('createWidget: панель — скролл и оформление', () => {
+  const panel = (host) => host.shadowRoot.querySelector('.kw-panel');
+
+  const openPanel = async (api = makeApi()) => {
+    const w = createWidget({ doc: document, cfg, api });
+    await w.ready;
+    const host = document.getElementById('karta-widget-root');
+    host.shadowRoot.querySelector('[data-action="toggle"]').click();
+    return host;
+  };
+
+  it('повторное открытие показывает панель сверху', async () => {
+    const host = await openPanel();
+    expect(panel(host).style.display).not.toBe('none');
+    panel(host).scrollTop = 150; // пользователь доскроллил до формы
+    host.shadowRoot.querySelector('[data-action="toggle"]').click(); // закрыть
+    host.shadowRoot.querySelector('[data-action="toggle"]').click(); // открыть снова
+    expect(panel(host).scrollTop).toBe(0);
+  });
+
+  it('перерисовка (клик «Самовывоз») не сбрасывает позицию скролла', async () => {
+    const host = await openPanel();
+    panel(host).scrollTop = 150;
+    const pickup = [...panel(host).querySelectorAll('.kw-seg button')]
+      .find((b) => b.textContent.includes('Самовывоз'));
+    pickup.click();
+    expect(panel(host).scrollTop).toBe(150);
+  });
+
+  it('«Оформить заказ» скроллит к форме, а не оставляет старую позицию', async () => {
+    const host = await openPanel();
+    host.shadowRoot.querySelector('[data-action="add"]').click();
+    panel(host).scrollTop = 150;
+    host.shadowRoot.querySelector('[data-action="toform"]').click();
+    // в jsdom offsetTop формы = 0; главное — позиция НЕ осталась 150
+    expect(panel(host).scrollTop).toBe(0);
+  });
+
+  it('«Указать на карте» подскролливает к карте, а не оставляет старую позицию', async () => {
+    const w = createWidget({ doc: document, cfg: { ...cfg, mapEnabled: true }, api: makeApi() });
+    await w.ready;
+    const host = document.getElementById('karta-widget-root');
+    host.shadowRoot.querySelector('[data-action="toggle"]').click();
+    host.shadowRoot.querySelector('.kw-panel').scrollTop = 120;
+    host.shadowRoot.querySelector('[data-action="openmap"]').click();
+    // в jsdom layout нулевой (ожидаемое значение ≈ 8) — важно, что позиция НЕ осталась 120
+    expect(host.shadowRoot.querySelector('.kw-panel').scrollTop).toBeLessThan(120);
+  });
+
+  it('оплата — вертикальные строки: наличные активны, карта помечена «скоро»', async () => {
+    const host = await openPanel();
+    const pay = panel(host).querySelector('.kw-seg.pay');
+    expect(pay).toBeTruthy();
+    const [cash, card] = pay.querySelectorAll('button');
+    expect(cash.getAttribute('aria-pressed')).toBe('true');
+    expect(cash.textContent).toContain('При получении');
+    expect(card.disabled).toBe(true);
+    expect(card.textContent).toContain('скоро');
+    expect(card.getAttribute('title')).toBe('Оплата картой подключается');
+  });
+});
+
 describe('createWidget: защита', () => {
   it('без конфига ничего не монтируется', () => {
     createWidget({ doc: document, cfg: null, api: makeApi() });

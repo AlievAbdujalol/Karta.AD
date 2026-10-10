@@ -9,6 +9,24 @@ export default function SiteView() {
   const { id } = useParams();
   const [html, setHtml] = useState(null);
   const [failed, setFailed] = useState(false);
+  const [siteTitle, setSiteTitle] = useState('Сайт');
+
+  // Вкладка браузера — имя магазина («AD Sneakers …»), а не заголовок обёртки SPA
+  useEffect(() => {
+    if (!html) return undefined;
+    const prevTitle = document.title;
+    try {
+      const t = new DOMParser().parseFromString(html, 'text/html')
+        .querySelector('title')?.textContent?.trim();
+      if (t) {
+        document.title = t;
+        setSiteTitle(t);
+      }
+    } catch {
+      // без заголовка — оставляем как есть
+    }
+    return () => { document.title = prevTitle; };
+  }, [html]);
 
   useEffect(() => {
     if (!id) {
@@ -67,7 +85,7 @@ export default function SiteView() {
   }
   return (
     <iframe
-      title="Сайт"
+      title={siteTitle}
       srcDoc={normalizeWidgetUrls(html)}
       sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
       style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', border: 'none', background: '#fff' }}

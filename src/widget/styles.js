@@ -13,7 +13,7 @@ export const WIDGET_CSS = `
 .kw-btn.ghost { background: transparent; color: #475569; border: 1px solid #e2e8f0; }
 .kw-btn.danger { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
 .kw-fab { position: fixed; right: 16px; bottom: 16px; z-index: 2147483000; box-shadow: 0 8px 24px rgba(37,99,235,.4); }
-.kw-panel { position: fixed; right: 16px; bottom: 72px; width: min(380px, calc(100vw - 32px)); max-height: min(70vh, 640px); overflow-y: auto; background: #fff; border-radius: 16px; box-shadow: 0 16px 48px rgba(15,23,42,.28); z-index: 2147483001; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.kw-panel { position: fixed; right: 16px; bottom: 72px; width: min(380px, calc(100vw - 32px)); max-height: min(78vh, 680px); overflow-y: auto; background: #fff; border-radius: 16px; box-shadow: 0 16px 48px rgba(15,23,42,.28); z-index: 2147483001; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .kw-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .kw-head b { font-size: 15px; }
 .kw-sub { color: #64748b; font-size: 12px; }
@@ -33,9 +33,13 @@ export const WIDGET_CSS = `
 .kw-seg { display: flex; gap: 6px; }
 .kw-seg button { flex: 1; padding: 8px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fff; font-weight: 700; cursor: pointer; font-size: 12px; }
 .kw-seg button[aria-pressed="true"] { background: #2563eb; color: #fff; border-color: #2563eb; }
+.kw-seg button:disabled { opacity: .6; cursor: default; }
+.kw-seg.pay { flex-direction: column; }
+.kw-seg.pay button { text-align: left; }
+.kw-pin { background: none; border: none; }
 .kw-err { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-radius: 8px; padding: 7px 9px; font-size: 12px; }
 .kw-ok { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; border-radius: 10px; padding: 12px; text-align: center; }
-.kw-map { height: 200px; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; margin-top: 4px; }
+.kw-map { height: 180px; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; margin-top: 4px; }
 .kw-badge { display: inline-block; background: #eff6ff; color: #2563eb; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
 .kw-muted { color: #94a3b8; font-size: 12px; }
 .kw-track { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px; text-align: left; }

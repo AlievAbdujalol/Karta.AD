@@ -43,17 +43,33 @@ function ensureCss(shadow) {
 }
 
 /**
+ * Пин доставки: инлайн-SVG в divIcon.
+ * Дефолтный маркер Leaflet грузит картинку с unpkg — на чужих хостингах
+ * она рендерится битой (сломанная картинка + alt вместо пина).
+ */
+const PIN_SVG = '<svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">'
+  + '<path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z" fill="#2563eb"/>'
+  + '<circle cx="12" cy="9" r="2.8" fill="#fff"/></svg>';
+
+export function pinIcon(L) {
+  return L.divIcon({ className: 'kw-pin', html: PIN_SVG, iconSize: [30, 30], iconAnchor: [15, 29] });
+}
+
+/**
  * Рисует карту в container (внутри shadow root).
  * Клик/перетаскивание пина → onPick({lat, lng, address}) — address best-effort.
  * Ошибка загрузки → onFail() (контейнер заменяется текстом-фолбэком).
+ * leaflet — внедряемая реализация L (для тестов); в проде грузится с unpkg.
  */
-export async function mountMap({ shadow, container, center, doc, onPick, onFail = () => {} }) {
+export async function mountMap({ shadow, container, center, doc, onPick, onFail = () => {}, leaflet = null }) {
   try {
     ensureCss(shadow);
-    const L = await loadLeaflet(doc);
+    const L = leaflet || await loadLeaflet(doc);
     if (!container.isConnected) return; // пользователь закрыл форму, пока грузилась карта
 
-    const map = L.map(container, { zoomControl: false, attributionControl: false, scrollWheelZoom: true });
+    // keyboard: false — без tabindex: клик по карте не фокусирует контейнер,
+    // иначе браузер сам скроллит панель виджета, «съедая» верх формы
+    const map = L.map(container, { zoomControl: false, attributionControl: false, scrollWheelZoom: true, keyboard: false });
     map.setView(center, 14);
     L.tileLayer(cartoRaster('rastertiles/voyager'), {
       maxZoom: 19,
@@ -66,7 +82,7 @@ export async function mountMap({ shadow, container, center, doc, onPick, onFail 
       const lng = Math.round(latlng.lng * 1e6) / 1e6;
       if (marker) marker.setLatLng(latlng);
       else {
-        marker = L.marker(latlng, { draggable: true }).addTo(map);
+        marker = L.marker(latlng, { draggable: true, icon: pinIcon(L) }).addTo(map);
         marker.on('dragend', (e) => emit(e.target.getLatLng()));
       }
 

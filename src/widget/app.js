@@ -151,9 +151,9 @@ export function createWidget({ doc = document, cfg, api }) {
       }
     }
 
-    s.append(h('div', { className: 'kw-seg' }, [
+    s.append(h('div', { className: 'kw-seg pay' }, [
       h('button', { type: 'button', 'aria-pressed': String(f.paymentMethod === 'cash'), text: `💵 ${S.cash}`, onclick: () => { f.paymentMethod = 'cash'; render(); } }),
-      h('button', { type: 'button', disabled: true, title: S.cardSoon, 'aria-pressed': 'false', text: `💳 ${S.card} · ${S.cardSoon}` }),
+      h('button', { type: 'button', disabled: true, title: S.cardSoon, 'aria-pressed': 'false', text: `💳 ${S.card} · ${S.cardSoonShort}` }),
     ]));
 
     s.append(h('textarea', { placeholder: S.notes, rows: '2', dataset: { field: 'notes' }, oninput: (e) => { f.notes = e.target.value; } }, [f.notes]));
@@ -269,8 +269,15 @@ export function createWidget({ doc = document, cfg, api }) {
     });
   }
 
-  function renderPanel() {
+  /**
+   * scrollTo: 'top' — открыть/показать с начала (шапка, успех),
+   * 'form' — подскроллить к форме заказа, без аргумента — сохранить
+   * текущую позицию (клик по «Доставка» не должен ронять пользователя вверх).
+   */
+  function renderPanel(scrollTo) {
     const { wrap } = roots.panel;
+    const prev = wrap.querySelector('.kw-panel');
+    const keep = prev ? prev.scrollTop : 0;
     clear(wrap);
     wrap.append(btn('toggle', state.open ? S.close : S.open, { className: 'kw-fab' }));
     const panel = h('div', { className: 'kw-panel' });
@@ -286,6 +293,15 @@ export function createWidget({ doc = document, cfg, api }) {
       panel.append(formSection());
     }
     wrap.append(panel);
+    if (scrollTo === 'top') panel.scrollTop = 0;
+    else if (scrollTo === 'form') {
+      const form = panel.querySelector('.kw-form');
+      panel.scrollTop = form ? form.offsetTop : 0;
+    } else if (scrollTo === 'map') {
+      // карта открылась внизу формы — показываем её целиком, без самопроизвольного скролла
+      const m = panel.querySelector('.kw-map');
+      panel.scrollTop = m ? Math.max(0, m.offsetTop + m.offsetHeight - panel.clientHeight + 8) : 0;
+    } else panel.scrollTop = keep;
     if (state.mapOpen) mountMapInto(roots.panel, panel);
   }
 
@@ -311,8 +327,8 @@ export function createWidget({ doc = document, cfg, api }) {
     }
   }
 
-  function render() {
-    if (floatMode) renderPanel();
+  function render(scrollTo) {
+    if (floatMode) renderPanel(scrollTo);
     else renderAnchors();
   }
 
@@ -328,15 +344,18 @@ export function createWidget({ doc = document, cfg, api }) {
         // панель закрыта — опрос на фоне не нужен; открыли снова с заказом — обновляем
         if (!state.open) stopTracking();
         else if (state.view === 'done') startTracking();
-        render();
+        // с товарами в корзине — сразу к форме заказа; иначе шапка/каталог сверху
+        const toForm = state.open && state.view === 'form' && cartCount(state.cart) > 0;
+        if (state.open) render(toForm ? 'form' : 'top');
+        else render();
         break;
       }
       case 'retry': load(); break;
       case 'add':
       case 'inc': state.cart = addToCart(state.cart, id, 1); render(); break;
       case 'dec': state.cart = setQty(state.cart, id, (state.cart[id] || 1) - 1); render(); break;
-      case 'toform': state.open = true; render(); break;
-      case 'openmap': state.mapOpen = true; render(); break;
+      case 'toform': state.open = true; render('form'); break;
+      case 'openmap': state.mapOpen = true; render('map'); break;
       case 'submit': submit(); break;
       case 'again':
         stopTracking();
@@ -345,7 +364,7 @@ export function createWidget({ doc = document, cfg, api }) {
         state.orderId = null;
         state.tracking = null;
         state.trackingErr = false;
-        render();
+        render('top');
         break;
       default: break;
     }
@@ -371,7 +390,7 @@ export function createWidget({ doc = document, cfg, api }) {
       state.formErr = [err.message || 'Не удалось отправить заказ'];
     } finally {
       state.submitting = false;
-      render();
+      render(state.view === 'done' ? 'top' : undefined);
     }
   }
 
