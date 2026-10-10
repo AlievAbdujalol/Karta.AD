@@ -73,6 +73,31 @@ export async function createStoreOrder(cfg, args) {
   return res.json();
 }
 
+/**
+ * Публичный трекинг заказа магазина (RPC get_store_order_tracking).
+ * id заказа возвращается клиенту при создании и служит capability-токеном:
+ * сервер отдаёт только публично-безопасные поля (статус, ETA, адреса,
+ * позиции) — без данных покупателя.
+ */
+export async function getStoreOrderTracking(cfg, orderId) {
+  if (!orderId) return { found: false };
+  let res;
+  try {
+    res = await fetch(`${cfg.supabaseUrl}/rest/v1/rpc/get_store_order_tracking`, {
+      method: 'POST',
+      headers: restHeaders(cfg.anonKey, { representation: false }),
+      body: JSON.stringify({ p_order_id: orderId }),
+    });
+  } catch (e) {
+    throw new Error(`get_store_order_tracking: ${e.message}`);
+  }
+  if (!res.ok) {
+    const text = await Promise.resolve(res.text ? res.text() : '').catch(() => '');
+    throw new Error(`get_store_order_tracking: HTTP ${res.status} ${text}`.trim());
+  }
+  return res.json();
+}
+
 /** Обратное геокодирование: пин на карте → JSON Nominatim (best-effort). */
 export async function reverseGeocode(lat, lng) {
   const url = reverseGeocodeUrl(lat, lng);

@@ -38,4 +38,10 @@ export const WIDGET_CSS = `
 .kw-map { height: 200px; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; margin-top: 4px; }
 .kw-badge { display: inline-block; background: #eff6ff; color: #2563eb; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
 .kw-muted { color: #94a3b8; font-size: 12px; }
+.kw-track { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px; text-align: left; }
+.kw-steps { display: flex; flex-wrap: wrap; gap: 4px; }
+.kw-step { font-size: 10px; padding: 2px 7px; border-radius: 999px; background: #f1f5f9; color: #94a3b8; }
+.kw-step.done { background: #dcfce7; color: #15803d; }
+.kw-step.active { background: #2563eb; color: #fff; font-weight: 700; }
+.kw-link { display: inline-block; margin-top: 2px; padding: 8px 12px; border-radius: 10px; background: #2563eb; color: #fff; font-weight: 700; font-size: 13px; text-decoration: none; text-align: center; }
 `;

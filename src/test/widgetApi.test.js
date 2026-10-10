@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchBusiness, createStoreOrder, restHeaders } from '../lib/widgetApi';
+import { fetchBusiness, createStoreOrder, getStoreOrderTracking, restHeaders } from '../lib/widgetApi';
 
 const cfg = {
   supabaseUrl: 'https://proj.supabase.co',
@@ -106,5 +106,45 @@ describe('createStoreOrder (RPC create_store_order)', () => {
   it('сетевая ошибка → исключение с именем функции', async () => {
     fetchMock.mockRejectedValue(new Error('offline'));
     await expect(createStoreOrder(cfg, args)).rejects.toThrow('create_store_order: offline');
+  });
+});
+
+describe('getStoreOrderTracking (RPC get_store_order_tracking)', () => {
+  const orderId = '3c565078-140c-4d95-b9d3-bf478a108404';
+
+  it('запрашивает публичный трекинг заказа по id', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ found: true, status: 'pending' }),
+    });
+    const res = await getStoreOrderTracking(cfg, orderId);
+    expect(res).toEqual({ found: true, status: 'pending' });
+
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://proj.supabase.co/rest/v1/rpc/get_store_order_tracking');
+    expect(opts.method).toBe('POST');
+    expect(JSON.parse(opts.body)).toEqual({ p_order_id: orderId });
+    expect(opts.headers.apikey).toBe('sb_publishable_test');
+    expect(opts.headers.Prefer).toBeUndefined();
+  });
+
+  it('неизвестный заказ → found=false без исключения', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ found: false }) });
+    await expect(getStoreOrderTracking(cfg, orderId)).resolves.toEqual({ found: false });
+  });
+
+  it('пустой id → не делает сетевых запросов', async () => {
+    await expect(getStoreOrderTracking(cfg, '')).resolves.toEqual({ found: false });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('http-ошибка → исключение с именем функции', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 500, text: async () => 'boom' });
+    await expect(getStoreOrderTracking(cfg, orderId)).rejects.toThrow(/get_store_order_tracking.*500/);
+  });
+
+  it('сетевая ошибка → исключение', async () => {
+    fetchMock.mockRejectedValue(new Error('offline'));
+    await expect(getStoreOrderTracking(cfg, orderId)).rejects.toThrow('offline');
   });
 });

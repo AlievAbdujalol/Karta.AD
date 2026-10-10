@@ -6,6 +6,8 @@ import 'leaflet/dist/leaflet.css';
 import { supabase } from '@/api/supabase';
 import { buildOsrmRoute } from '@/lib/osrmClient';
 import { cartoRaster, CARTO_ATTRIBUTION } from '@/lib/tiles';
+import { isUuid, storeTrackingSteps, STORE_STATUS_LABEL } from '@/lib/orderTracking';
+import OrderAiChat from '@/components/tracking/OrderAiChat';
 import {
   Clock, CheckCircle, Search, Truck, Navigation, MapPin, Package,
   XCircle, AlertTriangle, RefreshCw, Loader2, Star, ArrowLeft,
@@ -21,6 +23,12 @@ L.Icon.Default.mergeOptions({
 const STATUS_MAP = {
   pending: { label: 'Ожидает', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400', icon: Clock },
   confirmed: { label: 'Подтверждён', color: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400', icon: CheckCircle },
+  paid: { label: 'Оплачен', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', icon: CheckCircle },
+  preparing: { label: 'Готовится', color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400', icon: Package },
+  ready: { label: 'Готов', color: 'bg-lime-100 text-lime-700 dark:bg-lime-900/30 dark:text-lime-400', icon: Package },
+  in_transit: { label: 'В пути', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', icon: Navigation },
+  completed: { label: 'Завершён', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', icon: CheckCircle },
+  refunded: { label: 'Возврат', color: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300', icon: XCircle },
   searching_courier: { label: 'Поиск курьера', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', icon: Search },
   courier_assigned: { label: 'Курьер назначен', color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400', icon: Truck },
   courier_to_pickup: { label: 'Едет за грузом', color: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400', icon: Navigation },
@@ -49,6 +57,12 @@ const courierIcon = L.divIcon({
   iconAnchor: [24, 12],
 });
 
+/** Подписи статусов для фолбэка ИИ: конвейер магазина + статусы доставки. */
+const STATUS_LABELS = {
+  ...STORE_STATUS_LABEL,
+  ...Object.fromEntries(Object.entries(STATUS_MAP).map(([k, v]) => [k, v.label])),
+};
+
 function FitBounds({ points }) {
   const map = useMap();
   useEffect(() => {
@@ -63,21 +77,29 @@ function FitBounds({ points }) {
 
 export default function DeliveryTracking() {
   const { token } = useParams();
+  // UUID → заказ магазина (orders.id = capability-токен покупателя),
+  // trk_-токен → доставка платформы (delivery_orders).
+  const isStoreOrder = isUuid(token);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [routePath, setRoutePath] = useState([]);
   const pollRef = useRef(null);
 
   const fetchTracking = useCallback(async () => {
     if (!token) return;
-    const { data: result, error } = await supabase.rpc('get_delivery_tracking', {
-      p_token: token,
-    });
+    const { data: result, error } = await supabase.rpc(
+      isStoreOrder ? 'get_store_order_tracking' : 'get_delivery_tracking',
+      isStoreOrder ? { p_order_id: token } : { p_token: token },
+    );
     if (error) {
+      // сеть/миграция не применена — показываем карточку с повтором, не белый экран
+      setLoadError(true);
       setLoading(false);
       return;
     }
+    setLoadError(false);
     if (!result || result.found === false) {
       setNotFound(true);
       setData(null);
@@ -87,7 +109,7 @@ export default function DeliveryTracking() {
     setNotFound(false);
     setData(result);
     setLoading(false);
-  }, [token]);
+  }, [token, isStoreOrder]);
 
   useEffect(() => {
     fetchTracking();
@@ -141,6 +163,34 @@ export default function DeliveryTracking() {
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
+        <div className="max-w-sm w-full bg-white dark:bg-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-800 p-8 text-center">
+          <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center">
+            <AlertTriangle className="w-7 h-7 text-amber-500" />
+          </div>
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
+            Не удалось загрузить статус
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+            Проверьте подключение к интернету и попробуйте ещё раз.
+          </p>
+          <button
+            type="button"
+            onClick={() => { setLoadError(false); setLoading(true); fetchTracking(); }}
+            className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-500"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Повторить
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
   const statusInfo = STATUS_MAP[data.status] || STATUS_MAP.pending;
   const StatusIcon = statusInfo.icon;
   const courier = data.courier;
@@ -173,7 +223,9 @@ export default function DeliveryTracking() {
         </Link>
         <div className="flex-1 min-w-0">
           <h1 className="text-sm font-semibold text-slate-900 dark:text-white truncate">
-            Доставка {data.order_number ? `#${data.order_number}` : ''}
+            {isStoreOrder
+              ? `Заказ ${data.public_id ? `#${data.public_id}` : ''}`
+              : `Доставка ${data.order_number ? `#${data.order_number}` : ''}`}
           </h1>
           {data.public_id && (
             <p className="text-xs text-slate-400 dark:text-slate-500 font-mono truncate">
@@ -299,6 +351,30 @@ export default function DeliveryTracking() {
               </div>
             </div>
           )}
+
+          {isStoreOrder && (
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Этапы заказа</p>
+              <div className="flex flex-wrap gap-1.5">
+                {storeTrackingSteps(data.status).map((st) => (
+                  <span
+                    key={st.key}
+                    className={`text-[11px] px-2 py-0.5 rounded-full ${
+                      st.active
+                        ? 'bg-blue-600 text-white font-semibold'
+                        : st.done
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                          : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+                    }`}
+                  >
+                    {st.done ? '✓ ' : ''}{st.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <OrderAiChat data={data} statusLabels={STATUS_LABELS} />
 
           <button
             type="button"

@@ -7,6 +7,20 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const ANCHOR_TYPES = ['catalog', 'cart', 'checkout'];
 
 /**
+ * Origin приложения — из src скрипта, чтобы ссылки (например, /track/:id)
+ * работали и когда виджет встроен на чужой хостинг. Битый src → ''.
+ */
+function scriptOrigin(scriptEl) {
+  const src = scriptEl?.src;
+  if (!src) return '';
+  try {
+    return new URL(src, typeof window !== 'undefined' ? window.location.href : undefined).origin;
+  } catch {
+    return '';
+  }
+}
+
+/**
  * Разбор атрибутов script-тега. Возвращает null и предупреждение,
  * если business не задан или не похож на UUID (защита от мусора/XSS).
  */
@@ -21,7 +35,8 @@ export function readWidgetConfig(scriptEl) {
     businessId,
     supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
     anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-    appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
+    appOrigin: scriptOrigin(scriptEl)
+      || (typeof window !== 'undefined' ? window.location.origin : ''),
     lang: data.lang || 'ru',
     mapEnabled: data.map !== 'off',
   };

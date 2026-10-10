@@ -6,7 +6,9 @@
  * без SPA-бандла. Повторная загрузка скрипта не создаёт второй виджет.
  */
 import { readWidgetConfig } from '@/lib/widgetConfig';
-import { fetchBusiness, createStoreOrder, reverseGeocode } from '@/lib/widgetApi';
+import {
+  fetchBusiness, createStoreOrder, getStoreOrderTracking, reverseGeocode,
+} from '@/lib/widgetApi';
 import { createWidget } from './app';
 
 function findOwnScript() {
@@ -24,7 +26,7 @@ function boot() {
   createWidget({
     doc: document,
     cfg,
-    api: { fetchBusiness, createStoreOrder, reverseGeocode },
+    api: { fetchBusiness, createStoreOrder, getStoreOrderTracking, reverseGeocode },
   });
 }
 

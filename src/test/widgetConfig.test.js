@@ -50,6 +50,29 @@ describe('readWidgetConfig', () => {
   it('null вместо script-тега → null без падения', () => {
     expect(readWidgetConfig(null)).toBeNull();
   });
+
+  it('appOrigin берётся из src скрипта (чужой хостинг → origin приложения)', () => {
+    const el = document.createElement('script');
+    el.setAttribute('data-business', '3c565078-140c-4d95-b9d3-bf478a108404');
+    el.setAttribute('src', 'https://karta-ad.vercel.app/widget.js');
+    const cfg = readWidgetConfig(el);
+    expect(cfg.appOrigin).toBe('https://karta-ad.vercel.app');
+  });
+
+  it('без src (инлайн-тег) → origin текущей страницы', () => {
+    const el = scriptWith({ 'data-business': '3c565078-140c-4d95-b9d3-bf478a108404' });
+    expect(readWidgetConfig(el).appOrigin).toBe(window.location.origin);
+    el.remove();
+  });
+
+  it('битый src не роняет чтение конфига', () => {
+    const el = document.createElement('script');
+    el.setAttribute('data-business', '3c565078-140c-4d95-b9d3-bf478a108404');
+    el.setAttribute('src', 'https://['); // new URL бросает
+    const cfg = readWidgetConfig(el);
+    expect(cfg.businessId).toBeTruthy();
+    expect(cfg.appOrigin).toBe(window.location.origin);
+  });
 });
 
 describe('findAnchors', () => {

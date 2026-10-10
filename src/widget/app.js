@@ -8,9 +8,13 @@ import { t } from './i18n';
 import { findAnchors } from '@/lib/widgetConfig';
 import { addToCart, setQty, cartCount, cartTotal } from '@/lib/widgetCart';
 import { validateCheckout, buildStoreOrderArgs } from '@/lib/widgetCheckout';
+import { storeTrackingSteps, trackUrl } from '@/lib/orderTracking';
 import { mountMap } from './mapPicker';
 
 const DEFAULT_CENTER = [38.5581, 68.7738];
+const TRACK_POLL_MS = 15000;
+/** Терминальные статусы: измениться больше не смогут — опрос не нужен. */
+const TERMINAL_STATUSES = ['completed', 'cancelled'];
 const price = (v) => `${Number(v || 0)} сом`;
 
 export function createWidget({ doc = document, cfg, api }) {
@@ -32,6 +36,7 @@ export function createWidget({ doc = document, cfg, api }) {
     cart: {}, open: false, view: 'form', orderNo: null,
     submitting: false, formErr: [],
     mapOpen: false,
+    orderId: null, tracking: null, trackingErr: false, trackTimer: null,
     form: {
       name: '', phone: '', deliveryType: 'delivery',
       address: '', lat: '', lng: '',
@@ -164,8 +169,83 @@ export function createWidget({ doc = document, cfg, api }) {
     return h('div', { className: 'kw-ok' }, [
       h('b', { text: `✅ ${S.success}` }),
       h('p', { className: 'kw-sub', text: `${S.successId}: ${state.orderNo || ''}` }),
+      trackingSection(),
       btn('again', S.catalog, { className: 'ghost' }),
     ]);
+  }
+
+  /**
+   * Живой трекинг заказа: статус читаем из публичного RPC
+   * get_store_order_tracking (id заказа = capability-токен покупателя),
+   * опрос каждые 15 секунд. Ошибка трекинга не ломает экран успеха —
+   * заказ уже создан, показываем ссылку и кнопку «Каталог».
+   */
+  function trackingSection() {
+    if (!state.orderId || !api.getStoreOrderTracking) return null;
+    const box = h('div', { className: 'kw-track' });
+    box.append(h('b', { text: S.trackTitle }));
+    if (state.trackingErr) {
+      box.append(h('p', { className: 'kw-muted', text: S.trackError }));
+    } else if (!state.tracking) {
+      box.append(h('p', { className: 'kw-muted', text: S.trackLoading }));
+    } else {
+      const t = state.tracking;
+      const steps = h('div', { className: 'kw-steps' });
+      for (const st of storeTrackingSteps(t.status)) {
+        steps.append(h('span', {
+          className: `kw-step${st.done ? ' done' : ''}${st.active ? ' active' : ''}`,
+          text: `${st.done ? '✓ ' : ''}${st.label}`,
+        }));
+      }
+      box.append(steps);
+      const facts = [];
+      if (t.eta_min != null) facts.push(`${S.trackEta}: ≈${t.eta_min} ${S.trackMin}`);
+      if (t.distance_km != null) facts.push(`${t.distance_km} ${S.trackKm}`);
+      if (facts.length) box.append(h('p', { className: 'kw-sub', text: facts.join(' · ') }));
+      if (t.delivery_type !== 'pickup' && t.dropoff_address) {
+        box.append(h('p', { className: 'kw-muted', text: `${S.trackTo}: ${t.dropoff_address}` }));
+      }
+      if (t.pickup_address) {
+        box.append(h('p', { className: 'kw-muted', text: `${S.trackFrom}: ${t.pickup_address}` }));
+      }
+    }
+    const url = trackUrl(cfg.appOrigin, state.orderId);
+    if (url) {
+      box.append(h('a', {
+        className: 'kw-link', href: url, target: '_blank', rel: 'noreferrer', text: S.trackMap,
+      }));
+    }
+    return box;
+  }
+
+  function stopTracking() {
+    if (state.trackTimer) {
+      clearInterval(state.trackTimer);
+      state.trackTimer = null;
+    }
+  }
+
+  async function refreshTracking() {
+    if (!state.orderId || !api.getStoreOrderTracking) return;
+    const id = state.orderId; // защита от гонки: ответ старого заказа не попадёт в новый
+    try {
+      const data = await api.getStoreOrderTracking(cfg, id);
+      if (state.view !== 'done' || state.orderId !== id) return;
+      state.tracking = data?.found ? data : null;
+      state.trackingErr = !data?.found; // found=false (истёк/не найден) — не «загрузка» вечно
+      if (data?.found && TERMINAL_STATUSES.includes(data.status)) stopTracking();
+    } catch {
+      if (state.view !== 'done' || state.orderId !== id) return;
+      state.trackingErr = true;
+    }
+    render();
+  }
+
+  function startTracking() {
+    stopTracking();
+    if (!state.orderId || !api.getStoreOrderTracking) return;
+    refreshTracking();
+    state.trackTimer = setInterval(refreshTracking, TRACK_POLL_MS);
   }
 
   // ─── рендер ───────────────────────────────────────────────
@@ -243,7 +323,14 @@ export function createWidget({ doc = document, cfg, api }) {
     const id = el.dataset.id;
 
     switch (el.dataset.action) {
-      case 'toggle': state.open = !state.open; render(); break;
+      case 'toggle': {
+        state.open = !state.open;
+        // панель закрыта — опрос на фоне не нужен; открыли снова с заказом — обновляем
+        if (!state.open) stopTracking();
+        else if (state.view === 'done') startTracking();
+        render();
+        break;
+      }
       case 'retry': load(); break;
       case 'add':
       case 'inc': state.cart = addToCart(state.cart, id, 1); render(); break;
@@ -251,7 +338,15 @@ export function createWidget({ doc = document, cfg, api }) {
       case 'toform': state.open = true; render(); break;
       case 'openmap': state.mapOpen = true; render(); break;
       case 'submit': submit(); break;
-      case 'again': state.view = 'form'; state.orderNo = null; render(); break;
+      case 'again':
+        stopTracking();
+        state.view = 'form';
+        state.orderNo = null;
+        state.orderId = null;
+        state.tracking = null;
+        state.trackingErr = false;
+        render();
+        break;
       default: break;
     }
   }
@@ -268,8 +363,10 @@ export function createWidget({ doc = document, cfg, api }) {
       });
       const created = await api.createStoreOrder(cfg, args);
       state.orderNo = created?.order_id ? String(created.order_id).slice(0, 8) : '';
+      state.orderId = created?.order_id ? String(created.order_id) : null;
       state.cart = {};
       state.view = 'done';
+      startTracking();
     } catch (err) {
       state.formErr = [err.message || 'Не удалось отправить заказ'];
     } finally {
@@ -296,5 +393,6 @@ export function createWidget({ doc = document, cfg, api }) {
 
   const ready = load();
   render();
-  return { ready, state };
+  // stopTracking — чтобы хост-страница могла остановить опрос при выгрузке виджета
+  return { ready, state, stopTracking };
 }
