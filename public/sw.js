@@ -7,9 +7,9 @@
 
 // Имена кешей — с версией: логика офлайн-фолбэка изменилась, а activate
 // чужие кеши не трогает — ядовитые записи старой версии должны уйти.
-const CACHE = 'karta-ad-v2';
+const CACHE = 'karta-ad-v3';
 const TILE_CACHE = 'karta-ad-tiles-v2';
-const CORE = ['/', '/index.html', '/logo.png', '/manifest.webmanifest'];
+const CORE = ['/', '/index.html', '/logo.png', '/icon-192.png', '/icon-512.png', '/manifest.webmanifest'];
 
 const OFFLINE_HTML =
   '<!doctype html><html lang="ru"><meta charset="utf-8">' +

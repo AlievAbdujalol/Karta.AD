@@ -55,6 +55,6 @@ export function useStopNotifier({ vehicles, watchedStop, route, onNotification }
 
 function sendNotification(title, body) {
   if (Notification.permission === 'granted') {
-    new Notification(title, { body, icon: '/favicon.ico' });
+    new Notification(title, { body, icon: '/logo.png' });
   }
 }

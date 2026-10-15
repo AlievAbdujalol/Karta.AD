@@ -64,7 +64,7 @@ export function useTaxiIncoming(user) {
         const body = pickupText;
         if ('Notification' in window && Notification.permission === 'granted') {
           try {
-            new Notification(title, { body, icon: '/favicon.ico', tag: 'taxi-order-' + row.id, requireInteraction: true });
+            new Notification(title, { body, icon: '/logo.png', tag: 'taxi-order-' + row.id, requireInteraction: true });
           } catch {}
         }
 
