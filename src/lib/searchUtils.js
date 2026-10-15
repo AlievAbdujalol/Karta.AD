@@ -295,6 +295,27 @@ export function flattenResults(results) {
   return all;
 }
 
+/**
+ * Лучший результат для глубокой ссылки «карта открылась по адресу»
+ * (/?q=… со сайта бизнеса): сначала адрес/место с координатами, иначе
+ * любой результат с координатами, иначе null — карту не дёргаем.
+ */
+export function pickDeepLinkResult(results) {
+  // flattenResults ожидает полный shape ({routes,stops,…}) — нормализуем,
+  // чтобы битая ссылка/пустой ответ не роняли обработчик
+  const list = flattenResults({
+    routes: results?.routes || [],
+    stops: results?.stops || [],
+    vehicles: results?.vehicles || [],
+    addresses: results?.addresses || [],
+    pois: results?.pois || [],
+  });
+  const hasCoords = (it) => Number.isFinite(Number(it?.lat)) && Number.isFinite(Number(it?.lng));
+  return list.find((it) => (it?._type === 'address' || it?._type === 'poi') && hasCoords(it))
+    || list.find(hasCoords)
+    || null;
+}
+
 export function groupResults(results) {
   const groups = [];
   if (results.routes?.length) groups.push({ label: 'Маршруты', type: 'route', items: results.routes });

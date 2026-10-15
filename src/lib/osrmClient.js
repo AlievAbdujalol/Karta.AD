@@ -12,10 +12,25 @@ export function getEndpoint(profile) {
   return OSRM_ENDPOINTS[profile] || OSRM_ENDPOINTS.driving;
 }
 
+// Старт шага OSRM — точка ЕГО манёвра.
+// Раньше бралась geometry[i] по индексу шага: геометрия в разы плотнее списка
+// шагов (~450 вершин на 9 шагов в реальном ответе), поэтому все «старты»
+// сбивались в первые десятки метров маршрута — навигация выбрала последний
+// шаг («arrive») и показывала «Вы прибыли» с расстоянием, равным пройденному
+// пути. Источник истины: собственная геометрия шага, иначе maneuver.location.
+export function osrmStepStart(step, geometry, cursor) {
+  const g = step?.geometry?.coordinates?.[0];
+  if (Array.isArray(g) && Number.isFinite(g[0]) && Number.isFinite(g[1])) return [g[1], g[0]];
+  const loc = step?.maneuver?.location;
+  if (Array.isArray(loc) && Number.isFinite(loc[0]) && Number.isFinite(loc[1])) return [loc[1], loc[0]];
+  return geometry[cursor] || geometry[0] || [0, 0];
+}
+
 // Полный разбор одного маршрута OSRM: геометрия + шаги для навигации.
 // Раньше шаги строились только для routes[0], поэтому альтернативы
-// запускались без инструкций.
-function parseOsrmRoute(r) {
+// запускались без инструкций. Общая точка входа: используется также
+// в NavigationContext (reroute) и transitRouter — без копий разбора.
+export function parseOsrmRoute(r) {
   const geometry = r.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
   const steps = [];
   let cursor = 0;
@@ -27,7 +42,7 @@ function parseOsrmRoute(r) {
         name: step.name || '',
         distance: step.distance || 0,
         duration: step.duration || 0,
-        start: geometry[cursor] || [0, 0],
+        start: osrmStepStart(step, geometry, cursor),
       });
       cursor = Math.min(cursor + 1, geometry.length - 1);
     });

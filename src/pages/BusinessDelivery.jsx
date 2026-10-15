@@ -8,6 +8,7 @@ import BusinessSubHeader from '@/components/BusinessSubHeader';
 import {
   nextStatuses, NEXT_STATUS_LABEL, setOrderStatus,
   formatCurrency, formatTimeAgo,
+  isDeliveryOrderVisible, deliveryTypeOf, DELIVERY_ACTIVE_STATUSES,
 } from '@/lib/business';
 
 const DELIVERY_LABELS = {
@@ -37,9 +38,6 @@ export default function BusinessDelivery() {
   const [expandedOrder, setExpandedOrder] = useState(null);
   const [updatingId, setUpdatingId] = useState(null);
 
-  /** Тип доставки: из RPC, иначе выводим по наличию адреса. */
-  const deliveryTypeOf = (o) => o.delivery_type || (o.delivery_address ? 'delivery' : 'pickup');
-
   const loadBusinesses = async () => {
     const { data, error } = await supabase.rpc('get_my_businesses');
     if (!error && data && data.length > 0) {
@@ -56,11 +54,9 @@ export default function BusinessDelivery() {
       toast.error('Ошибка загрузки');
       return;
     }
-    const deliveryOrders = (data || []).filter(
-      (o) => ['pending', 'ready', 'picked_up', 'in_transit'].includes(o.status)
-        && deliveryTypeOf(o) !== 'pickup'
-    );
-    setOrders(deliveryOrders);
+    // Весь конвейер заказа (без отмен/самовывоза): заказ в confirmed/preparing
+    // не должен «исчезать» между вкладками — см. isDeliveryOrderVisible.
+    setOrders((data || []).filter(isDeliveryOrderVisible));
   };
 
   const handleStatus = async (order, status) => {
@@ -111,7 +107,7 @@ export default function BusinessDelivery() {
           title="Доставка"
           icon={Truck}
           iconClassName="text-orange-500 flex items-center"
-          right={<span className="text-xs text-slate-400">{orders.length} активных</span>}
+          right={<span className="text-xs text-slate-400">{orders.filter((o) => DELIVERY_ACTIVE_STATUSES.includes(o.status)).length} активных</span>}
         />
 
         {/* Search */}

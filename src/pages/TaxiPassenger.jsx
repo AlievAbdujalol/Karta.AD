@@ -1,7 +1,7 @@
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import { useLocation } from 'react-router-dom';
 import {
   MapPin, Search, X, Loader2, Car, ChevronRight, ChevronDown, Phone, Share2,
@@ -16,11 +16,13 @@ import { cartoRaster } from '@/lib/tiles';
 import TaxiCategoryCard from '@/components/taxi/TaxiCategoryCard';
 import TaxiChat from '@/components/taxi/TaxiChat';
 import ShareMenu from '@/components/taxi/ShareMenu';
-import TaxiTariffPanel, { priceSurcharge } from '@/components/taxi/TaxiTariffPanel';
+import NearbyDriversPopup from '@/components/taxi/NearbyDriversPopup';
+import TaxiTariffPanel from '@/components/taxi/TaxiTariffPanel';
 import {
-  estimateRide, calcPrice, formatTJS, demandLabel, pickupEtaMin,
+  estimateRide, ridePrice, formatTJS, demandLabel, pickupEtaMin,
   PASSENGER_TARIFFS, haversineKm, isNight,
 } from '@/lib/taxi';
+import { sendOfferToDriver, withdrawOffer, OFFER_AUTO_WITHDRAW_MS } from '@/lib/taxiOffer';
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -116,16 +118,6 @@ function CenterOnPreview({ place }) {
   return null;
 }
 
-function NearbyDrivers({ drivers }) {
-  return drivers.map((d, i) => (
-    <Marker key={d.driver_id || i} position={[d.lat, d.lng]} icon={carIcon}>
-      <Popup>
-        <div className="text-xs">Свободный водитель</div>
-      </Popup>
-    </Marker>
-  ));
-}
-
 function LocationField({ value, placeholder, onPick, onClear, variant = 'from' }) {
   const isFrom = variant === 'from';
   return (
@@ -208,6 +200,19 @@ export default function TaxiPassenger() {
   const [driverInfo, setDriverInfo] = useState(null);
   const [driverPosition, setDriverPosition] = useState(null);
   const [nearbyDrivers, setNearbyDrivers] = useState([]);
+  // Целевое предложение: кому из водителей отправлен текущий searching-заказ
+  const [offeredDriverId, setOfferedDriverId] = useState(null);
+  const offeredDriverRef = useRef(null);
+  // Авто-снятие предложения (M2): водитель может получить push, но не открыть
+  // приложение — заказ не должен вечно висеть закреплённым за ним
+  const offerTimerRef = useRef(null);
+
+  const clearOfferTimer = useCallback(() => {
+    if (offerTimerRef.current) {
+      clearTimeout(offerTimerRef.current);
+      offerTimerRef.current = null;
+    }
+  }, []);
   const [nearbyCars, setNearbyCars] = useState({});
   const [demandCoef, setDemandCoef] = useState(1);
   const [showSearch, setShowSearch] = useState(false);
@@ -256,7 +261,15 @@ export default function TaxiPassenger() {
       if (data.dropoff_address) setToText(data.dropoff_address);
       if (data.pickup_lat != null && data.pickup_lng != null) setFromCoord([data.pickup_lat, data.pickup_lng]);
       if (data.dropoff_lat != null && data.dropoff_lng != null) setToCoord([data.dropoff_lat, data.dropoff_lng]);
-      if (data.driver_id) setDriverInfo({ driverId: data.driver_id });
+      if (data.driver_id) {
+        setDriverInfo({ driverId: data.driver_id });
+        // Заказ в поиске уже закреплён за водителем — восстанавливаем статус
+        // предложения после перезагрузки, чтобы попап не предлагал повторную отправку
+        if (data.status === 'searching') {
+          offeredDriverRef.current = data.driver_id;
+          setOfferedDriverId(data.driver_id);
+        }
+      }
       if (data.payment_method) setPaymentMethod(data.payment_method);
     })();
     return () => { alive = false; };
@@ -291,10 +304,17 @@ export default function TaxiPassenger() {
     const out = {};
     for (const t of PASSENGER_TARIFFS) {
       const nearby = nearbyCars[t.id];
-      const base = calcPrice({ distanceKm: routeInfo.distanceKm, durationMin: routeInfo.durationMin, category: t.id, demandCoef, night });
-      const extra = priceSurcharge(t.id, tariffExtras[t.id] || {}, routeInfo.distanceKm);
       out[t.id] = {
-        price: Math.round((base + extra) * 2) / 2,
+        // ridePrice: база + доплаты с потолком MAX_RIDE_PRICE_TJS (50 TJS)
+        price: ridePrice({
+          distanceKm: routeInfo.distanceKm,
+          durationMin: routeInfo.durationMin,
+          category: t.id,
+          extras: tariffExtras[t.id] || {},
+          demandCoef,
+          night,
+          baseDistance: routeInfo.distanceKm,
+        }),
         eta: pickupEtaMin(nearby?.nearestKm ?? null),
         cars: nearby?.cars ?? 0,
       };
@@ -312,6 +332,9 @@ export default function TaxiPassenger() {
           const s = payload.new.status;
           setOrderState(s);
           if (s === 'found') {
+            clearOfferTimer();
+            offeredDriverRef.current = null;
+            setOfferedDriverId(null);
             toast.success('Водитель принял заказ!', { duration: 5000 });
             try { navigator.vibrate?.([100, 50, 100, 50, 100]); } catch {}
             try {
@@ -325,6 +348,9 @@ export default function TaxiPassenger() {
             setDriverInfo(null);
             setDriverPosition(null);
             setChatOpen(false);
+            clearOfferTimer();
+            offeredDriverRef.current = null;
+            setOfferedDriverId(null);
             toast.info('Заказ отменён', { duration: 3000 });
           }
           if (s === 'arrived') {
@@ -334,6 +360,16 @@ export default function TaxiPassenger() {
           if (s === 'completed') {
             toast.success('Поездка завершена! Оцените водителя.', { duration: 5000 });
           }
+          // Водитель отклонил целевое предложение (RPC taxi_release_offer):
+          // заказ снова в общем поиске. Свой же UPDATE при withdrawOffer не
+          // считается отказом — там ref очищается до запроса.
+          if (s === 'searching' && !payload.new.driver_id && offeredDriverRef.current) {
+            clearOfferTimer();
+            offeredDriverRef.current = null;
+            setOfferedDriverId(null);
+            setDriverInfo(null); // убираем устаревшую карточку водителя
+            toast.info('Водитель отклонил предложение. Ищем дальше', { duration: 4000 });
+          }
           if (payload.new.driver_id && !['cancelled', 'completed'].includes(s)) {
             setDriverInfo(prev => prev ? { ...prev, driverId: payload.new.driver_id } : { driverId: payload.new.driver_id });
           }
@@ -341,7 +377,10 @@ export default function TaxiPassenger() {
       })
       .subscribe();
     return () => supabase.removeChannel(sub);
-  }, [user?.id]);
+  }, [user?.id, clearOfferTimer]);
+
+  // Таймер авто-снятия предложения не должен пережить размонтирование
+  useEffect(() => clearOfferTimer, [clearOfferTimer]);
 
   useEffect(() => {
     const fetchDriverInfo = async () => {
@@ -669,6 +708,9 @@ export default function TaxiPassenger() {
     const tariffComment = detailLines.filter(Boolean).join(' | ') || undefined;
 
     setOrderState('searching');
+    clearOfferTimer();
+    offeredDriverRef.current = null;
+    setOfferedDriverId(null);
     try {
       const { data, error } = await supabase.from('taxi_orders').insert({
         passenger_id: user.id,
@@ -699,7 +741,7 @@ export default function TaxiPassenger() {
       toast.error(navigator.onLine ? 'Ошибка при создании заказа' : 'Нет интернета. Проверьте подключение');
       setOrderState('idle');
     }
-  }, [fromText, fromCoord, toText, toCoord, category, paymentMethod, routeInfo, selectedPrice, demandCoef, user?.id, tariffExtras]);
+  }, [fromText, fromCoord, toText, toCoord, category, paymentMethod, routeInfo, selectedPrice, demandCoef, user?.id, tariffExtras, clearOfferTimer]);
 
   const handleCancel = useCallback(async () => {
     if (!orderId) return;
@@ -714,11 +756,82 @@ export default function TaxiPassenger() {
       setRideRating(0);
       setRideTip('');
       setRideComment('');
+      clearOfferTimer();
+      offeredDriverRef.current = null;
+      setOfferedDriverId(null);
       toast.info('Заказ отменён');
     } catch (err) {
       toast.error(err.message || 'Ошибка отмены заказа');
     }
-  }, [orderId]);
+  }, [orderId, clearOfferTimer]);
+
+  // Отправить заказ конкретному водителю из попапа маркера (только в активном поиске)
+  const handleOfferToDriver = useCallback(async (driverId) => {
+    if (!orderId || orderState !== 'searching') {
+      toast.error('Нет активного поиска. Оформите заказ, чтобы отправить предложение.');
+      return;
+    }
+    // Смена цели: сначала снимаем предложение с прежнего водителя, чтобы у
+    // него не висел устаревший push (best-effort: новый UPDATE перезапишет)
+    const prevDriverId = offeredDriverRef.current;
+    if (prevDriverId && prevDriverId !== driverId) {
+      await withdrawOffer({ orderId, driverId: prevDriverId });
+    }
+    const res = await sendOfferToDriver({
+      orderId,
+      driverId,
+      price: selectedPrice,
+      pickup: fromText,
+      dropoff: toText,
+    });
+    if (!res.ok) {
+      if (res.error === 'not_searching') toast.error('Заказ уже принят другим водителем');
+      else if (res.error === 'no_target') toast.error('Выберите водителя на карте');
+      else toast.error('Не удалось отправить предложение. Попробуйте ещё раз');
+      return;
+    }
+    offeredDriverRef.current = driverId;
+    setOfferedDriverId(driverId);
+    toast.success('Предложение отправлено водителю. Ждём ответ…', { duration: 4000 });
+    // M2: если водитель не ответил за 90 секунд — заказ возвращается в общий
+    // поиск (realtime 'found' снимает таймер сам при принятии)
+    clearOfferTimer();
+    offerTimerRef.current = setTimeout(() => {
+      offerTimerRef.current = null;
+      if (offeredDriverRef.current !== driverId) return;
+      offeredDriverRef.current = null;
+      setOfferedDriverId(null);
+      withdrawOffer({ orderId, driverId }).then((r) => {
+        if (r.ok) toast.info('Водитель не ответил. Заказ снова в общем поиске', { duration: 4000 });
+      });
+    }, OFFER_AUTO_WITHDRAW_MS);
+  }, [orderId, orderState, selectedPrice, fromText, toText, clearOfferTimer]);
+
+  // Пассажир снимает своё предложение — заказ возвращается в общий поиск
+  const handleWithdrawOffer = useCallback(async () => {
+    const driverId = offeredDriverRef.current;
+    if (!orderId || !driverId) return;
+    clearOfferTimer();
+    // ref чистится ДО запроса: собственный UPDATE driver_id=null не должен
+    // прочитаться в подписке как «водитель отклонил».
+    offeredDriverRef.current = null;
+    setOfferedDriverId(null);
+    const res = await withdrawOffer({ orderId, driverId });
+    if (!res.ok) {
+      if (res.error === 'not_found') {
+        // Заказ уже освобождён водителем или принят — цель снята, чистим и UI
+        toast.info('Предложение больше не активно. Ищем дальше', { duration: 3000 });
+      } else {
+        // Сбой запроса: заказ МОГ остаться закреплённым — возвращаем статус,
+        // чтобы пассажир не думал, что поиск снова общий
+        offeredDriverRef.current = driverId;
+        setOfferedDriverId(driverId);
+        toast.error('Не удалось снять предложение. Попробуйте ещё раз');
+      }
+      return;
+    }
+    toast.info('Предложение снято. Ищем дальше', { duration: 3000 });
+  }, [orderId, clearOfferTimer]);
 
   const shareText = useMemo(() =>
     `Поездка Karta.AD Taxi\nОткуда: ${fromText || '—'}\nКуда: ${toText || '—'}\nВодитель: ${driverInfo?.name || ''} ${driverInfo?.car || ''} ${driverInfo?.plate || ''}`,
@@ -830,6 +943,20 @@ export default function TaxiPassenger() {
             <button type="button" onClick={handleCancel} className="h-11 w-full rounded-2xl bg-slate-100 text-sm font-semibold text-red-500 dark:bg-slate-800">
               Отменить
             </button>
+            {offeredDriverId && (
+              <div className="flex items-center justify-between gap-2 rounded-2xl bg-blue-50 px-3 py-2 dark:bg-blue-900/20">
+                <p className="min-w-0 truncate text-[11px] font-bold text-blue-700 dark:text-blue-300">
+                  ✓ Водителю отправлено предложение
+                </p>
+                <button
+                  type="button"
+                  onClick={handleWithdrawOffer}
+                  className="shrink-0 text-[11px] font-bold text-blue-600 underline dark:text-blue-400"
+                >
+                  В общий поиск
+                </button>
+              </div>
+            )}
           </div>
         );
       case 'found':
@@ -989,7 +1116,15 @@ export default function TaxiPassenger() {
           <LocationMarker userPosition={userPosition} setUserPosition={setUserPosition} recenterNonce={recenterNonce} />
           <CenterOnPreview place={previewPlace} />
           <MapClickHandler onMapClick={handleMapClick} />
-          {nearbyDrivers.length > 0 && <NearbyDrivers drivers={nearbyDrivers} />}
+          {nearbyDrivers.length > 0 && (
+            <NearbyDriversPopup
+              drivers={nearbyDrivers}
+              icon={carIcon}
+              canOffer={orderState === 'searching' && !!orderId}
+              offeredDriverId={offeredDriverId}
+              onOffer={handleOfferToDriver}
+            />
+          )}
           {fromCoord && (
             <Marker
               position={fromCoord}

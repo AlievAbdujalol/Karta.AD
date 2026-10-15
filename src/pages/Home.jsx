@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { City, FavoriteRoute, TripLog } from '@/api/entities';
 import { supabase } from '@/api/supabase';
 import { useLanguage, LANG_KEY } from '@/lib/useLanguage';
@@ -31,6 +31,7 @@ import MiniMap from '@/components/MiniMap';
 import AiChat from '@/components/AiChat';
 import AlertBanner from '@/components/AlertBanner';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { smartSearch, pickDeepLinkResult } from '@/lib/searchUtils';
 
 export default function Home() {
   const { t, lang, setLang } = useLanguage();
@@ -334,6 +335,29 @@ export default function Home() {
   const mapCenter = selectedCity?.lat && selectedCity?.lng
     ? [selectedCity.lat, selectedCity.lng]
     : [38.559, 68.773];
+
+  // Глубокая ссылка с сайта бизнеса (секция «Как нас найти»): /?q=адрес —
+  // сразу показать место на карте. Контекст поиска обновляем в ref на каждом
+  // рендере, чтобы сам поиск не перезапускался при сдвиге центра карты.
+  const deeplinkRef = useRef({ cityId: null, mapCenter: null, onSelect: null });
+  useEffect(() => {
+    deeplinkRef.current = { cityId: selectedCity?.id || null, mapCenter, onSelect: handleSelectResult };
+  });
+  useEffect(() => {
+    const q = (new URLSearchParams(location.search).get('q') || '').trim();
+    if (!q) return undefined;
+    let cancelled = false;
+    const { cityId, mapCenter: center } = deeplinkRef.current;
+    smartSearch(q, { cityId, mapCenter: center })
+      .then((res) => {
+        if (cancelled) return;
+        const item = pickDeepLinkResult(res);
+        if (item) deeplinkRef.current.onSelect?.(item);
+        else toast.info('Адрес не найден на карте');
+      })
+      .catch(() => { if (!cancelled) toast.info('Адрес не найден на карте'); });
+    return () => { cancelled = true; };
+  }, [location.search]);
 
   const handleLocateUser = useCallback(() => {
     if (!navigator.geolocation) { toast.error('Геолокация не поддерживается'); return; }

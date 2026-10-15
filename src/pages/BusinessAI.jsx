@@ -33,7 +33,7 @@ import {
 } from '@/lib/projectFiles';
 import { normalizeWidgetUrls, canonicalOrigin, buildWidgetSnippet } from '@/lib/widgetSnippet';
 import SiteWizard from '@/components/aiBuilder/SiteWizard';
-import { wizardToSettings, buildWizardPrompt } from '@/lib/wizardConfig';
+import { wizardToSettings, buildWizardPrompt, catalogForPrompt } from '@/lib/wizardConfig';
 import { saveWebsiteSettings, publishProject } from '@/lib/api/website';
 import { buildStoreProject } from '@/lib/storeProject';
 
@@ -1196,9 +1196,9 @@ export default function BusinessAI() {
         };
         await saveWebsiteSettings(wizardToSettings(filled, selectedBusiness.id));
       }
-      const picked = products
-        .filter((p) => state.productIds.includes(p.id))
-        .map((p) => p.name);
+      // Реальный каталог с ценами (пустой выбор шага «Товары» = все товары):
+      // модель не должна выдумывать свои названия/цены вместо каталога БД
+      const picked = catalogForPrompt(products, state.productIds);
       const promptText = buildWizardPrompt(state, selectedBusiness || {}, picked);
       return await runGeneration(promptText);
     } catch (e) {

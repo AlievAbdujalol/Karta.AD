@@ -15,6 +15,7 @@ import TaxiBottomSheet from '@/components/taxi/TaxiBottomSheet';
 import TaxiChat from '@/components/taxi/TaxiChat';
 import ShareMenu from '@/components/taxi/ShareMenu';
 import { haversineKm, DRIVER_MATCH_RADIUS_KM, formatTJS, TAXI_COMMISSION } from '@/lib/taxi';
+import { releaseOffer } from '@/lib/taxiOffer';
 import { snapToRoad } from '@/lib/osrm';
 import { cartoRaster } from '@/lib/tiles';
 
@@ -76,9 +77,25 @@ export default function TaxiDriverDashboard() {
   const currentOrderRef = useRef(null);
   const driverPosRef = useRef(null);
   const isVerifiedRef = useRef(true);
+  const incomingOrderRef = useRef(null);
 
   useEffect(() => { currentOrderRef.current = currentOrder; }, [currentOrder]);
   useEffect(() => { driverPosRef.current = driverPosition; }, [driverPosition]);
+  useEffect(() => { incomingOrderRef.current = incomingOrder; }, [incomingOrder]);
+
+  // Показать входящий заказ: модалка + звук. Общий броадкаст (INSERT без
+  // driver_id) и целевое предложение (UPDATE driver_id = я) идут одним путём.
+  const presentIncomingOrder = useCallback((row) => {
+    if (!row || currentOrderRef.current) return;
+    setIncomingOrder(row);
+    setShowNewOrder(true);
+    try {
+      const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVggoKIeGBGPoChoZ+LdmhRR4KXoZ6KdWxYTYiOn52Jc25cU42QnJuIc3BjWZCVmJeGc3FqYJeWlJJ/dnNvZ5qXlJF8dHNzap2XlI95c3V3b56Xk455cnV3cJ+Xkok=');
+      audio.volume = 0.8;
+      audio.play().catch(() => {});
+    } catch {}
+    try { navigator.vibrate?.([200, 100, 200]); } catch {}
+  }, []);
 
   const TILE_URL = cartoRaster('rastertiles/voyager');
   const ATTR = '&copy; OpenStreetMap contributors';
@@ -145,6 +162,36 @@ export default function TaxiDriverDashboard() {
     return () => { alive = false; };
   }, [user?.id]);
 
+  // Ожидающее целевое предложение (см. src/lib/taxiOffer.js). Показываем при
+  // выходе на линию: realtime-подписка taxi-driver-{id} существует только
+  // онлайн, а предложение могло прийти раньше (закрепление заказа за водителем
+  // не рассылается другим). Без этого заказ вечно висел бы за офлайн-водителем
+  // (M4); занятому водителю возвращаем его в общий поиск (M3).
+  useEffect(() => {
+    if (!user?.id || !isOnline) return;
+    let alive = true;
+    (async () => {
+      const { data: offer } = await supabase
+        .from('taxi_orders')
+        .select('*')
+        .eq('driver_id', user.id)
+        .eq('status', 'searching')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!alive || !offer) return;
+      if (currentOrderRef.current) {
+        releaseOffer(offer.id).then((r) => {
+          if (!r.ok) toast.error('Не удалось вернуть заказ в общий поиск');
+        });
+        return;
+      }
+      // m6: единый путь показа — с вибро/звуком, как при живом событии
+      presentIncomingOrder(offer);
+    })();
+    return () => { alive = false; };
+  }, [user?.id, isOnline, presentIncomingOrder]);
+
   useEffect(() => {
     if (!user?.id || !isOnline) {
       if (watchId) { navigator.geolocation.clearWatch(watchId); setWatchId(null); }
@@ -185,6 +232,10 @@ export default function TaxiDriverDashboard() {
           setCurrentOrder(null);
           setCardPhase('active');
           setChatOpen(false);
+          // Модалка входящего заказа могла быть открыта (например, целевое
+          // предложение) — закрываем вместе с отменой
+          setShowNewOrder(false);
+          setIncomingOrder(null);
           supabase.from('taxi_drivers').update({ status: 'free' }).eq('user_id', user.id);
           supabase.from('taxi_driver_locations').update({ status: 'free' }).eq('driver_id', user.id);
           addLocalNotification({ title: 'Заказ отменён', body: 'Пассажир отменил заказ', type: 'taxi_cancelled' });
@@ -194,6 +245,17 @@ export default function TaxiDriverDashboard() {
         } else if (payload.new.status === 'completed') {
           setCurrentOrder(prev => prev ? { ...prev, status: 'completed' } : null);
           setCardPhase('payment');
+        } else if (payload.new.status === 'searching') {
+          // Направленное предложение: пассажир выбрал этого водителя на карте
+          // (см. src/lib/taxiOffer.js). Занят — сразу возвращаем заказ в общий
+          // поиск; при сбое сети — один повтор, иначе заказ застрянет (m5).
+          if (currentOrderRef.current) {
+            releaseOffer(payload.new.id).then((r) => {
+              if (!r.ok) releaseOffer(payload.new.id).then((r2) => {
+                if (!r2.ok) toast.error('Не удалось вернуть заказ в общий поиск');
+              });
+            });
+          } else presentIncomingOrder(payload.new);
         } else {
           setCurrentOrder(null);
           setCardPhase('active');
@@ -210,14 +272,7 @@ export default function TaxiDriverDashboard() {
         // Матчинг по близости: только заказы в радиусе подачи
         const dist = haversineKm(driverPosRef.current?.[0], driverPosRef.current?.[1], row.pickup_lat, row.pickup_lng);
         if (dist == null || dist > DRIVER_MATCH_RADIUS_KM) return;
-        setIncomingOrder(row);
-        setShowNewOrder(true);
-        try {
-          const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVggoKIeGBGPoChoZ+LdmhRR4KXoZ6KdWxYTYiOn52Jc25cU42QnJuIc3BjWZCVmJeGc3FqYJeWlJJ/dnNvZ5qXlJF8dHNzap2XlI95c3V3b56Xk455cnV3cJ+Xkok=');
-          audio.volume = 0.8;
-          audio.play().catch(() => {});
-        } catch {}
-        try { navigator.vibrate?.([200, 100, 200]); } catch {}
+        presentIncomingOrder(row);
         // Строку taxi_new_order создаёт серверный триггер taxi_notify_new_order
         // (работает и при закрытом приложении → push). Клиентская вставка тут
         // дублировала бы запись в колоколе и push.
@@ -229,7 +284,7 @@ export default function TaxiDriverDashboard() {
       supabase.removeChannel(sub);
       supabase.removeChannel(incomingSub);
     };
-  }, [user?.id, isOnline, addLocalNotification]);
+  }, [user?.id, isOnline, addLocalNotification, presentIncomingOrder]);
 
   useEffect(() => {
     if (currentOrder?.passenger_id) {
@@ -280,11 +335,13 @@ export default function TaxiDriverDashboard() {
 
   const handleAcceptOrder = useCallback(async (order) => {
     try {
-      // Атомарный claim: только один водитель может принять заказ
+      // Атомарный claim: только один водитель может принять заказ, а целевое
+      // предложение (driver_id = другой водитель) перехватить нельзя
       const { data, error } = await supabase.from('taxi_orders')
         .update({ status: 'found', driver_id: user.id, accepted_at: new Date().toISOString() })
         .eq('id', order.id)
         .eq('status', 'searching')
+        .or(`driver_id.is.null,driver_id.eq.${user.id}`)
         .select();
       if (error) throw error;
       if (!data || data.length === 0) {
@@ -310,9 +367,20 @@ export default function TaxiDriverDashboard() {
   }, [user?.id]);
 
   const handleRejectOrder = useCallback(() => {
+    const pending = incomingOrderRef.current;
     setShowNewOrder(false);
     setIncomingOrder(null);
-  }, []);
+    // Целевое предложение: вернуть заказ в общий поиск. Прямой UPDATE
+    // driver_id=null водителем блокирует RLS → SECURITY DEFINER RPC.
+    // При сбое сети — один повтор (m5), иначе заказ застрянет за водителем.
+    if (pending?.id && pending.driver_id === user?.id) {
+      releaseOffer(pending.id).then((r) => {
+        if (!r.ok) releaseOffer(pending.id).then((r2) => {
+          if (!r2.ok) toast.error('Не удалось вернуть заказ в общий поиск');
+        });
+      });
+    }
+  }, [user?.id]);
 
   const handleOrderAction = useCallback(async (newStatus) => {
     if (!currentOrder?.id) return;

@@ -14,6 +14,7 @@ const DriverDashboard = lazy(() => import('./pages/DriverDashboard'));
 const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Reviews = lazy(() => import('./pages/Reviews'));
+const SupportDeveloper = lazy(() => import('./pages/SupportDeveloper'));
 const DriverSchedule = lazy(() => import('./pages/DriverSchedule'));
 const TaxiPassenger = lazy(() => import('./pages/TaxiPassenger'));
 const TaxiDriverRegistration = lazy(() => import('./pages/TaxiDriverRegistration'));
@@ -73,6 +74,7 @@ const AuthenticatedApp = () => {
           <Route path="/admin" element={<ErrorBoundary><AdminPanel /></ErrorBoundary>} />
           <Route path="/profile" element={<ErrorBoundary><Profile /></ErrorBoundary>} />
           <Route path="/reviews" element={<ErrorBoundary><Reviews /></ErrorBoundary>} />
+          <Route path="/support/developer" element={<ErrorBoundary><SupportDeveloper /></ErrorBoundary>} />
           <Route path="/driver-schedule" element={<ErrorBoundary><DriverSchedule /></ErrorBoundary>} />
           <Route path="/taxi" element={<ErrorBoundary><TaxiPassenger /></ErrorBoundary>} />
           <Route path="/taxi/register" element={<ErrorBoundary><TaxiDriverRegistration /></ErrorBoundary>} />

@@ -151,6 +151,29 @@ export function wizardToSettings(state, bizId) {
 
 // ─── промпт для генерации ─────────────────────────────────────
 /**
+ * Реальный каталог для промпта генерации: отмеченные в шаге «Товары»
+ * позиции, а при пустом выборе — все товары бизнеса (как обещает
+ * wizardDefaults.productIds: «пусто = все товары бизнеса»).
+ *
+ * Строки вида «Название — 50 TJS» с ЦЕНАМИ из каталога: раньше в промпт
+ * уходили только имена, и модель выдумывала собственные товары/цены
+ * («AD Runner 499 сомони» вместо «кроссовки — 50 TJS»), из-за чего
+ * опубликованный сайт показывал несуществующий каталог.
+ * @param {{id: string, name: string, price: *}[]} [products]
+ * @param {string[]} [productIds]
+ * @returns {string[]}
+ */
+export function catalogForPrompt(products, productIds = []) {
+  const list = Array.isArray(products) ? products.filter((p) => p?.name) : [];
+  const picked = Array.isArray(productIds) && productIds.length
+    ? list.filter((p) => productIds.includes(p.id))
+    : list;
+  return picked
+    .slice(0, 20)
+    .map((p) => `${String(p.name).trim()} — ${Number(p.price) || 0} TJS`);
+}
+
+/**
  * Собрать промпт для AI из ответов визарда: тип, стиль, инфо,
  * пожелания. Товары/доставка/оплата идут в контекст бизнеса и
  * настройки сайта отдельно, в промпт не дублируются.

@@ -1,9 +1,14 @@
+import { useState } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { useLanguage } from '@/lib/useLanguage';
+import { CONSENT_DOC_IDS, LEGAL_DOCS } from '@/lib/legalDocs';
+import LegalDocModal from '@/components/LegalDocModal';
 
 export default function Login() {
   const { navigateToLogin } = useAuth();
   const { t } = useLanguage();
+  // Какой правовой текст открыт (null — закрыто)
+  const [openDoc, setOpenDoc] = useState(null);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-slate-100 dark:from-gray-900 dark:to-gray-800 px-4">
@@ -32,7 +37,37 @@ export default function Login() {
             </svg>
             {t('login.loginWithGoogle')}
           </button>
+
+          {/* Соглашения: включены автоматически, снять их нельзя —
+              регистрация и есть принятие. Названия открывают полный текст. */}
+          <div className="mt-5 pt-4 border-t border-gray-100 dark:border-gray-700 space-y-2">
+            {CONSENT_DOC_IDS.map((id) => (
+              <label key={id} className="flex items-start gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked
+                  readOnly
+                  disabled
+                  className="mt-0.5 h-3.5 w-3.5 accent-blue-600 flex-shrink-0 cursor-not-allowed"
+                />
+                <span className="text-xs text-gray-600 dark:text-gray-400 leading-snug">
+                  <button
+                    type="button"
+                    onClick={() => setOpenDoc(id)}
+                    className="text-blue-600 dark:text-blue-400 underline underline-offset-2 hover:no-underline text-left"
+                  >
+                    {LEGAL_DOCS[id].title}
+                  </button>
+                </span>
+              </label>
+            ))}
+            <p className="text-[11px] text-gray-400 dark:text-gray-500 leading-snug">
+              Соглашения принимаются автоматически при регистрации — отключить их нельзя.
+            </p>
+          </div>
         </div>
+
+        <LegalDocModal docId={openDoc} onClose={() => setOpenDoc(null)} />
 
         <p className="text-center text-xs text-gray-400 dark:text-gray-500 mt-6">
           Karta.AD © 2026

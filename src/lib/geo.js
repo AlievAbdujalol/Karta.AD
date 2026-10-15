@@ -108,38 +108,66 @@ export function smoothPositions(positions, windowSize = 3) {
   return out;
 }
 
+const PROJ_BACKTRACK_M = 150; // допустимый откат дуговой позиции относительно предыдущего замера
+
+function isFinitePoint(p) {
+  return Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]);
+}
+
 /**
  * Найти ближайшую точку на полилинии и вернуть progress (0..1) и snapped координаты.
+ *
+ * С opts.prevProgressM (метры от старта последней известной позиции) проекция
+ * ограничивается окном «не раньше prev − backtrackM»: петли, развороты и
+ * параллельные ветки не откатывают прогресс назад без основания. Без opts
+ * поведение прежнее — глобально ближайший сегмент (обратная совместимость).
+ * Невалидные точки геометрии отбрасываются; вырожденная геометрия даёт
+ * конечные значения (без NaN/Infinity).
+ *
  * @param {number} lat - текущая широта
  * @param {number} lng - текущая долгота
  * @param {Array<[number,number]>} geometry - [[lat,lng], ...]
+ * @param {{ prevProgressM?: number, backtrackM?: number }} [opts]
  * @returns {{ progress: number, snappedLat: number, snappedLng: number, segIndex: number, distToRoute: number }}
  */
-export function projectOnPolyline(lat, lng, geometry) {
-  if (!geometry || geometry.length < 2) {
-    return { progress: 0, snappedLat: lat, snappedLng: lng, segIndex: 0, distToRoute: 0 };
-  }
+export function projectOnPolyline(lat, lng, geometry, opts = {}) {
+  const fallback = {
+    progress: 0,
+    snappedLat: Number.isFinite(lat) ? lat : 0,
+    snappedLng: Number.isFinite(lng) ? lng : 0,
+    segIndex: 0,
+    distToRoute: 0,
+  };
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return fallback;
+  if (!Array.isArray(geometry) || geometry.length < 2) return fallback;
 
-  let bestDist = Infinity;
-  let bestProgress = 0;
-  let bestLat = geometry[0][0];
-  let bestLng = geometry[0][1];
-  let bestSeg = 0;
+  const prevProgressM = Number.isFinite(opts.prevProgressM) ? Math.max(0, opts.prevProgressM) : null;
+  const backtrackM = Number.isFinite(opts.backtrackM) ? Math.max(0, opts.backtrackM) : PROJ_BACKTRACK_M;
+  const minArc = prevProgressM == null ? null : Math.max(0, prevProgressM - backtrackM);
+
+  const cosLat = Math.cos((lat * Math.PI) / 180);
+  const px = lng * cosLat, py = lat;
+
+  let best = null; // глобально ближайшая проекция
+  let near = null; // ближайшая среди проекций, не отставших назад более чем на backtrackM
+  let firstValid = null;
   let totalDist = 0;
-  let accumulated = 0;
 
   for (let i = 0; i < geometry.length - 1; i++) {
-    const [aLat, aLng] = geometry[i];
-    const [bLat, bLng] = geometry[i + 1];
+    const a = geometry[i];
+    const b = geometry[i + 1];
+    if (!isFinitePoint(a) || !isFinitePoint(b)) continue;
+    const [aLat, aLng] = a;
+    const [bLat, bLng] = b;
     const segLen = haversineM(aLat, aLng, bLat, bLng);
+    if (!Number.isFinite(segLen)) continue;
 
     if (segLen < 0.01) {
-      accumulated += segLen;
+      totalDist += segLen;
+      if (!firstValid) firstValid = a;
       continue;
     }
 
-    const cosLat = Math.cos((lat * Math.PI) / 180);
-    const px = lng * cosLat, py = lat;
     const p1x = aLng * cosLat, p1y = aLat;
     const p2x = bLng * cosLat, p2y = bLat;
     const dx = p2x - p1x, dy = p2y - p1y;
@@ -147,26 +175,41 @@ export function projectOnPolyline(lat, lng, geometry) {
     const projLat = aLat + t * (bLat - aLat);
     const projLng = aLng + t * (bLng - aLng);
     const d = haversineM(lat, lng, projLat, projLng);
+    const arc = totalDist + t * segLen;
+    const cand = { d, arc, snappedLat: projLat, snappedLng: projLng, segIndex: i };
 
-    if (d < bestDist) {
-      bestDist = d;
-      bestLat = projLat;
-      bestLng = projLng;
-      bestSeg = i;
-      bestProgress = (accumulated + t * segLen);
+    if (!firstValid) firstValid = a;
+    if (!best || d < best.d) best = cand;
+    if (minArc == null || arc >= minArc) {
+      if (!near || d < near.d) near = cand;
     }
-    accumulated += segLen;
-    totalDist = accumulated;
+
+    totalDist += segLen;
   }
 
-  if (totalDist < 1) totalDist = 1;
+  if (!best) {
+    // Геометрия вырождена (все точки совпадают или невалидны) — явная деградация.
+    return {
+      progress: 0,
+      snappedLat: firstValid ? firstValid[0] : lat,
+      snappedLng: firstValid ? firstValid[1] : lng,
+      segIndex: 0,
+      distToRoute: 0,
+    };
+  }
 
+  // Доверяем «своему» участку маршрута: проекции позади допустимого отката не
+  // участвуют — иначе GPS-выброс на параллельной/ранней ветке петли молча
+  // откатывал прогресс назад, а distToRoute становился бы «нормальным» (0 м)
+  // и off-route детект не срабатывал.
+  const res = near || best;
+  const total = totalDist < 1 ? 1 : totalDist;
   return {
-    progress: bestProgress / totalDist,
-    snappedLat: bestLat,
-    snappedLng: bestLng,
-    segIndex: bestSeg,
-    distToRoute: bestDist,
+    progress: Math.max(0, Math.min(1, res.arc / total)),
+    snappedLat: res.snappedLat,
+    snappedLng: res.snappedLng,
+    segIndex: res.segIndex,
+    distToRoute: res.d,
   };
 }
 

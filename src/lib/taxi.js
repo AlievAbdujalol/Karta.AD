@@ -53,6 +53,18 @@ const RATES = {
 export const CITY_SPEED_KMH = 22; // средняя скорость по городу для оценки времени
 export const DRIVER_MATCH_RADIUS_KM = 12; // радиус рассылки заказов водителям
 
+// Потолок стоимости поездки. Зеркало: LEAST(total, 50) в RPC calculate_taxi_price.
+// «Снизить стоимость до 50 TJS» = городская поездка не выше 50; короткие поездки
+// остаются дешевле (снижаем, а не устанавливаем фикс-цену).
+// Межгород и доставка/курьер считаются по расстоянию — потолок на них не действует.
+export const MAX_RIDE_PRICE_TJS = 50;
+
+const UNCAPPED_CATEGORIES = new Set(['intercity', 'delivery', 'courier']);
+
+function applyPriceCap(price, category) {
+  return UNCAPPED_CATEGORIES.has(category) ? price : Math.min(MAX_RIDE_PRICE_TJS, price);
+}
+
 export function haversineKm(lat1, lng1, lat2, lng2) {
   if (lat1 == null || lng1 == null || lat2 == null || lng2 == null) return null;
   const R = 6371;
@@ -81,7 +93,7 @@ export function calcPrice({ distanceKm, durationMin, category = 'economy', deman
   const r = RATES[category] || RATES.economy;
   const raw = (r.base + r.perKm * distanceKm + r.perMin * durationMin) * (night ? 1.5 : 1) * demandCoef;
   const total = Math.max(raw, r.min * demandCoef);
-  return Math.ceil(total * 2) / 2;
+  return applyPriceCap(Math.ceil(total * 2) / 2, category);
 }
 
 export function formatTJS(value) {
@@ -147,6 +159,14 @@ export function priceSurcharge(category, extras = {}, baseDistance = 0) {
   }
   if (category === 'intercity' && extras.returnTrip) add += baseDistance > 0 ? Math.round(baseDistance * 0.6) : 0;
   return Math.round(add * 2) / 2;
+}
+
+// Финальная цена поездки для UI и записи в заказ: база + доплаты, но не выше
+// потолка MAX_RIDE_PRICE_TJS (межгород/доставка/кроме — без потолка).
+export function ridePrice({ distanceKm, durationMin, category = 'economy', extras = {}, demandCoef = 1, night = false, baseDistance = 0 }) {
+  const base = calcPrice({ distanceKm, durationMin, category, demandCoef, night });
+  const extra = priceSurcharge(category, extras, baseDistance);
+  return applyPriceCap(Math.round((base + extra) * 2) / 2, category);
 }
 
 // ─── ЦЕНА ДОСТАВКИ / КУРЬЕРА ──────────────────────────────────────────────────

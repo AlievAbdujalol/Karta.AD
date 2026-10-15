@@ -1,5 +1,17 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { projectOnPolyline, haversineM } from '@/lib/geo';
+import { parseOsrmRoute } from '@/lib/osrmClient';
+import {
+  ARRIVAL_THRESHOLD_M,
+  OFF_ROUTE_THRESHOLD_M,
+  initialArrivalState,
+  nextArrivalState,
+  computeRemainingM,
+  computeEtaSec,
+  routeLengthM,
+  computeStepsArcM,
+  pickNextStep,
+} from '@/lib/navigationLogic';
 import { toast } from 'sonner';
 
 const NavigationContext = createContext(null);
@@ -10,8 +22,6 @@ export function useNavigation() {
 
 const ANNOUNCEABLE = new Set(['turn', 'roundabout', 'rotary', 'uturn', 'merge', 'end of road', 'depart', 'arrive', 'exit', 'fork', 'off ramp', 'on ramp']);
 
-const ARRIVAL_THRESHOLD_M = 30;
-const OFF_ROUTE_THRESHOLD_M = 35;
 const REROUTING_COOLDOWN_MS = 15000;
 
 function getNavLang() {
@@ -33,6 +43,7 @@ const PHRASE = {
     endOfRoad: d => `В конце дороги поверните ${d}`, roundabout: () => 'На круговом перекрёстке продолжайте движение',
     continue: 'Продолжайте движение прямо', fallback: d => `Двигайтесь ${d || 'прямо'}`,
     via: (dist, action) => `Через ${dist} ${action.toLowerCase()}`, arrived: 'Вы прибыли в пункт назначения',
+    dest: 'пункт назначения',
     m: 'м', km: 'км',
   },
   tg: {
@@ -42,6 +53,7 @@ const PHRASE = {
     endOfRoad: d => `Дар охири роҳ ${d} гардед`, roundabout: () => 'Аз чорроҳаи даврӣ гузаред',
     continue: 'Рост равед', fallback: () => 'Рост равед',
     via: (dist, action) => `Баъди ${dist} ${action.toLowerCase()}`, arrived: 'Шумо ба манзили таъинот расидед',
+    dest: 'манзили таъинот',
     m: 'метр', km: 'км',
   },
   en: {
@@ -50,6 +62,7 @@ const PHRASE = {
     endOfRoad: d => `At the end of the road, turn ${d}`, roundabout: () => 'At the roundabout, continue',
     continue: 'Continue straight ahead', fallback: d => `Go ${d || 'straight ahead'}`,
     via: (dist, action) => `In ${dist}, ${action.toLowerCase()}`, arrived: 'You have arrived at your destination',
+    dest: 'destination',
     m: 'meters', km: 'kilometers',
   },
 };
@@ -107,7 +120,12 @@ export function NavigationProvider({ children }) {
   const offRouteStartRef = useRef(null);
   const routeProgressRef = useRef(0);
   const routeLenRef = useRef(0);
-  const arrivalAnnouncedRef = useRef(false);
+  // Трекер прибытия (navigationLogic): подтверждение = ARRIVAL_CONFIRM_FIXES
+  // подряд валидных GPS-замеров; сбрасывается только сменой маршрута/цели.
+  const arrivalStateRef = useRef(initialArrivalState());
+  // Токен маршрута: поздний асинхронный ответ применяется, только если маршрут
+  // с момента старта запроса не менялся (сценарий «поздний ответ»).
+  const routeSeqRef = useRef(0);
   const alternativeRef = useRef(null);
 
   useEffect(() => { alternativeRef.current = alternativeRoute; }, [alternativeRoute]);
@@ -157,9 +175,19 @@ export function NavigationProvider({ children }) {
     const L = PHRASE[lang] || PHRASE.ru;
     const D = DIR_WORD[lang] || DIR_WORD.ru;
     const dir = D[modifier] || '';
+    // Манёвр arrive: пока до цели есть расстояние — нейтральная подсказка
+    // «Через X — пункт назначения». «Вы прибыли» показывается/озвучивается
+    // только при подтверждённом прибытии, а не по факту манёвра (D6:
+    // карточка показывала «924 м · Вы прибыли» за километры до цели).
+    if (instruction === 'arrive') {
+      if (distance > ARRIVAL_THRESHOLD_M) {
+        const distStr = distance >= 1000 ? `${(distance / 1000).toFixed(1)} ${L.km}` : `${Math.round(distance)} ${L.m}`;
+        return L.via(distStr, L.dest);
+      }
+      return L.arrive;
+    }
     const action = {
       depart: L.depart,
-      arrive: L.arrive,
       turn: L.turn(modifier),
       'new name': L.newName(dir),
       merge: L.merge(dir),
@@ -168,26 +196,11 @@ export function NavigationProvider({ children }) {
       rotary: L.roundabout(dir),
       continue: L.continue,
     }[instruction] || L.fallback(dir);
-    if (distance > 50 && instruction !== 'depart' && instruction !== 'arrive') {
+    if (distance > 50 && instruction !== 'depart') {
       const distStr = distance >= 1000 ? `${(distance / 1000).toFixed(1)} ${L.km}` : `${Math.round(distance)} ${L.m}`;
       return L.via(distStr, action);
     }
     return action;
-  }, []);
-
-  const findClosestStep = useCallback((lat, lng, steps) => {
-    if (!steps || steps.length === 0) return 0;
-    let bestIdx = stepIndexRef.current;
-    let bestDist = Infinity;
-    const start = Math.max(stepIndexRef.current - 1, 0);
-    for (let i = start; i < steps.length; i++) {
-      const s = steps[i];
-      const loc = s.start || [0, 0];
-      if (!loc[0] && !loc[1]) continue;
-      const d = Math.hypot(lat - loc[0], lng - loc[1]);
-      if (d < bestDist) { bestDist = d; bestIdx = i; }
-    }
-    return bestIdx;
   }, []);
 
   const ensureStepStarts = useCallback((steps) => {
@@ -202,13 +215,36 @@ export function NavigationProvider({ children }) {
     return steps;
   }, []);
 
-  const computeRouteLength = useCallback((geometry) => {
-    if (!geometry || geometry.length < 2) return 0;
-    let len = 0;
-    for (let i = 0; i < geometry.length - 1; i++) {
-      len += haversineM(geometry[i][0], geometry[i][1], geometry[i + 1][0], geometry[i + 1][1]);
-    }
-    return len;
+  // Смена маршрута/цели: состояние прибытия и прогресса старого маршрута
+  // недействительны (D2: застрявший «Вы прибыли» + запрет объявления прибытия
+  // на новой цели). Вызывается ТОЛЬКО при успешной смене маршрута — неудачное
+  // перестроение не теряет текущий рабочий маршрут (требование 4.3).
+  const invalidateRouteState = useCallback(() => {
+    arrivalStateRef.current = initialArrivalState();
+    setHasArrived(false);
+    setRouteProgress(0);
+    routeProgressRef.current = 0;
+    setIsOffRoute(false);
+    offRouteStartRef.current = null;
+    setSnappedPosition(null);
+    stepIndexRef.current = 0;
+    annKeyRef.current = { idx: -1, pre: false, final: false };
+    routeSeqRef.current += 1;
+  }, []);
+
+  // Единая запись активного маршрута в localStorage (восстановление после F5).
+  const persistActiveRoute = useCallback((route) => {
+    try { localStorage.setItem('karta_nav_active', JSON.stringify(route)); } catch {}
+  }, []);
+
+  // Кеш дуговых позиций манёвров: считается один раз на маршрут, сбрасывается
+  // автоматически при смене объекта маршрута.
+  const stepsArcCacheRef = useRef({ route: null, arc: null });
+  const getStepsArc = useCallback((route, steps, geometry) => {
+    if (stepsArcCacheRef.current.route === route) return stepsArcCacheRef.current.arc;
+    const arc = computeStepsArcM(geometry, steps);
+    stepsArcCacheRef.current = { route, arc };
+    return arc;
   }, []);
 
   const processPosition = useCallback((lat, lng, heading, speed, accuracy = null) => {
@@ -246,12 +282,18 @@ export function NavigationProvider({ children }) {
     positionsRef.current.push({ lat, lng });
     if (positionsRef.current.length > 200) positionsRef.current = positionsRef.current.slice(-100);
 
-    const route = routeRef.current;
+    let route = routeRef.current;
     if (!route || !route.geometry || route.geometry.length < 2) return;
 
     const geometry = route.geometry;
+    const routeLen = routeLenRef.current || routeLengthM(geometry);
 
-    const proj = projectOnPolyline(lat, lng, geometry);
+    // Проекция с окном вокруг предыдущего положения (prev в метрах дуги):
+    // петли и параллельные ветки не откатывают прогресс назад без основания.
+    // На первом фиксе prev=0 — результат совпадает с прежним глобальным поиском.
+    const proj = projectOnPolyline(lat, lng, geometry, {
+      prevProgressM: routeLen * (routeProgressRef.current || 0),
+    });
     setRouteProgress(proj.progress);
     routeProgressRef.current = proj.progress;
     setSnappedPosition([proj.snappedLat, proj.snappedLng]);
@@ -274,115 +316,120 @@ export function NavigationProvider({ children }) {
       }
     }
 
-    if (proj.progress > 0.95 && offDist < ARRIVAL_THRESHOLD_M * 2) {
-      const toDest = haversineM(lat, lng, geometry[geometry.length - 1][0], geometry[geometry.length - 1][1]);
-      if (toDest < ARRIVAL_THRESHOLD_M && !arrivalAnnouncedRef.current) {
-        arrivalAnnouncedRef.current = true;
-        setHasArrived(true);
+    // ── Прибытие (D3, D4): подтверждается только несколькими подряд достоверными
+    // замерами; одиночный GPS-выброс не завершает навигацию. После подтверждения
+    // остаток/ETA обнуляются один раз, продвижения по завершённому маршруту нет.
+    const end = geometry[geometry.length - 1];
+    const routeValid = Array.isArray(end) && Number.isFinite(end[0]) && Number.isFinite(end[1]) && routeLen > 0;
+    const prevArrival = arrivalStateRef.current;
+    const arrival = nextArrivalState(prevArrival, {
+      toDestM: routeValid ? haversineM(lat, lng, end[0], end[1]) : NaN,
+      offRouteM: offDist,
+      snappedToDestM: routeValid ? haversineM(proj.snappedLat, proj.snappedLng, end[0], end[1]) : NaN,
+      progress: proj.progress,
+      accuracyM: accuracy,
+      routeValid,
+    });
+    const justArrived = arrival.confirmed && !prevArrival.confirmed;
+    arrivalStateRef.current = arrival;
+    if (arrival.confirmed) {
+      setHasArrived(true);
+      if (justArrived) {
+        setRemainingDistance(0);
+        setRemainingDuration(0);
+        setEta(new Date());
         const arrivedText = (PHRASE[getNavLang()] || PHRASE.ru).arrived;
         speak(arrivedText);
-        setNextInstruction(prev => ({
-          ...prev,
-          text: arrivedText,
-          instruction: 'arrive',
-          modifier: '',
-          distance: 0,
-        }));
-        return;
+        setNextInstruction({
+          text: arrivedText, streetName: '', distance: 0, instruction: 'arrive', modifier: '',
+        });
+        setFollowingStep(null);
       }
+      return;
     }
 
-    const steps = ensureStepStarts(route.steps);
+    // ── Остаток маршрута и ETA — единая геометрическая модель (navigationLogic):
+    // остаток = длина × (1 − прогресс); ETA масштабирует OSRM-время тем же
+    // прогрессом либо делит остаток по средней скорости, если она достоверна.
+    // Это же обслуживает маршруты без пошаговки (транзит, GPX) — веток с
+    // разными моделями больше нет.
+    const totalRemaining = computeRemainingM(routeLen, proj.progress);
+    setRemainingDistance(totalRemaining);
 
-    // Маршрут без пошаговки (общественный транспорт, steps: []):
-    // остаток считаем по прогрессу геометрии, иначе здесь падал TypeError
-    // и HUD навсегда оставался на нулях.
-    if (!steps.length) {
-      const navLang = getNavLang();
-      const totalLen = routeLenRef.current || computeRouteLength(geometry);
-      const totalRemaining = Math.max(0, totalLen * (1 - proj.progress));
-      setRemainingDistance(totalRemaining);
-      const baseDur = route.duration ?? route.totalDuration ?? 0;
-      const etaSec = baseDur > 0 ? baseDur * (1 - proj.progress) : 0;
-      if (etaSec > 0) {
-        setEta(new Date(Date.now() + etaSec * 1000));
-        setRemainingDuration(Math.round(etaSec));
-      }
+    const steps = ensureStepStarts(route.steps);
+    if (!steps || !steps.length) {
       setNextInstruction({
-        text: (PHRASE[navLang] || PHRASE.ru).continue,
+        text: (PHRASE[getNavLang()] || PHRASE.ru).continue,
         streetName: '',
         distance: totalRemaining,
         instruction: 'continue',
         modifier: '',
       });
       setFollowingStep(null);
-      return;
-    }
+    } else {
+      const stepsArc = getStepsArc(route, steps, geometry);
+      // Следующий манёвр — первый шаг, чей старт ещё впереди; расстояние до
+      // него считается вдоль маршрута и не включает пройденную часть шага (D5).
+      const picked = pickNextStep(stepsArc, proj.progress * routeLen);
+      const stepIdx = picked.idx;
+      stepIndexRef.current = stepIdx;
+      const distToNext = picked.distToNextM;
 
-    const stepIdx = findClosestStep(proj.snappedLat, proj.snappedLng, steps);
-    stepIndexRef.current = stepIdx;
+      const step = steps[stepIdx];
+      const nextStep = steps[stepIdx + 1];
+      setFollowingStep(nextStep
+        ? { instruction: nextStep.instruction || '', modifier: nextStep.modifier || '', name: nextStep.name || '' }
+        : null);
 
-    const step = steps[stepIdx];
-    const nextStep = steps[stepIdx + 1];
-    setFollowingStep(nextStep
-      ? { instruction: nextStep.instruction || '', modifier: nextStep.modifier || '', name: nextStep.name || '' }
-      : null);
-    const loc = step.start || [0, 0];
-    const distToStep = Math.hypot(proj.snappedLat - loc[0], proj.snappedLng - loc[1]) * 111320;
+      try {
+        const autoScale = JSON.parse(localStorage.getItem('karta_nav_settings')||'{}')?.auto_scale !== false;
+        if (autoScale && nextStep && distToNext < 120) {
+          window.dispatchEvent(new CustomEvent('karta_autoscale', { detail: nextStep.distance < 80 ? 18 : 16 }));
+        }
+      } catch {}
 
-    try {
-      const autoScale = JSON.parse(localStorage.getItem('karta_nav_settings')||'{}')?.auto_scale !== false;
-      if (autoScale && nextStep && step.distance < 120) {
-        window.dispatchEvent(new CustomEvent('karta_autoscale', { detail: nextStep.distance < 80 ? 18 : 16 }));
+      const navLang = getNavLang();
+      setNextInstruction({
+        text: getManeuverText(step.instruction, step.modifier, distToNext, navLang),
+        streetName: step.name || '',
+        distance: distToNext,
+        instruction: step.instruction,
+        modifier: step.modifier,
+      });
+
+      const annNow = Date.now();
+      if (annKeyRef.current.idx !== stepIdx) annKeyRef.current = { idx: stepIdx, pre: false, final: false };
+      const ann = annKeyRef.current;
+      if (ANNOUNCEABLE.has(step.instruction) && !ann.pre && distToNext < 200 && distToNext >= 25 && annNow - lastAnnounceRef.current > 8000) {
+        speak(getManeuverText(step.instruction, step.modifier, Math.round(distToNext), navLang));
+        ann.pre = true;
+        lastAnnounceRef.current = annNow;
       }
-    } catch {}
-
-    const navLang = getNavLang();
-    const arrivedText = (PHRASE[navLang] || PHRASE.ru).arrived;
-    setNextInstruction({
-      text: getManeuverText(step.instruction, step.modifier, step.distance, navLang),
-      streetName: step.name || '',
-      distance: distToStep,
-      instruction: step.instruction,
-      modifier: step.modifier,
-    });
-
-    const annNow = Date.now();
-    if (annKeyRef.current.idx !== stepIdx) annKeyRef.current = { idx: stepIdx, pre: false, final: false };
-    const ann = annKeyRef.current;
-    if (ANNOUNCEABLE.has(step.instruction) && !ann.pre && distToStep < 200 && distToStep >= 25 && annNow - lastAnnounceRef.current > 8000) {
-      speak(getManeuverText(step.instruction, step.modifier, Math.round(distToStep), navLang));
-      ann.pre = true;
-      lastAnnounceRef.current = annNow;
+      // Финальное «прибыли» озвучивает только блок подтверждения прибытия:
+      // текст манёвра сам по себе навигацию не завершает.
+      if (step.instruction !== 'arrive' && ANNOUNCEABLE.has(step.instruction) && !ann.final && distToNext < 25 && annNow - lastAnnounceRef.current > 8000) {
+        speak(getManeuverText(step.instruction, step.modifier, 0, navLang));
+        ann.final = true;
+        lastAnnounceRef.current = annNow;
+      }
     }
-    if (ANNOUNCEABLE.has(step.instruction) && !ann.final && distToStep < 25 && annNow - lastAnnounceRef.current > 8000) {
-      speak(step.instruction === 'arrive'
-        ? arrivedText
-        : getManeuverText(step.instruction, step.modifier, 0, navLang));
-      ann.final = true;
-      lastAnnounceRef.current = annNow;
-    }
-
-    let totalRemaining = 0;
-    for (let i = stepIdx; i < steps.length; i++) {
-      totalRemaining += steps[i].distance || 0;
-    }
-    setRemainingDistance(totalRemaining);
 
     const elapsed = startTimeRef.current ? (Date.now() - startTimeRef.current) / 1000 : 0;
     const avgSpd = traveledRef.current > 0 && elapsed > 15 ? traveledRef.current / elapsed : 0;
-    let etaSec = 0;
-    if (route && route.duration && route.distance) {
-      const progress = Math.max(0, Math.min(1, 1 - totalRemaining / route.distance));
-      const osrmRemaining = route.duration * (1 - progress);
-      if (traveledRef.current < 100 || avgSpd < 1.2) etaSec = osrmRemaining;
-      else etaSec = totalRemaining / avgSpd;
-    } else if (avgSpd > 0) etaSec = totalRemaining / avgSpd;
-    if (etaSec > 43200) etaSec = route?.duration || 0;
-    setEta(new Date(Date.now() + etaSec * 1000));
-    setRemainingDuration(Math.round(etaSec));
+    const baseDur = route.duration ?? route.totalDuration ?? 0;
+    const etaSec = computeEtaSec({
+      remainingM: totalRemaining, routeLenM: routeLen, durationSec: baseDur, avgSpeedMps: avgSpd,
+    });
+    if (etaSec == null) {
+      // Достоверного прогноза нет — нейтральное состояние, а не ложное время.
+      setEta(null);
+      setRemainingDuration(0);
+    } else {
+      setEta(new Date(Date.now() + etaSec * 1000));
+      setRemainingDuration(Math.round(etaSec));
+    }
     setTripStats({ distance: traveledRef.current, duration: elapsed, avgSpeed: avgSpd * 3.6 });
-  }, [findClosestStep, ensureStepStarts, getManeuverText, speak, computeRouteLength]);
+  }, [ensureStepStarts, getManeuverText, getStepsArc, speak]);
 
   const isReroutingRef = useRef(false);
 
@@ -392,6 +439,7 @@ export function NavigationProvider({ children }) {
     if (!route?.from || !route?.to) return;
     const pos = positionsRef.current[positionsRef.current.length - 1];
     if (!pos) return;
+    const seq = routeSeqRef.current; // защита от позднего ответа (D8)
     isReroutingRef.current = true;
     setIsRerouting(true);
     try {
@@ -402,17 +450,17 @@ export function NavigationProvider({ children }) {
         route.waypoints,
         profile
       );
-      if (newRoute) {
+      if (newRoute && seq === routeSeqRef.current) {
         routeRef.current = {
           ...newRoute,
           from: { lat: pos.lat, lng: pos.lng, shortName: route.from?.shortName, name: route.from?.name },
           to: route.to, mode: route.mode, waypoints: route.waypoints,
         };
         setRouteData(routeRef.current);
-        stepIndexRef.current = 0;
-        const newLen = computeRouteLength(newRoute.geometry);
-        routeLenRef.current = newLen;
+        invalidateRouteState(); // прибытие/прогресс старого маршрута недействительны
+        routeLenRef.current = routeLengthM(newRoute.geometry);
         setAlternativeRoute(null);
+        persistActiveRoute(routeRef.current);
         speak('Маршрут обновлён');
       }
     } catch {}
@@ -420,7 +468,7 @@ export function NavigationProvider({ children }) {
       isReroutingRef.current = false;
       setIsRerouting(false);
     }
-  }, [speak, computeRouteLength]);
+  }, [speak, invalidateRouteState, persistActiveRoute]);
 
   const processPositionRef = useRef(processPosition);
   useEffect(() => { processPositionRef.current = processPosition; }, [processPosition]);
@@ -450,22 +498,22 @@ export function NavigationProvider({ children }) {
   // Работает и для транзитных маршрутов (totalDistance/totalDuration).
   const initStatsFromRoute = useCallback((route) => {
     if (!route) return;
-    const dist = route.distance ?? route.totalDistance ?? computeRouteLength(route.geometry);
+    const dist = route.distance ?? route.totalDistance ?? routeLengthM(route.geometry);
     const dur = route.duration ?? route.totalDuration ?? 0;
     if (dist > 0) setRemainingDistance(dist);
     if (dur > 0) {
       setRemainingDuration(Math.round(dur));
       setEta(new Date(Date.now() + dur * 1000));
     }
-  }, [computeRouteLength]);
+  }, []);
 
   const resetNavState = useCallback(() => {
+    // инвалидация состояния прибытия/прогресса + токен маршрута (D2)
+    invalidateRouteState();
     setStartTime(Date.now());
     startTimeRef.current = Date.now();
     traveledRef.current = 0;
     setTraveledDistance(0);
-    stepIndexRef.current = 0;
-    annKeyRef.current = { idx: -1, pre: false, final: false };
     positionsRef.current = [];
     lastAnnounceRef.current = 0;
     setTripStats({ distance: 0, duration: 0, avgSpeed: 0 });
@@ -476,18 +524,11 @@ export function NavigationProvider({ children }) {
     setRemainingDistance(0);
     setRemainingDuration(0);
     setEta(null);
-    setRouteProgress(0);
-    routeProgressRef.current = 0;
-    setIsOffRoute(false);
     setIsRerouting(false);
-    setHasArrived(false);
-    setSnappedPosition(null);
-    offRouteStartRef.current = null;
     lastRerouteRef.current = 0;
-    arrivalAnnouncedRef.current = false;
     routeLenRef.current = 0;
     setAlternativeRoute(null);
-  }, []);
+  }, [invalidateRouteState]);
 
   const startNavigationWithFromTo = useCallback((route, from, to) => {
     const enriched = { ...route, from, to };
@@ -497,12 +538,12 @@ export function NavigationProvider({ children }) {
     setIsPaused(false);
     isPausedRef.current = false;
     resetNavState();
-    routeLenRef.current = computeRouteLength(enriched.geometry);
+    routeLenRef.current = routeLengthM(enriched.geometry);
     initStatsFromRoute(enriched);
     startGps();
-    try { localStorage.setItem('karta_nav_active', JSON.stringify(enriched)); } catch {}
+    persistActiveRoute(enriched);
     speak('Начинаем навигацию');
-  }, [startGps, resetNavState, speak, computeRouteLength, initStatsFromRoute]);
+  }, [startGps, resetNavState, speak, persistActiveRoute, initStatsFromRoute]);
 
   const startNavigation = useCallback((route) => {
     routeRef.current = route;
@@ -511,12 +552,12 @@ export function NavigationProvider({ children }) {
     setIsPaused(false);
     isPausedRef.current = false;
     resetNavState();
-    routeLenRef.current = computeRouteLength(route.geometry);
+    routeLenRef.current = routeLengthM(route.geometry);
     initStatsFromRoute(route);
     startGps();
-    try { localStorage.setItem('karta_nav_active', JSON.stringify(route)); } catch {}
+    persistActiveRoute(route);
     speak('Начинаем навигацию');
-  }, [startGps, resetNavState, speak, computeRouteLength, initStatsFromRoute]);
+  }, [startGps, resetNavState, speak, persistActiveRoute, initStatsFromRoute]);
 
   const stopNavigation = useCallback(() => {
     clearGps();
@@ -574,25 +615,10 @@ export function NavigationProvider({ children }) {
       if (!resp.ok) return null;
       const data = await resp.json();
       if (!data.routes?.length) return null;
+      // Общий разбор OSRM: старты шагов = точки их манёвров (D1), без копий.
       const parsed = data.routes.map((r) => {
-        const geom = r.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-        const steps = [];
-        let cursor = 0;
-        if (r.legs) r.legs.forEach(leg => {
-          if (leg.steps) leg.steps.forEach(step => {
-            const start = geom[cursor] || [0, 0];
-            cursor = Math.min(cursor + 1, geom.length - 1);
-            steps.push({
-              instruction: step.maneuver?.type || '',
-              modifier: step.maneuver?.modifier || '',
-              name: step.name || '',
-              distance: step.distance || 0,
-              duration: step.duration || 0,
-              start,
-            });
-          });
-        });
-        return { distance: r.distance, duration: r.duration, geometry: geom, steps };
+        const { distance, duration, geometry, steps } = parseOsrmRoute(r);
+        return { distance, duration, geometry, steps };
       });
       // с alternatives=true отдаём все варианты, иначе — только лучший (как раньше)
       if (opts.alternatives) return parsed;
@@ -602,17 +628,20 @@ export function NavigationProvider({ children }) {
 
   const reroute = useCallback(async (from, to, profile = 'driving') => {
     const rd = routeRef.current;
+    const seq = routeSeqRef.current; // защита от позднего ответа (D8, сценарий 15)
     const newRoute = await rerouteInternal(from, to, rd?.waypoints, profile);
-    if (newRoute) {
-      routeRef.current = { ...newRoute, from, to, mode: rd?.mode || profile, waypoints: rd?.waypoints };
-      setRouteData(routeRef.current);
-      stepIndexRef.current = 0;
-      routeLenRef.current = computeRouteLength(newRoute.geometry);
-      setAlternativeRoute(null);
-      speak('Маршрут обновлён');
-    }
+    // Маршрут мог смениться, пока ждали ответ: поздний ответ не перезаписывает
+    // более новый маршрут/цель.
+    if (!newRoute || seq !== routeSeqRef.current) return null;
+    routeRef.current = { ...newRoute, from, to, mode: rd?.mode || profile, waypoints: rd?.waypoints };
+    setRouteData(routeRef.current);
+    invalidateRouteState(); // прибытие/прогресс старого маршрута недействительны
+    routeLenRef.current = routeLengthM(newRoute.geometry);
+    setAlternativeRoute(null);
+    persistActiveRoute(routeRef.current);
+    speak('Маршрут обновлён');
     return newRoute;
-  }, [rerouteInternal, speak, computeRouteLength]);
+  }, [rerouteInternal, speak, invalidateRouteState, persistActiveRoute]);
 
   // «Другая дорога»: периодически ищем более быстрый маршрут с текущей позиции до конца.
   // Показываем предложение только если он быстрее текущего остатка заметно (≥45 с).
@@ -622,7 +651,10 @@ export function NavigationProvider({ children }) {
     const pos = positionsRef.current[positionsRef.current.length - 1];
     if (!pos) return;
     const profile = rd.mode === 'walking' ? 'walking' : rd.mode === 'cycling' ? 'cycling' : 'driving';
+    const seq = routeSeqRef.current;
     const routes = await rerouteInternal(pos, rd.to, rd.waypoints, profile, { alternatives: true });
+    // Маршрут сменился, пока ждали — предложение неактуально (сценарий 15).
+    if (seq !== routeSeqRef.current) return;
     if (!Array.isArray(routes) || routes.length < 2) { setAlternativeRoute(null); return; }
     // остаток текущего маршрута в терминах OSRM (оба числа «сырые», сравнение честное)
     const remaining = rd.duration ? rd.duration * (1 - routeProgressRef.current) : 0;
@@ -649,18 +681,13 @@ export function NavigationProvider({ children }) {
     };
     routeRef.current = enriched;
     setRouteData(enriched);
-    stepIndexRef.current = 0;
-    annKeyRef.current = { idx: -1, pre: false, final: false };
-    routeLenRef.current = computeRouteLength(enriched.geometry);
-    setRouteProgress(0);
-    routeProgressRef.current = 0;
-    setIsOffRoute(false);
-    offRouteStartRef.current = null;
+    invalidateRouteState(); // прибытие/прогресс старого маршрута недействительны (сценарий 13)
+    routeLenRef.current = routeLengthM(enriched.geometry);
     setAlternativeRoute(null);
     initStatsFromRoute(enriched);
-    try { localStorage.setItem('karta_nav_active', JSON.stringify(enriched)); } catch {}
+    persistActiveRoute(enriched);
     speak('Переключаемся на другую дорогу');
-  }, [computeRouteLength, initStatsFromRoute, speak]);
+  }, [invalidateRouteState, initStatsFromRoute, persistActiveRoute, speak]);
 
   const dismissAlternative = useCallback(() => setAlternativeRoute(null), []);
 
@@ -679,12 +706,9 @@ export function NavigationProvider({ children }) {
     routeRef.current = null;
     setNextInstruction(null);
     setUserPosition(null);
-    setRouteProgress(0);
-    setIsOffRoute(false);
+    invalidateRouteState();
     setIsRerouting(false);
-    setHasArrived(false);
-    setSnappedPosition(null);
-  }, []);
+  }, [invalidateRouteState]);
 
   useEffect(() => {
     try {
@@ -695,14 +719,14 @@ export function NavigationProvider({ children }) {
           routeRef.current = r;
           setRouteData(r);
           setIsActive(true);
-          routeLenRef.current = computeRouteLength(r.geometry);
+          routeLenRef.current = routeLengthM(r.geometry);
           initStatsFromRoute(r);
           startGps();
         }
       }
     } catch {}
     return () => { clearGps(); try { window.speechSynthesis.cancel(); } catch {} };
-  }, [clearGps, startGps, computeRouteLength, initStatsFromRoute]);
+  }, [clearGps, startGps, initStatsFromRoute]);
 
   const value = useMemo(() => ({
     isActive, isPaused,

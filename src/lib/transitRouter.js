@@ -5,6 +5,7 @@
  *   - маршруты с одной пересадкой
  *   - возвращает сегменты: пешком → автобус/маршрутка → пешком
  */
+import { parseOsrmRoute } from './osrmClient';
 
 const OSRM = {
   driving: 'https://router.project-osrm.org/route/v1/driving',
@@ -73,24 +74,10 @@ async function fetchOsrm(profile, points, signal) {
     if (!resp.ok) return null;
     const data = await resp.json();
     if (!data.routes?.length) return null;
-    const r = data.routes[0];
-    const geometry = r.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-    const steps = [];
-    let cursor = 0;
-    (r.legs || []).forEach((leg) => {
-      (leg.steps || []).forEach((step) => {
-        steps.push({
-          instruction: step.maneuver?.type || '',
-          modifier: step.maneuver?.modifier || '',
-          name: step.name || '',
-          distance: step.distance || 0,
-          duration: step.duration || 0,
-          start: geometry[cursor] || geometry[0] || [0, 0],
-        });
-        cursor = Math.min(cursor + 1, geometry.length - 1);
-      });
-    });
-    return { distance: r.distance, duration: r.duration, geometry, steps };
+    // Общий разбор OSRM (старты шагов = точки манёвров) — единая точка входа,
+    // чтобы не дублировать разбор и не плодить баг «start = geometry[i]».
+    const { distance, duration, geometry, steps } = parseOsrmRoute(data.routes[0]);
+    return { distance, duration, geometry, steps };
   } catch {
     return null;
   }

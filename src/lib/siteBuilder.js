@@ -187,8 +187,16 @@ function sectionHtml(sec, biz, theme, cfg, appOrigin = '') {
       return wrap(`${t}${d}${pic || '<p class="muted">📷 Фото скоро появятся</p>'}`);
     case 'reviews':
       return wrap(`${t || '<h2>Отзывы</h2>'}${d || '<p class="muted">⭐ Оценки покупателей Karta-AD</p>'}`);
-    case 'map':
-      return wrap(`${t || '<h2>Как нас найти</h2>'}${biz.address ? `<p>📍 ${esc(biz.address)}</p>` : ''}${d}<p><a class="btn" href="https://www.openstreetmap.org/search?query=${encodeURIComponent(biz.address || biz.name)}" target="_blank" rel="noreferrer">Открыть карту</a></p>`);
+    case 'map': {
+      // Кнопка ведёт в карту Karta-AD с адресом бизнеса (новая вкладка —
+      // сайт показывается в sandbox-iframe с origin null, как у модуля такси);
+      // без appOrigin (сборка вне контекста приложения) — запасной openstreetmap.
+      const q = encodeURIComponent(biz.address || biz.name || '');
+      const href = appOrigin
+        ? `${esc(appOrigin)}/?q=${q}`
+        : `https://www.openstreetmap.org/search?query=${q}`;
+      return wrap(`${t || '<h2>Как нас найти</h2>'}${biz.address ? `<p>📍 ${esc(biz.address)}</p>` : ''}${d}<p><a class="btn" href="${href}" target="_blank" rel="noreferrer">Открыть карту</a></p>`);
+    }
     case 'contact': {
       const wa = biz.phone ? biz.phone.replace(/\D/g, '').replace(/^8(?=\d{10}$)/, '7') : '';
       return wrap(`<div id="contact">${t || '<h2>Контакты</h2>'}${biz.phone ? `<p>📞 <a href="tel:${esc(biz.phone)}">${esc(biz.phone)}</a></p>` : ''}${wa ? `<p><a class="btn" href="https://wa.me/${esc(wa)}" target="_blank" rel="noreferrer">💬 WhatsApp</a></p>` : ''}${biz.address ? `<p>📍 ${esc(biz.address)}</p>` : ''}${d}${btns}</div>`);

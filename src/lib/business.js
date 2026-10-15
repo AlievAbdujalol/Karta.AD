@@ -32,6 +32,34 @@ export function nextStatuses(status) {
   return ORDER_FLOW[status] || [];
 }
 
+// ─── Экран «Доставка» (бизнес) ───────────────────────────────
+// Видимые статусы — весь конвейер заказа, кроме отмены/возврата.
+// Раньше фильтр был белым списком из 4 статусов (pending/ready/picked_up/
+// in_transit): заказы в confirmed/preparing «исчезали» с экрана, а таб
+// «Доставлен» не мог совпасть ни с одним заказом (delivered отбрасывался
+// при загрузке) — экран выглядел пустым при наличии заказов.
+export const DELIVERY_VISIBLE_STATUSES = [
+  'pending', 'confirmed', 'payment_pending', 'paid', 'preparing',
+  'ready', 'picked_up', 'in_transit', 'delivered', 'completed',
+];
+
+/** Активные (не завершённые) — для счётчика «N активных» в шапке. */
+export const DELIVERY_ACTIVE_STATUSES = [
+  'pending', 'confirmed', 'payment_pending', 'paid', 'preparing',
+  'ready', 'picked_up', 'in_transit',
+];
+
+/** Тип доставки заказа: из поля, иначе по наличию адреса (как в UI). */
+export function deliveryTypeOf(order) {
+  return order?.delivery_type || (order?.delivery_address ? 'delivery' : 'pickup');
+}
+
+/** Показывать ли заказ на экране «Доставка» (самовывоз и отмены — нет). */
+export function isDeliveryOrderVisible(order) {
+  if (!order || !DELIVERY_VISIBLE_STATUSES.includes(order.status)) return false;
+  return deliveryTypeOf(order) !== 'pickup';
+}
+
 // ─── Админ-конвейер: 4 понятных этапа поверх полного ORDER_FLOW ──
 // pending → confirmed → in_transit («в доставке») → delivered (+ cancelled)
 export const ADMIN_FLOW = {
