@@ -218,17 +218,9 @@ export default function TaxiDriverDashboard() {
           audio.play().catch(() => {});
         } catch {}
         try { navigator.vibrate?.([200, 100, 200]); } catch {}
-        supabase.from('notifications').insert({
-          user_id: user.id,
-          title: `Новый заказ · ${formatTJS(row.price)} TJS`,
-          body: `${row.pickup_address || 'Забор'} -> ${row.dropoff_address || ''}`,
-          type: 'taxi_new_order',
-        }).then(({ error }) => { if (error) console.error('[TaxiDriver] notification failed:', error); }).catch(() => {});
-        addLocalNotification({
-          title: `Новый заказ! ${formatTJS(row.price)} TJS`,
-          body: `${row.pickup_address || 'Забор'} -> ${row.dropoff_address || ''}`,
-          type: 'taxi_new_order',
-        });
+        // Строку taxi_new_order создаёт серверный триггер taxi_notify_new_order
+        // (работает и при закрытом приложении → push). Клиентская вставка тут
+        // дублировала бы запись в колоколе и push.
       })
       .subscribe();
 

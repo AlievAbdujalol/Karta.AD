@@ -92,3 +92,56 @@ self.addEventListener('fetch', (e) => {
 
   e.respondWith(staleWhileRevalidate(request, CACHE));
 });
+
+// ─── Web Push ──────────────────────────────────────────────────────────────
+// Сервер шлёт push на КАЖДОЕ уведомление из notifications (воронок) плюс на
+// серверные события такси/чата. Если приложение на переднем плане (вкладка
+// видима и в фокусе), in-app тост уже показывает событие — OS-уведомление
+// подавляем, чтобы не дублировать. Иначе (фон/закрыто) — показываем.
+self.addEventListener('push', (e) => {
+  let data = {};
+  try {
+    data = e.data ? e.data.json() : {};
+  } catch {
+    data = { title: 'Karta-AD' };
+  }
+  const { title, body, tag, icon, badge, url, data: extra } = data;
+
+  e.waitUntil(
+    (async () => {
+      const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const foreground = wins.some((w) => w.visibilityState === 'visible' && w.focused);
+      if (foreground) return;
+
+      await self.registration.showNotification(title || 'Karta-AD', {
+        body: body || '',
+        icon: icon || '/logo.png',
+        badge: badge || '/icon-192.png',
+        tag: tag || undefined,
+        data: { url: url || '/', ...(extra || {}) },
+      });
+    })(),
+  );
+});
+
+// Клик по уведомлению: фокусируем уже открытую вкладку (и переходим к целевой
+// странице), иначе открываем новую.
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const target = (e.notification.data && e.notification.data.url) || '/';
+  e.waitUntil(
+    (async () => {
+      const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const w of wins) {
+        if ('focus' in w) {
+          await w.focus();
+          if ('navigate' in w) {
+            try { await w.navigate(target); } catch { /* ignore */ }
+          }
+          return;
+        }
+      }
+      await self.clients.openWindow(target);
+    })(),
+  );
+});

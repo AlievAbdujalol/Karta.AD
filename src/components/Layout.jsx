@@ -5,6 +5,7 @@ import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useTrip } from '@/lib/TripContext';
 import { useLanguage, LANG_KEY } from '@/lib/useLanguage';
 import { useTaxiIncoming } from '@/hooks/useTaxiIncoming';
+import { usePushSubscription } from '@/hooks/usePushSubscription';
 
 export default function Layout() {
   const { user } = /** @type {any} */ (useCurrentUser());
@@ -14,6 +15,7 @@ export default function Layout() {
   const { isTracking, gpsInfo, activeRoute, endTrip } = useTrip();
   const { t, setLang } = useLanguage();
   useTaxiIncoming(user);
+  usePushSubscription(user);
 
   useEffect(() => {
     if (user?.language && !localStorage.getItem(LANG_KEY)) {
