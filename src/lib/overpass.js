@@ -1,24 +1,38 @@
-// Единый список зеркал Overpass для всех потребителей (карта, остановки,
-// ИИ-поиск). Каждый запрос идёт сверху вниз, пока зеркало не ответит.
-// Порядок по замерам из браузера на localhost (08.10.2026):
-//  1. overpass-api.de — единственный живой: 200 за ~800 мс;
-//  2. maps.mail.ru — отвечает с CORS (бывает 504 при перегрузке);
-//  3-4. kumi/private.coffee — сейчас отдают 500/CORS-отказ, но быстро;
-//  5. openstreetmap.ru — таймаут ~7 с, поэтому строго последним.
-// Пока первое зеркало отвечает, консоль браузера чистая — ошибки сети
-// логируются браузером на каждом упавшем запросе, выкинуть их нельзя.
-export const OVERPASS_URLS = [
-  'https://overpass-api.de/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
-  'https://overpass.openstreetmap.ru/api/interpreter',
-];
+// Зеркала Overpass — единый источник для клиента и серверного прокси:
+// api/overpass.js подключает тот же overpassMirrors.json (require), так что
+// списки не расходятся. Порядок — живые замеры 16.10.2026 (POST+Origin):
+//  1. overpass-api.de — официальное (тест на позицию); в тот день отдавало
+//     502 на нашей сети, как и в инциденте с картой — за его ошибки теперь
+//     отвечает прокси, браузер их не видит;
+//  2. overpass.osm.ch — 200 за ~0.6 с, CORS `*`;
+//  3. overpass.openstreetmap.fr — 200 за ~1 с, CORS `*`;
+//  4. maps.mail.ru — CORS со звёздочкой, бывает 504 при перегрузке;
+//  5-6. kumi/private.coffee — быстрый 500 в тот день (дешёвый фейл);
+//  7. openstreetmap.ru — таймаут ~7 с, поэтому строго последним.
+// В проде первым эндпоинтом идёт свой /api/overpass (см. overpassEndpoints):
+// один same-origin запрос вместо серии кросс-доменных падений в консоли.
+import OVERPASS_MIRRORS from './overpassMirrors.json';
+
+export const OVERPASS_URLS = OVERPASS_MIRRORS;
+export const OVERPASS_PROXY_PATH = '/api/overpass';
+
+/**
+ * Цепочка эндпоинтов для запросов Overpass.
+ * Прод: первым — свой прокси (нет CORS, перебор зеркал делает сервер),
+ * прямые зеркала остаются запасным путём, если прокси упал.
+ * Dev: Vite-сервер /api-функции не поднимает — только прямые зеркала.
+ * @param {boolean} [prod] подменяемый параметр для тестов
+ * @returns {string[]}
+ */
+export function overpassEndpoints(prod = import.meta.env?.PROD) {
+  return prod ? [OVERPASS_PROXY_PATH, ...OVERPASS_URLS] : OVERPASS_URLS;
+}
 
 export async function fetchOverpass(query, opts = {}) {
-  const { urls = OVERPASS_URLS, timeout = 15000, signal } = opts;
+  const { urls, timeout = 15000, signal } = opts;
+  const endpoints = urls || overpassEndpoints();
   let lastErr = null;
-  for (const url of urls) {
+  for (const url of endpoints) {
     try {
       const ctrl = signal ? null : new AbortController();
       const sig = signal || (ctrl ? AbortSignal.timeout(timeout) : undefined);

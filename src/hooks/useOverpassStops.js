@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMap } from 'react-leaflet';
-import { OVERPASS_URLS } from '../lib/overpass';
+import { overpassEndpoints } from '../lib/overpass';
 
 const LS_KEY = 'osm_stops_cache_v1';
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -86,7 +86,7 @@ export function useOverpassStops({ enabled = true } = {}) {
       const b = clampBounds(bounds);
       const query = buildQuery(b.south, b.west, b.north, b.east);
       let data = null;
-      for (const url of OVERPASS_URLS) {
+      for (const url of overpassEndpoints()) {
         try {
           const resp = await fetch(`${url}?data=${encodeURIComponent(query)}`, {
             method: 'GET',

@@ -8,7 +8,7 @@
  *  6. Озвучка текста
  */
 import { geminiGenerate, geminiJSON, isGeminiConfigured, parseSearchIntent } from '@/lib/gemini';
-import { OVERPASS_URLS } from '@/lib/overpass';
+import { overpassEndpoints } from '@/lib/overpass';
 
 // ─── геокодинг ─────────────────────────────────────────────────────────
 
@@ -46,7 +46,7 @@ export async function searchNearbyCategory(text, center, radius = 3000) {
   const cat = detectCategory(text);
   if (!cat || !center || center.lat == null) return null;
   const query = `[out:json][timeout:10];(${cat.clause}(around:${radius},${center.lat},${center.lng}););out body 5;`;
-  for (const base of OVERPASS_URLS) {
+  for (const base of overpassEndpoints()) {
     try {
       const resp = await fetch(`${base}?data=${encodeURIComponent(query)}`, {
         headers: { Accept: 'application/json' },
