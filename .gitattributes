@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+# sh-скрипты хуков и SQL-миграции обязаны быть с LF (иначе sh ломается на CRLF)
+.githooks/** text eol=lf
+*.sh text eol=lf

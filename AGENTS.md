@@ -53,6 +53,15 @@ Two separate systems:
 
 `unused-imports/no-unused-imports` is error; prefix intentionally unused vars/args with `_`. `react/prop-types` off.
 
+## Git-коммиты
+
+Conventional Commits, проверяет hook `.githooks/commit-msg` (включается автоматически при `npm install` через `prepare`; вручную — `npm run hooks:install`).
+
+- Формат: `тип[(область)]: описание`. Типы: `feat fix chore refactor test docs perf ci build style revert security`.
+- Примеры: `feat(taxi): заказ водителю из попапа`, `fix(ai): кнопка чата не перекрывает панель`, `security(ai-proxy): платные модели только с серверного разрешения`.
+- Неконвенциональные сообщения (напр. авто-коммиты `0.0.0.0.15.x`) hook нормализует в `chore:` (тесты/доки/CI — по индексированным файлам); неизвестный тип (`bugfix:`) отклоняет. Строгий режим: `KARTA_STRICT_COMMITS=1`.
+- Перед работой проверяй `git status`: не оставляй незакоммиченное — авто-коммиты внешних инструментов сметают всё грязное.
+
 ## Docs
 
 - `SUPABASE.md` — schema/RLS/realtime details.

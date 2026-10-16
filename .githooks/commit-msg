@@ -1,0 +1,65 @@
+#!/bin/sh
+# commit-msg hook — Conventional Commits для Karta.AD.
+# Подключается через `git config core.hooksPath .githooks`
+# (автоматически при npm install — скрипт prepare в package.json).
+#
+# Поведение:
+#   1. Уже конвенциональное сообщение (feat:/fix:/chore:/…) — пропускаем.
+#   2. Служебные сообщения git (Merge …, Revert …) — пропускаем.
+#   3. Тип похож на конвенциональный, но неизвестен — отклоняем с подсказкой.
+#   4. Всё остальное (например, авто-сообщения вида "0.0.0.0.15.07" от
+#      внешней автоматизации) — нормализуем: подбираем тип по индексированным
+#      файлам и создаём корректное сообщение, не теряя исходный текст.
+#      Строгий режим (отклонять вместо нормализации):
+#      KARTA_STRICT_COMMITS=1 git commit …
+
+MSG_FILE="$1"
+TYPES="feat|fix|chore|refactor|test|docs|perf|ci|build|style|revert|security"
+
+first=$(head -n1 "$MSG_FILE" | tr -d '\r')
+
+case "$first" in
+  "Merge "*|"Revert "*|"fixup!"*|"squash!"*)
+    exit 0 ;;
+esac
+
+if printf '%s' "$first" | grep -Eq "^($TYPES)(\([a-zA-Z0-9-]+\))?!?: .+"; then
+  exit 0
+fi
+
+if printf '%s' "$first" | grep -Eq '^[a-zA-Z]+(\([a-zA-Z0-9-]+\))?!?: '; then
+  echo "commit-msg: неизвестный тип коммита." >&2
+  echo "  Разрешены: feat fix chore refactor test docs perf ci build style revert security" >&2
+  echo "  Примеры: feat(taxi): заказ водителю из попапа" >&2
+  echo "           fix(ai): кнопка чата не перекрывает панель навигации" >&2
+  exit 1
+fi
+
+if [ "${KARTA_STRICT_COMMITS:-0}" = "1" ]; then
+  echo "commit-msg: сообщение не соответствует Conventional Commits: '$first'" >&2
+  exit 1
+fi
+
+# Автонормализация: тип по индексированным файлам (по умолчанию chore).
+type="chore"
+staged=$(git diff --cached --name-only 2>/dev/null)
+if [ -n "$staged" ]; then
+  if printf '%s\n' "$staged" | grep -Eq '(^|/)(__tests__|test|tests)/|\.test\.|\.spec\.'; then
+    type="test"
+  elif printf '%s\n' "$staged" | grep -Eq '\.md$'; then
+    type="docs"
+  elif printf '%s\n' "$staged" | grep -Eq '^\.github/|(^|/)[^/]+\.(yml|yaml)$'; then
+    type="ci"
+  fi
+fi
+
+rest=$(tail -n +2 "$MSG_FILE")
+{
+  printf '%s: %s\n' "$type" "$first"
+  if [ -n "$rest" ]; then
+    printf '%s\n' "$rest"
+  fi
+} > "$MSG_FILE"
+
+echo "commit-msg: сообщение нормализовано → '$type: $first'" >&2
+exit 0

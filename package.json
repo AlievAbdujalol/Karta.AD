@@ -10,7 +10,9 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit -p ./tsconfig.json",
     "preview": "vite preview",
-    "test": "vitest"
+    "test": "vitest",
+    "prepare": "git config core.hooksPath .githooks || exit 0",
+    "hooks:install": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
