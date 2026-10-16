@@ -10,7 +10,7 @@ import { loadUserKeys } from '@/lib/userKeys';
 
 const WELCOME_MSG = { role: 'assistant', text: 'Привет! Я помощник Karta-AD. Спроси про маршруты, остановки или такси — помогу.' };
 
-export default function AiChat({ cityName, mapContext = {} }) {
+export default function AiChat({ cityName, mapContext = {}, navMode = false }) {
   const { user } = useCurrentUser();
   const navigate = useNavigate();
   // Центр для поиска мест: позиция пользователя → центр карты → дефолт
@@ -268,13 +268,13 @@ export default function AiChat({ cityName, mapContext = {} }) {
         onClick={() => { try { navigator.vibrate?.(15); } catch {} if (open) closePanel(); else setOpen(true); }}
         aria-label="ИИ-помощник"
         title="ИИ-помощник"
-        className="absolute left-3 bottom-[104px] z-[500] w-11 h-11 rounded-2xl bg-gradient-to-tr from-violet-600 to-fuchsia-500 hover:from-violet-500 hover:to-fuchsia-400 text-white shadow-xl shadow-violet-500/30 flex items-center justify-center active:scale-95 transition-all"
+        className={`absolute left-3 ${navMode ? 'bottom-[136px]' : 'bottom-[104px]'} z-[500] w-11 h-11 rounded-2xl bg-gradient-to-tr from-violet-600 to-fuchsia-500 hover:from-violet-500 hover:to-fuchsia-400 text-white shadow-xl shadow-violet-500/30 flex items-center justify-center active:scale-95 transition-all`}
       >
         {open ? <X size={19} /> : <Sparkles size={19} />}
       </button>
 
       {open && (
-        <div className="absolute left-3 right-3 sm:right-auto sm:w-[370px] bottom-[156px] z-[560] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col max-h-[55dvh]">
+        <div className={`absolute left-3 right-3 sm:right-auto sm:w-[370px] ${navMode ? 'bottom-[188px]' : 'bottom-[156px]'} z-[560] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col max-h-[55dvh]`}>
 
           {/* Header */}
           <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-violet-600 via-violet-600/90 to-fuchsia-600 text-white">

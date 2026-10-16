@@ -1,0 +1,682 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for Karta.AD/src/lib/countryData.js</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../../prettify.css" />
+    <link rel="stylesheet" href="../../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../../index.html">All files</a> / <a href="index.html">Karta.AD/src/lib</a> countryData.js</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>0/199</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>0/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>0/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>0/199</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line low'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a>
+<a name='L119'></a><a href='#L119'>119</a>
+<a name='L120'></a><a href='#L120'>120</a>
+<a name='L121'></a><a href='#L121'>121</a>
+<a name='L122'></a><a href='#L122'>122</a>
+<a name='L123'></a><a href='#L123'>123</a>
+<a name='L124'></a><a href='#L124'>124</a>
+<a name='L125'></a><a href='#L125'>125</a>
+<a name='L126'></a><a href='#L126'>126</a>
+<a name='L127'></a><a href='#L127'>127</a>
+<a name='L128'></a><a href='#L128'>128</a>
+<a name='L129'></a><a href='#L129'>129</a>
+<a name='L130'></a><a href='#L130'>130</a>
+<a name='L131'></a><a href='#L131'>131</a>
+<a name='L132'></a><a href='#L132'>132</a>
+<a name='L133'></a><a href='#L133'>133</a>
+<a name='L134'></a><a href='#L134'>134</a>
+<a name='L135'></a><a href='#L135'>135</a>
+<a name='L136'></a><a href='#L136'>136</a>
+<a name='L137'></a><a href='#L137'>137</a>
+<a name='L138'></a><a href='#L138'>138</a>
+<a name='L139'></a><a href='#L139'>139</a>
+<a name='L140'></a><a href='#L140'>140</a>
+<a name='L141'></a><a href='#L141'>141</a>
+<a name='L142'></a><a href='#L142'>142</a>
+<a name='L143'></a><a href='#L143'>143</a>
+<a name='L144'></a><a href='#L144'>144</a>
+<a name='L145'></a><a href='#L145'>145</a>
+<a name='L146'></a><a href='#L146'>146</a>
+<a name='L147'></a><a href='#L147'>147</a>
+<a name='L148'></a><a href='#L148'>148</a>
+<a name='L149'></a><a href='#L149'>149</a>
+<a name='L150'></a><a href='#L150'>150</a>
+<a name='L151'></a><a href='#L151'>151</a>
+<a name='L152'></a><a href='#L152'>152</a>
+<a name='L153'></a><a href='#L153'>153</a>
+<a name='L154'></a><a href='#L154'>154</a>
+<a name='L155'></a><a href='#L155'>155</a>
+<a name='L156'></a><a href='#L156'>156</a>
+<a name='L157'></a><a href='#L157'>157</a>
+<a name='L158'></a><a href='#L158'>158</a>
+<a name='L159'></a><a href='#L159'>159</a>
+<a name='L160'></a><a href='#L160'>160</a>
+<a name='L161'></a><a href='#L161'>161</a>
+<a name='L162'></a><a href='#L162'>162</a>
+<a name='L163'></a><a href='#L163'>163</a>
+<a name='L164'></a><a href='#L164'>164</a>
+<a name='L165'></a><a href='#L165'>165</a>
+<a name='L166'></a><a href='#L166'>166</a>
+<a name='L167'></a><a href='#L167'>167</a>
+<a name='L168'></a><a href='#L168'>168</a>
+<a name='L169'></a><a href='#L169'>169</a>
+<a name='L170'></a><a href='#L170'>170</a>
+<a name='L171'></a><a href='#L171'>171</a>
+<a name='L172'></a><a href='#L172'>172</a>
+<a name='L173'></a><a href='#L173'>173</a>
+<a name='L174'></a><a href='#L174'>174</a>
+<a name='L175'></a><a href='#L175'>175</a>
+<a name='L176'></a><a href='#L176'>176</a>
+<a name='L177'></a><a href='#L177'>177</a>
+<a name='L178'></a><a href='#L178'>178</a>
+<a name='L179'></a><a href='#L179'>179</a>
+<a name='L180'></a><a href='#L180'>180</a>
+<a name='L181'></a><a href='#L181'>181</a>
+<a name='L182'></a><a href='#L182'>182</a>
+<a name='L183'></a><a href='#L183'>183</a>
+<a name='L184'></a><a href='#L184'>184</a>
+<a name='L185'></a><a href='#L185'>185</a>
+<a name='L186'></a><a href='#L186'>186</a>
+<a name='L187'></a><a href='#L187'>187</a>
+<a name='L188'></a><a href='#L188'>188</a>
+<a name='L189'></a><a href='#L189'>189</a>
+<a name='L190'></a><a href='#L190'>190</a>
+<a name='L191'></a><a href='#L191'>191</a>
+<a name='L192'></a><a href='#L192'>192</a>
+<a name='L193'></a><a href='#L193'>193</a>
+<a name='L194'></a><a href='#L194'>194</a>
+<a name='L195'></a><a href='#L195'>195</a>
+<a name='L196'></a><a href='#L196'>196</a>
+<a name='L197'></a><a href='#L197'>197</a>
+<a name='L198'></a><a href='#L198'>198</a>
+<a name='L199'></a><a href='#L199'>199</a>
+<a name='L200'></a><a href='#L200'>200</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js"><span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" ><span class="branch-0 cbranch-no" title="branch not covered" >// Координаты столиц для центрирования карты при выборе страны</span></span></span>
+<span class="cstat-no" title="statement not covered" >export const COUNTRY_DATA = {</span>
+<span class="cstat-no" title="statement not covered" >  'Австралия': { flag: '🇦🇺', lat: -35.2809, lng: 149.1300 },</span>
+<span class="cstat-no" title="statement not covered" >  'Австрия': { flag: '🇦🇹', lat: 48.2082, lng: 16.3738 },</span>
+<span class="cstat-no" title="statement not covered" >  'Азербайджан': { flag: '🇦🇿', lat: 40.4093, lng: 49.8671 },</span>
+<span class="cstat-no" title="statement not covered" >  'Албания': { flag: '🇦🇱', lat: 41.3275, lng: 19.8187 },</span>
+<span class="cstat-no" title="statement not covered" >  'Алжир': { flag: '🇩🇿', lat: 36.7538, lng: 3.0588 },</span>
+<span class="cstat-no" title="statement not covered" >  'Ангола': { flag: '🇦🇴', lat: -8.8399, lng: 13.2894 },</span>
+<span class="cstat-no" title="statement not covered" >  'Андорра': { flag: '🇦🇩', lat: 42.5063, lng: 1.5218 },</span>
+<span class="cstat-no" title="statement not covered" >  'Аргентина': { flag: '🇦🇷', lat: -34.6037, lng: -58.3816 },</span>
+<span class="cstat-no" title="statement not covered" >  'Армения': { flag: '🇦🇲', lat: 40.1792, lng: 44.4991 },</span>
+<span class="cstat-no" title="statement not covered" >  'Афганистан': { flag: '🇦🇫', lat: 34.5553, lng: 69.2075 },</span>
+<span class="cstat-no" title="statement not covered" >  'Багамы': { flag: '🇧🇸', lat: 25.0343, lng: -77.3963 },</span>
+<span class="cstat-no" title="statement not covered" >  'Бангладеш': { flag: '🇧🇩', lat: 23.8103, lng: 90.4125 },</span>
+<span class="cstat-no" title="statement not covered" >  'Барбадос': { flag: '🇧🇧', lat: 13.1132, lng: -59.5988 },</span>
+<span class="cstat-no" title="statement not covered" >  'Бахрейн': { flag: '🇧🇭', lat: 26.2285, lng: 50.5860 },</span>
+<span class="cstat-no" title="statement not covered" >  'Беларусь': { flag: '🇧🇾', lat: 53.9045, lng: 27.5615 },</span>
+<span class="cstat-no" title="statement not covered" >  'Белиз': { flag: '🇧🇿', lat: 17.2510, lng: -88.7590 },</span>
+<span class="cstat-no" title="statement not covered" >  'Бельгия': { flag: '🇧🇪', lat: 50.8503, lng: 4.3517 },</span>
+<span class="cstat-no" title="statement not covered" >  'Бенин': { flag: '🇧🇯', lat: 6.3703, lng: 2.3912 },</span>
+<span class="cstat-no" title="statement not covered" >  'Болгария': { flag: '🇧🇬', lat: 42.6977, lng: 23.3219 },</span>
+<span class="cstat-no" title="statement not covered" >  'Боливия': { flag: '🇧🇴', lat: -16.5000, lng: -68.1500 },</span>
+<span class="cstat-no" title="statement not covered" >  'Босния и Герцеговина': { flag: '🇧🇦', lat: 43.8563, lng: 18.4131 },</span>
+<span class="cstat-no" title="statement not covered" >  'Ботсвана': { flag: '🇧🇼', lat: -24.6282, lng: 25.9231 },</span>
+<span class="cstat-no" title="statement not covered" >  'Бразилия': { flag: '🇧🇷', lat: -15.7939, lng: -47.8828 },</span>
+<span class="cstat-no" title="statement not covered" >  'Бруней': { flag: '🇧🇳', lat: 4.9031, lng: 114.9398 },</span>
+<span class="cstat-no" title="statement not covered" >  'Буркина-Фасо': { flag: '🇧🇫', lat: 12.3685, lng: -1.5277 },</span>
+<span class="cstat-no" title="statement not covered" >  'Бурунди': { flag: '🇧🇮', lat: -3.3818, lng: 29.3644 },</span>
+<span class="cstat-no" title="statement not covered" >  'Бутан': { flag: '🇧🇹', lat: 27.4712, lng: 89.6393 },</span>
+<span class="cstat-no" title="statement not covered" >  'Вануату': { flag: '🇻🇺', lat: -17.7333, lng: 168.3273 },</span>
+<span class="cstat-no" title="statement not covered" >  'Ватикан': { flag: '🇻🇦', lat: 41.9029, lng: 12.4534 },</span>
+<span class="cstat-no" title="statement not covered" >  'Великобритания': { flag: '🇬🇧', lat: 51.5074, lng: -0.1278 },</span>
+<span class="cstat-no" title="statement not covered" >  'Венгрия': { flag: '🇭🇺', lat: 47.4979, lng: 19.0402 },</span>
+<span class="cstat-no" title="statement not covered" >  'Венесуэла': { flag: '🇻🇪', lat: 10.4806, lng: -66.9036 },</span>
+<span class="cstat-no" title="statement not covered" >  'Восточный Тимор': { flag: '🇹🇱', lat: -8.5569, lng: 125.5603 },</span>
+<span class="cstat-no" title="statement not covered" >  'Вьетнам': { flag: '🇻🇳', lat: 21.0278, lng: 105.8342 },</span>
+<span class="cstat-no" title="statement not covered" >  'Габон': { flag: '🇬🇦', lat: 0.3901, lng: 9.4544 },</span>
+<span class="cstat-no" title="statement not covered" >  'Гаити': { flag: '🇭🇹', lat: 18.5944, lng: -72.3074 },</span>
+<span class="cstat-no" title="statement not covered" >  'Гайана': { flag: '🇬🇾', lat: 6.8013, lng: -58.1551 },</span>
+<span class="cstat-no" title="statement not covered" >  'Гамбия': { flag: '🇬🇲', lat: 13.4549, lng: -16.5790 },</span>
+<span class="cstat-no" title="statement not covered" >  'Гана': { flag: '🇬🇭', lat: 5.6037, lng: -0.1870 },</span>
+<span class="cstat-no" title="statement not covered" >  'Гватемала': { flag: '🇬🇹', lat: 14.6349, lng: -90.5069 },</span>
+<span class="cstat-no" title="statement not covered" >  'Гвинея': { flag: '🇬🇳', lat: 9.5375, lng: -13.6785 },</span>
+<span class="cstat-no" title="statement not covered" >  'Гвинея-Бисау': { flag: '🇬🇼', lat: 11.8613, lng: -15.5842 },</span>
+<span class="cstat-no" title="statement not covered" >  'Германия': { flag: '🇩🇪', lat: 52.5200, lng: 13.4050 },</span>
+<span class="cstat-no" title="statement not covered" >  'Гондурас': { flag: '🇭🇳', lat: 14.0723, lng: -87.1921 },</span>
+<span class="cstat-no" title="statement not covered" >  'Гренада': { flag: '🇬🇩', lat: 12.0561, lng: -61.7488 },</span>
+<span class="cstat-no" title="statement not covered" >  'Греция': { flag: '🇬🇷', lat: 37.9838, lng: 23.7275 },</span>
+<span class="cstat-no" title="statement not covered" >  'Грузия': { flag: '🇬🇪', lat: 41.7151, lng: 44.8271 },</span>
+<span class="cstat-no" title="statement not covered" >  'Дания': { flag: '🇩🇰', lat: 55.6761, lng: 12.5683 },</span>
+<span class="cstat-no" title="statement not covered" >  'Джибути': { flag: '🇩🇯', lat: 11.5800, lng: 43.1425 },</span>
+<span class="cstat-no" title="statement not covered" >  'Доминика': { flag: '🇩🇲', lat: 15.2993, lng: -61.3880 },</span>
+<span class="cstat-no" title="statement not covered" >  'Доминиканская Республика': { flag: '🇩🇴', lat: 18.4861, lng: -69.9312 },</span>
+<span class="cstat-no" title="statement not covered" >  'Египет': { flag: '🇪🇬', lat: 30.0444, lng: 31.2357 },</span>
+<span class="cstat-no" title="statement not covered" >  'Замбия': { flag: '🇿🇲', lat: -15.4167, lng: 28.2833 },</span>
+<span class="cstat-no" title="statement not covered" >  'Зимбабве': { flag: '🇿🇼', lat: -17.8252, lng: 31.0335 },</span>
+<span class="cstat-no" title="statement not covered" >  'Израиль': { flag: '🇮🇱', lat: 31.7683, lng: 35.2137 },</span>
+<span class="cstat-no" title="statement not covered" >  'Индия': { flag: '🇮🇳', lat: 28.6139, lng: 77.2090 },</span>
+<span class="cstat-no" title="statement not covered" >  'Индонезия': { flag: '🇮🇩', lat: -6.2088, lng: 106.8456 },</span>
+<span class="cstat-no" title="statement not covered" >  'Иордания': { flag: '🇯🇴', lat: 31.9454, lng: 35.9284 },</span>
+<span class="cstat-no" title="statement not covered" >  'Ирак': { flag: '🇮🇶', lat: 33.3128, lng: 44.3615 },</span>
+<span class="cstat-no" title="statement not covered" >  'Иран': { flag: '🇮🇷', lat: 35.6892, lng: 51.3890 },</span>
+<span class="cstat-no" title="statement not covered" >  'Ирландия': { flag: '🇮🇪', lat: 53.3498, lng: -6.2603 },</span>
+<span class="cstat-no" title="statement not covered" >  'Исландия': { flag: '🇮🇸', lat: 64.1466, lng: -21.9426 },</span>
+<span class="cstat-no" title="statement not covered" >  'Испания': { flag: '🇪🇸', lat: 40.4168, lng: -3.7038 },</span>
+<span class="cstat-no" title="statement not covered" >  'Италия': { flag: '🇮🇹', lat: 41.9028, lng: 12.4964 },</span>
+<span class="cstat-no" title="statement not covered" >  'Йемен': { flag: '🇾🇪', lat: 15.3694, lng: 44.1910 },</span>
+<span class="cstat-no" title="statement not covered" >  'Казахстан': { flag: '🇰🇿', lat: 51.1694, lng: 71.4491 },</span>
+<span class="cstat-no" title="statement not covered" >  'Камбоджа': { flag: '🇰🇭', lat: 11.5564, lng: 104.9282 },</span>
+<span class="cstat-no" title="statement not covered" >  'Камерун': { flag: '🇨🇲', lat: 3.8480, lng: 11.5021 },</span>
+<span class="cstat-no" title="statement not covered" >  'Канада': { flag: '🇨🇦', lat: 45.4215, lng: -75.6972 },</span>
+<span class="cstat-no" title="statement not covered" >  'Катар': { flag: '🇶🇦', lat: 25.2854, lng: 51.5310 },</span>
+<span class="cstat-no" title="statement not covered" >  'Кения': { flag: '🇰🇪', lat: -1.2921, lng: 36.8219 },</span>
+<span class="cstat-no" title="statement not covered" >  'Кипр': { flag: '🇨🇾', lat: 35.1731, lng: 33.3650 },</span>
+<span class="cstat-no" title="statement not covered" >  'Кыргызстан': { flag: '🇰🇬', lat: 42.8746, lng: 74.5698 },</span>
+<span class="cstat-no" title="statement not covered" >  'Кирибати': { flag: '🇰🇮', lat: 1.3291, lng: 172.9790 },</span>
+<span class="cstat-no" title="statement not covered" >  'Китай': { flag: '🇨🇳', lat: 39.9042, lng: 116.4074 },</span>
+<span class="cstat-no" title="statement not covered" >  'Колумбия': { flag: '🇨🇴', lat: 4.7110, lng: -74.0721 },</span>
+<span class="cstat-no" title="statement not covered" >  'Коморы': { flag: '🇰🇲', lat: -11.7022, lng: 43.2551 },</span>
+<span class="cstat-no" title="statement not covered" >  'Конго': { flag: '🇨🇬', lat: -4.2634, lng: 15.2429 },</span>
+<span class="cstat-no" title="statement not covered" >  'Коста-Рика': { flag: '🇨🇷', lat: 9.9281, lng: -84.0907 },</span>
+<span class="cstat-no" title="statement not covered" >  'Кот-д\'Ивуар': { flag: '🇨🇮', lat: 5.3172, lng: -4.0332 },</span>
+<span class="cstat-no" title="statement not covered" >  'Куба': { flag: '🇨🇺', lat: 23.1136, lng: -82.3666 },</span>
+<span class="cstat-no" title="statement not covered" >  'Кувейт': { flag: '🇰🇼', lat: 29.3759, lng: 47.9774 },</span>
+<span class="cstat-no" title="statement not covered" >  'Лаос': { flag: '🇱🇦', lat: 17.9757, lng: 102.6331 },</span>
+<span class="cstat-no" title="statement not covered" >  'Латвия': { flag: '🇱🇻', lat: 56.9496, lng: 24.1052 },</span>
+<span class="cstat-no" title="statement not covered" >  'Лесото': { flag: '🇱🇸', lat: -29.3150, lng: 27.4790 },</span>
+<span class="cstat-no" title="statement not covered" >  'Либерия': { flag: '🇱🇷', lat: 6.3005, lng: -10.7969 },</span>
+<span class="cstat-no" title="statement not covered" >  'Ливан': { flag: '🇱🇧', lat: 33.8938, lng: 35.5018 },</span>
+<span class="cstat-no" title="statement not covered" >  'Ливия': { flag: '🇱🇾', lat: 32.8872, lng: 13.1913 },</span>
+<span class="cstat-no" title="statement not covered" >  'Литва': { flag: '🇱🇹', lat: 54.6872, lng: 25.2797 },</span>
+<span class="cstat-no" title="statement not covered" >  'Лихтенштейн': { flag: '🇱🇮', lat: 47.1410, lng: 9.5215 },</span>
+<span class="cstat-no" title="statement not covered" >  'Люксембург': { flag: '🇱🇺', lat: 49.6117, lng: 6.1300 },</span>
+<span class="cstat-no" title="statement not covered" >  'Маврикий': { flag: '🇲🇺', lat: -20.1609, lng: 57.5012 },</span>
+<span class="cstat-no" title="statement not covered" >  'Мавритания': { flag: '🇲🇷', lat: 18.0787, lng: -15.9740 },</span>
+<span class="cstat-no" title="statement not covered" >  'Мадагаскар': { flag: '🇲🇬', lat: -18.8792, lng: 47.5079 },</span>
+<span class="cstat-no" title="statement not covered" >  'Малави': { flag: '🇲🇼', lat: -13.9626, lng: 33.7741 },</span>
+<span class="cstat-no" title="statement not covered" >  'Малайзия': { flag: '🇲🇾', lat: 3.1390, lng: 101.6869 },</span>
+<span class="cstat-no" title="statement not covered" >  'Мали': { flag: '🇲🇱', lat: 12.6493, lng: -8.0003 },</span>
+<span class="cstat-no" title="statement not covered" >  'Мальдивы': { flag: '🇲🇻', lat: 4.1755, lng: 73.5093 },</span>
+<span class="cstat-no" title="statement not covered" >  'Мальта': { flag: '🇲🇹', lat: 35.8974, lng: 14.5127 },</span>
+<span class="cstat-no" title="statement not covered" >  'Марокко': { flag: '🇲🇦', lat: 34.0209, lng: -6.8416 },</span>
+<span class="cstat-no" title="statement not covered" >  'Маршалловы Острова': { flag: '🇲🇭', lat: 7.0916, lng: 171.3801 },</span>
+<span class="cstat-no" title="statement not covered" >  'Мексика': { flag: '🇲🇽', lat: 19.4326, lng: -99.1332 },</span>
+<span class="cstat-no" title="statement not covered" >  'Мозамбик': { flag: '🇲🇿', lat: -25.9692, lng: 32.5732 },</span>
+<span class="cstat-no" title="statement not covered" >  'Молдова': { flag: '🇲🇩', lat: 47.0105, lng: 28.8638 },</span>
+<span class="cstat-no" title="statement not covered" >  'Монако': { flag: '🇲🇨', lat: 43.7384, lng: 7.4246 },</span>
+<span class="cstat-no" title="statement not covered" >  'Монголия': { flag: '🇲🇳', lat: 47.9189, lng: 106.9176 },</span>
+<span class="cstat-no" title="statement not covered" >  'Мьянма': { flag: '🇲🇲', lat: 19.7633, lng: 96.0785 },</span>
+<span class="cstat-no" title="statement not covered" >  'Намибия': { flag: '🇳🇦', lat: -22.5609, lng: 17.0658 },</span>
+<span class="cstat-no" title="statement not covered" >  'Науру': { flag: '🇳🇷', lat: -0.5228, lng: 166.9315 },</span>
+<span class="cstat-no" title="statement not covered" >  'Непал': { flag: '🇳🇵', lat: 27.7172, lng: 85.3240 },</span>
+<span class="cstat-no" title="statement not covered" >  'Нигер': { flag: '🇳🇪', lat: 13.5137, lng: 2.1098 },</span>
+<span class="cstat-no" title="statement not covered" >  'Нигерия': { flag: '🇳🇬', lat: 9.0579, lng: 7.4951 },</span>
+<span class="cstat-no" title="statement not covered" >  'Нидерланды': { flag: '🇳🇱', lat: 52.3676, lng: 4.9041 },</span>
+<span class="cstat-no" title="statement not covered" >  'Никарагуа': { flag: '🇳🇮', lat: 12.1149, lng: -86.2362 },</span>
+<span class="cstat-no" title="statement not covered" >  'Новая Зеландия': { flag: '🇳🇿', lat: -41.2865, lng: 174.7762 },</span>
+<span class="cstat-no" title="statement not covered" >  'Норвегия': { flag: '🇳🇴', lat: 59.9139, lng: 10.7522 },</span>
+<span class="cstat-no" title="statement not covered" >  'ОАЭ': { flag: '🇦🇪', lat: 24.4539, lng: 54.3773 },</span>
+<span class="cstat-no" title="statement not covered" >  'Оман': { flag: '🇴🇲', lat: 23.5880, lng: 58.3829 },</span>
+<span class="cstat-no" title="statement not covered" >  'Пакистан': { flag: '🇵🇰', lat: 33.6844, lng: 73.0479 },</span>
+<span class="cstat-no" title="statement not covered" >  'Палау': { flag: '🇵🇼', lat: 7.3431, lng: 134.4770 },</span>
+<span class="cstat-no" title="statement not covered" >  'Панама': { flag: '🇵🇦', lat: 8.9824, lng: -79.5199 },</span>
+<span class="cstat-no" title="statement not covered" >  'Папуа-Новая Гвинея': { flag: '🇵🇬', lat: -9.4438, lng: 147.1803 },</span>
+<span class="cstat-no" title="statement not covered" >  'Парагвай': { flag: '🇵🇾', lat: -25.2637, lng: -57.5759 },</span>
+<span class="cstat-no" title="statement not covered" >  'Перу': { flag: '🇵🇪', lat: -12.0464, lng: -77.0428 },</span>
+<span class="cstat-no" title="statement not covered" >  'Польша': { flag: '🇵🇱', lat: 52.2297, lng: 21.0122 },</span>
+<span class="cstat-no" title="statement not covered" >  'Португалия': { flag: '🇵🇹', lat: 38.7223, lng: -9.1393 },</span>
+<span class="cstat-no" title="statement not covered" >  'Республика Корея': { flag: '🇰🇷', lat: 37.5665, lng: 126.9780 },</span>
+<span class="cstat-no" title="statement not covered" >  'Россия': { flag: '🇷🇺', lat: 55.7558, lng: 37.6173 },</span>
+<span class="cstat-no" title="statement not covered" >  'Руанда': { flag: '🇷🇼', lat: -1.9441, lng: 30.0619 },</span>
+<span class="cstat-no" title="statement not covered" >  'Румыния': { flag: '🇷🇴', lat: 44.4268, lng: 26.1025 },</span>
+<span class="cstat-no" title="statement not covered" >  'Сальвадор': { flag: '🇸🇻', lat: 13.6929, lng: -89.2182 },</span>
+<span class="cstat-no" title="statement not covered" >  'Самоа': { flag: '🇼🇸', lat: -13.8333, lng: -171.7667 },</span>
+<span class="cstat-no" title="statement not covered" >  'Сан-Марино': { flag: '🇸🇲', lat: 43.9424, lng: 12.4578 },</span>
+<span class="cstat-no" title="statement not covered" >  'Сан-Томе и Принсипи': { flag: '🇸🇹', lat: 0.3390, lng: 6.7330 },</span>
+<span class="cstat-no" title="statement not covered" >  'Саудовская Аравия': { flag: '🇸🇦', lat: 24.7136, lng: 46.6753 },</span>
+<span class="cstat-no" title="statement not covered" >  'Северная Македония': { flag: '🇲🇰', lat: 41.9973, lng: 21.4280 },</span>
+<span class="cstat-no" title="statement not covered" >  'Сейшелы': { flag: '🇸🇨', lat: -4.6191, lng: 55.4515 },</span>
+<span class="cstat-no" title="statement not covered" >  'Сенегал': { flag: '🇸🇳', lat: 14.7167, lng: -17.4677 },</span>
+<span class="cstat-no" title="statement not covered" >  'Сент-Винсент и Гренадины': { flag: '🇻🇨', lat: 13.1561, lng: -61.2247 },</span>
+<span class="cstat-no" title="statement not covered" >  'Сент-Китс и Невис': { flag: '🇰🇳', lat: 17.2967, lng: -62.7170 },</span>
+<span class="cstat-no" title="statement not covered" >  'Сент-Люсия': { flag: '🇱🇨', lat: 13.9094, lng: -60.9789 },</span>
+<span class="cstat-no" title="statement not covered" >  'Сербия': { flag: '🇷🇸', lat: 44.7866, lng: 20.4489 },</span>
+<span class="cstat-no" title="statement not covered" >  'Сингапур': { flag: '🇸🇬', lat: 1.3521, lng: 103.8198 },</span>
+<span class="cstat-no" title="statement not covered" >  'Сирия': { flag: '🇸🇾', lat: 33.5138, lng: 36.2765 },</span>
+<span class="cstat-no" title="statement not covered" >  'Словакия': { flag: '🇸🇰', lat: 48.1486, lng: 17.1077 },</span>
+<span class="cstat-no" title="statement not covered" >  'Словения': { flag: '🇸🇮', lat: 46.0569, lng: 14.5058 },</span>
+<span class="cstat-no" title="statement not covered" >  'Соломоновы Острова': { flag: '🇸🇧', lat: -9.4333, lng: 159.9500 },</span>
+<span class="cstat-no" title="statement not covered" >  'Сомали': { flag: '🇸🇴', lat: 2.0469, lng: 45.3182 },</span>
+<span class="cstat-no" title="statement not covered" >  'Судан': { flag: '🇸🇩', lat: 15.5007, lng: 32.5599 },</span>
+<span class="cstat-no" title="statement not covered" >  'Суринам': { flag: '🇸🇷', lat: 5.8500, lng: -55.1700 },</span>
+<span class="cstat-no" title="statement not covered" >  'США': { flag: '🇺🇸', lat: 38.9072, lng: -77.0369 },</span>
+<span class="cstat-no" title="statement not covered" >  'Сьерра-Леоне': { flag: '🇸🇱', lat: 8.4841, lng: -13.2299 },</span>
+<span class="cstat-no" title="statement not covered" >  'Таджикистан': { flag: '🇹🇯', lat: 38.5598, lng: 68.7870 },</span>
+<span class="cstat-no" title="statement not covered" >  'Таиланд': { flag: '🇹🇭', lat: 13.7563, lng: 100.5018 },</span>
+<span class="cstat-no" title="statement not covered" >  'Танзания': { flag: '🇹🇿', lat: -6.7924, lng: 39.2083 },</span>
+<span class="cstat-no" title="statement not covered" >  'Того': { flag: '🇹🇬', lat: 6.1319, lng: 1.2228 },</span>
+<span class="cstat-no" title="statement not covered" >  'Тонга': { flag: '🇹🇴', lat: -21.1347, lng: -175.2019 },</span>
+<span class="cstat-no" title="statement not covered" >  'Тринидад и Тобаго': { flag: '🇹🇹', lat: 10.6549, lng: -61.5019 },</span>
+<span class="cstat-no" title="statement not covered" >  'Тувалу': { flag: '🇹🇻', lat: -8.5200, lng: 179.1940 },</span>
+<span class="cstat-no" title="statement not covered" >  'Тунис': { flag: '🇹🇳', lat: 36.8065, lng: 10.1815 },</span>
+<span class="cstat-no" title="statement not covered" >  'Туркменистан': { flag: '🇹🇲', lat: 37.9601, lng: 58.3261 },</span>
+<span class="cstat-no" title="statement not covered" >  'Турция': { flag: '🇹🇷', lat: 39.9334, lng: 32.8597 },</span>
+<span class="cstat-no" title="statement not covered" >  'Уганда': { flag: '🇺🇬', lat: 0.3136, lng: 32.5811 },</span>
+<span class="cstat-no" title="statement not covered" >  'Узбекистан': { flag: '🇺🇿', lat: 41.2995, lng: 69.2401 },</span>
+<span class="cstat-no" title="statement not covered" >  'Украина': { flag: '🇺🇦', lat: 50.4501, lng: 30.5234 },</span>
+<span class="cstat-no" title="statement not covered" >  'Уругвай': { flag: '🇺🇾', lat: -34.9011, lng: -56.1645 },</span>
+<span class="cstat-no" title="statement not covered" >  'Фиджи': { flag: '🇫🇯', lat: -18.1416, lng: 178.4419 },</span>
+<span class="cstat-no" title="statement not covered" >  'Филиппины': { flag: '🇵🇭', lat: 14.5995, lng: 120.9842 },</span>
+<span class="cstat-no" title="statement not covered" >  'Финляндия': { flag: '🇫🇮', lat: 60.1699, lng: 24.9384 },</span>
+<span class="cstat-no" title="statement not covered" >  'Франция': { flag: '🇫🇷', lat: 48.8566, lng: 2.3522 },</span>
+<span class="cstat-no" title="statement not covered" >  'Хорватия': { flag: '🇭🇷', lat: 45.8150, lng: 15.9819 },</span>
+<span class="cstat-no" title="statement not covered" >  'Центральноафриканская Республика': { flag: '🇨🇫', lat: 4.3665, lng: 18.5582 },</span>
+<span class="cstat-no" title="statement not covered" >  'Чад': { flag: '🇹🇩', lat: 12.1180, lng: 15.0493 },</span>
+<span class="cstat-no" title="statement not covered" >  'Черногория': { flag: '🇲🇪', lat: 42.4304, lng: 19.2594 },</span>
+<span class="cstat-no" title="statement not covered" >  'Чехия': { flag: '🇨🇿', lat: 50.0755, lng: 14.4378 },</span>
+<span class="cstat-no" title="statement not covered" >  'Чили': { flag: '🇨🇱', lat: -33.4489, lng: -70.6693 },</span>
+<span class="cstat-no" title="statement not covered" >  'Швейцария': { flag: '🇨🇭', lat: 46.9480, lng: 7.4474 },</span>
+<span class="cstat-no" title="statement not covered" >  'Швеция': { flag: '🇸🇪', lat: 59.3293, lng: 18.0686 },</span>
+<span class="cstat-no" title="statement not covered" >  'Шри-Ланка': { flag: '🇱🇰', lat: 6.9271, lng: 79.8612 },</span>
+<span class="cstat-no" title="statement not covered" >  'Эквадор': { flag: '🇪🇨', lat: -0.1807, lng: -78.4678 },</span>
+<span class="cstat-no" title="statement not covered" >  'Экваториальная Гвинея': { flag: '🇬🇶', lat: 3.7500, lng: 8.7833 },</span>
+<span class="cstat-no" title="statement not covered" >  'Эритрея': { flag: '🇪🇷', lat: 15.3229, lng: 38.9251 },</span>
+<span class="cstat-no" title="statement not covered" >  'Эсватини': { flag: '🇸🇿', lat: -26.3167, lng: 31.1333 },</span>
+<span class="cstat-no" title="statement not covered" >  'Эстония': { flag: '🇪🇪', lat: 59.4370, lng: 24.7536 },</span>
+<span class="cstat-no" title="statement not covered" >  'Эфиопия': { flag: '🇪🇹', lat: 9.0320, lng: 38.7469 },</span>
+<span class="cstat-no" title="statement not covered" >  'ЮАР': { flag: '🇿🇦', lat: -25.7479, lng: 28.2293 },</span>
+<span class="cstat-no" title="statement not covered" >  'Южный Судан': { flag: '🇸🇸', lat: 4.8517, lng: 31.5825 },</span>
+<span class="cstat-no" title="statement not covered" >  'Ямайка': { flag: '🇯🇲', lat: 18.0179, lng: -76.8099 },</span>
+<span class="cstat-no" title="statement not covered" >  'Япония': { flag: '🇯🇵', lat: 35.6762, lng: 139.6503 },</span>
+<span class="cstat-no" title="statement not covered" >};</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >export const COUNTRIES = Object.keys(COUNTRY_DATA);</span>
+<span class="cstat-no" title="statement not covered" >export const getFlag = (country) =&gt; COUNTRY_DATA[country]?.flag || '';</span>
+<span class="cstat-no" title="statement not covered" >export const getCountryCenter = (country) =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >  const d = COUNTRY_DATA[country];</span>
+<span class="cstat-no" title="statement not covered" >  return d ? [d.lat, d.lng] : null;</span>
+<span class="cstat-no" title="statement not covered" >};</span>
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-10-16T10:22:53.998Z
+            </div>
+        <script src="../../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../../sorter.js"></script>
+        <script src="../../../block-navigation.js"></script>
+    </body>
+</html>
+    

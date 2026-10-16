@@ -466,7 +466,7 @@ export default function Home() {
       {shareSheet && <ShareRouteSheet from={shareSheet.from} to={shareSheet.to} route={shareSheet.route} onClose={()=>setShareSheet(null)}/>}
       {eventsOpen && <MapEventsSheet center={eventPos || (eventLine[0] ? eventLine[0] : null) || liveCenter || mapCenter} eventLine={eventLine} roadDir={roadDir} onDirChange={setRoadDir} onClearLine={()=> setEventLine([])} onTypeChange={setEventType} onClose={()=>{setEventsOpen(false); setEventPos(null); setEventLine([]);}} onPickHint={eventPos || eventLine.length ? null : 'Тапните по карте, чтобы выбрать место'}/>}
       <BluetoothSheet onClose={()=>{}}/>
-      {nav.isActive && (nav.userSpeed || 0) < 1 && <div className="absolute bottom-[204px] left-2 z-[550] opacity-90 hover:opacity-100 transition-opacity pointer-events-none"><MiniMap center={nav.userPosition||mapCenter} route={nav.routeData} userPos={nav.userPosition} heading={nav.userHeading}/></div>}
+      {nav.isActive && (nav.userSpeed || 0) < 1 && <div className="absolute bottom-[232px] left-2 z-[550] opacity-90 hover:opacity-100 transition-opacity pointer-events-none"><MiniMap center={nav.userPosition||mapCenter} route={nav.routeData} userPos={nav.userPosition} heading={nav.userHeading}/></div>}
       {nav.isActive && !shareTipHidden && (
         <div className="absolute top-[150px] left-2 z-[550] pointer-events-auto">
           <div className="bg-slate-900/90 backdrop-blur text-white rounded-xl pl-3 pr-1.5 py-1.5 flex items-center gap-2 shadow-lg border border-white/10 max-w-[250px]">
@@ -482,10 +482,11 @@ export default function Home() {
           </div>
         </div>
       )}
-      <button onClick={()=>{ try{ navigator.vibrate?.(50); }catch{} if(!eventsOpen){ setTimeout(()=> setEventsOpen(true), 70); setEventPos(null); } else setEventsOpen(false); }} className="absolute left-2 bottom-[160px] z-[500] w-9 h-9 rounded-2xl bg-white dark:bg-slate-900 border shadow flex items-center justify-center text-[10px] font-black">{eventsOpen?'×':'!'}</button>
+      <button onClick={()=>{ try{ navigator.vibrate?.(50); }catch{} if(!eventsOpen){ setTimeout(()=> setEventsOpen(true), 70); setEventPos(null); } else setEventsOpen(false); }} className={`absolute left-2 ${nav.isActive ? 'bottom-[190px]' : 'bottom-[160px]'} z-[500] w-9 h-9 rounded-2xl bg-white dark:bg-slate-900 border shadow flex items-center justify-center text-[10px] font-black`}>{eventsOpen?'×':'!'}</button>
       <AiChat
         cityName={selectedCity?.name || selectedCity?.country || ''}
         mapContext={{ center: liveCenter || mapCenter, userPos: nav.userPosition, routesCount: routes.length }}
+        navMode={nav.isActive}
       />
 
       {/* Group Route Panel */}
