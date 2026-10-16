@@ -66,6 +66,7 @@ describe('POST /api/overpass', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body).toBe('{"elements":[]}');
     expect(res.headers['content-type']).toContain('application/json');
+    expect(res.headers['x-overpass-traces']).toContain('=ok@'); // диагностический след
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe(MIRRORS[0]);
     expect(fetchMock.mock.calls[0][1].body).toBe('data=' + encodeURIComponent(QUERY));
@@ -122,6 +123,7 @@ describe('POST /api/overpass', () => {
 
     expect(res.statusCode).toBe(429);
     expect(res.headers['retry-after']).toBe('60');
+    expect(res.headers['x-overpass-traces']).toContain('=429'); // видно, кто лимитит
     expect(JSON.parse(res.body).error).toBe('overpass_unavailable');
     expect(fetchMock).toHaveBeenCalledTimes(MIRRORS.length);
   });

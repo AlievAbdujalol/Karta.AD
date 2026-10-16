@@ -127,10 +127,16 @@ export default async function handler(req, res) {
   const deadline = Date.now() + TOTAL_BUDGET_MS;
   let rateStatus = 0; // 429/406 от любого зеркала — важнее прочего
   let badStatus = 0; // прочие 4xx (например, неверный запрос у зеркала)
+  // Диагностика для себя: какое зеркало и с чем отвечало с нашего egress.
+  // В ответе уходит короткий X-Overpass-Traces — по нему видно, кто виноват
+  // в пустом/ошибочном результате (без каких-либо секретов).
+  const traces = [];
 
   for (const mirror of MIRRORS) {
     const left = deadline - Date.now();
     if (left <= 0) break;
+    const host = new URL(mirror).host;
+    const t0 = Date.now();
     try {
       // Без кастомного User-Agent: зеркала фильтруют нестандартные UA —
       // проверено замером 16.10.2026, «KartaAD/2.0» давал 406 на api.de
@@ -147,10 +153,12 @@ export default async function handler(req, res) {
       });
       if (resp.status === 429 || resp.status === 406) {
         rateStatus = resp.status;
+        traces.push(`${host}=${resp.status}`);
         await sleep(RATE_BACKOFF_MS);
         continue;
       }
       if (!resp.ok) {
+        traces.push(`${host}=${resp.status}`);
         if (resp.status >= 400 && resp.status < 500) badStatus = resp.status;
         continue;
       }
@@ -158,18 +166,24 @@ export default async function handler(req, res) {
       try {
         JSON.parse(text);
       } catch {
+        traces.push(`${host}=nonjson`);
         continue; // не JSON (страница ошибки с 200) — берём следующее зеркало
       }
+      traces.push(`${host}=ok@${Date.now() - t0}ms`);
       res.statusCode = 200;
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('X-Overpass-Traces', traces.join(' '));
       res.end(text);
       return;
-    } catch {
+    } catch (e) {
+      const why = e && (e.name === 'TimeoutError' || e.name === 'AbortError') ? 'timeout' : 'net';
+      traces.push(`${host}=${why}@${Date.now() - t0}ms`);
       continue; // таймаут/сеть — пробуем следующее зеркало
     }
   }
 
   const status = rateStatus || (badStatus >= 400 && badStatus < 500 ? badStatus : 502);
+  res.setHeader('X-Overpass-Traces', traces.join(' '));
   sendJson(res, status, { error: 'overpass_unavailable' },
     status === 429 || status === 406 ? { 'Retry-After': '60' } : undefined);
 }
