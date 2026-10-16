@@ -32,7 +32,7 @@ function loadMirrors() {
 
 const MIRRORS = loadMirrors();
 
-const PER_MIRROR_TIMEOUT_MS = 7000; // живые зеркала отвечают за 0.5–3 с
+const PER_MIRROR_TIMEOUT_MS = 5000; // живые зеркала отвечают за 0.5–3 с
 const TOTAL_BUDGET_MS = 45000; // жёсткий потолок (maxDuration в vercel.json — 60 с)
 const RATE_WINDOW_MS = 60000;
 const MAX_QUERY_LEN = 4096;
@@ -132,11 +132,15 @@ export default async function handler(req, res) {
     const left = deadline - Date.now();
     if (left <= 0) break;
     try {
+      // Без кастомного User-Agent: зеркала фильтруют нестандартные UA —
+      // проверено замером 16.10.2026, «KartaAD/2.0» давал 406 на api.de
+      // и 403 «whitelisted usages» на openstreetmap.fr, а без UA оба
+      // отвечали 200 с данными. Стандартный UA запроса обязан остаться
+      // дефолтным (браузерный/undici) — его зеркала принимают.
       const resp = await fetch(mirror, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'KartaAD/2.0 (+https://karta-ad.vercel.app)',
         },
         body: payload,
         signal: AbortSignal.timeout(Math.min(PER_MIRROR_TIMEOUT_MS, left)),
