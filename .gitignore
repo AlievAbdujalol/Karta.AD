@@ -19,6 +19,12 @@ dist
 dist-ssr
 *.local
 
+# Coverage (отчёты тестов — локальные артефакты)
+coverage/
+
+# Локальные ассеты, не участвующие в сборке
+Lolg.Karta-AD.svg
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
