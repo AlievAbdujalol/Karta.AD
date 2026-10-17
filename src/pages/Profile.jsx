@@ -4,7 +4,7 @@ import { useLanguage, LANG_KEY } from '@/lib/useLanguage';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useAuth } from '@/lib/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { User, Save, Heart, History, Camera, Loader2, LogOut, ChevronDown, Search, Wallet, Car, PlusCircle, CheckCircle2, X, Pencil, Trash2, Store } from 'lucide-react';
+import { User, Save, Heart, History, Camera, Loader2, LogOut, ChevronDown, Search, Wallet, Car, PlusCircle, CheckCircle2, X, Pencil, Trash2, Store, Instagram } from 'lucide-react';
 import FavoriteRoutes from '@/components/profile/FavoriteRoutes';
 import TripHistory from '@/components/profile/TripHistory';
 import InstallAppButton from '@/components/InstallAppButton';
@@ -1587,6 +1587,16 @@ export default function Profile() {
             <LogOut size={16} />
             {t('logout')}
           </button>
+
+          <a
+            href="https://www.instagram.com/aliev.abdujalol.0707_in"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-1.5 pt-1 pb-0.5 text-[11px] text-gray-400 dark:text-gray-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
+          >
+            <Instagram size={13} />
+            Разработчик · Instagram @aliev.abdujalol.0707_in
+          </a>
         </div>}
       </div>
     </div>
