@@ -39,6 +39,9 @@ const MAX_QUERY_LEN = 4096;
 const MAX_RAW_BODY = 16384;
 const RATE_BACKOFF_MS = Number(process.env.OVERPASS_BACKOFF_MS ?? 1200);
 const RATE_MAX = Number(process.env.OVERPASS_RATE_MAX ?? 90);
+// «Чистый» UA name/version без скобок и URL — иначе WAF зеркал отвечает
+// 403/406 (см. комментарий в цикле), а kumi вообще требует непустой UA.
+const PROXY_UA = 'KartaAD/2.0';
 
 /** ip -> метки запросов внутри окна */
 const rateBuckets = new Map();
@@ -138,15 +141,15 @@ export default async function handler(req, res) {
     const host = new URL(mirror).host;
     const t0 = Date.now();
     try {
-      // Без кастомного User-Agent: зеркала фильтруют нестандартные UA —
-      // проверено замером 16.10.2026, «KartaAD/2.0» давал 406 на api.de
-      // и 403 «whitelisted usages» на openstreetmap.fr, а без UA оба
-      // отвечали 200 с данными. Стандартный UA запроса обязан остаться
-      // дефолтным (браузерный/undici) — его зеркала принимают.
+      // UA обязателен и должен быть «чистым»: kumi без UA отвечает 429
+      // («include a meaningful User-Agent»), а WAF fr/api.de режет UA со
+      // скобками и URL — замеры 16.10.2026: «KartaAD/2.0 (+https://…)» и
+      // «…(proxy)» давали 403/406, а чистое «KartaAD/2.0» — 200 с данными.
       const resp = await fetch(mirror, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': PROXY_UA,
         },
         body: payload,
         signal: AbortSignal.timeout(Math.min(PER_MIRROR_TIMEOUT_MS, left)),

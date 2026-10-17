@@ -70,6 +70,9 @@ describe('POST /api/overpass', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe(MIRRORS[0]);
     expect(fetchMock.mock.calls[0][1].body).toBe('data=' + encodeURIComponent(QUERY));
+    // регресс всей перипетии с UA: kumi требует непустой UA, а WAF fr/api.de
+    // режет строки со скобками/URL — поддерживаем чистый «KartaAD/2.0»
+    expect(fetchMock.mock.calls[0][1].headers['User-Agent']).toBe('KartaAD/2.0');
   });
 
   it('упавшее зеркало (504) уходит в запасное — ответ всё равно 200', async () => {
