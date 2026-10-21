@@ -38,6 +38,33 @@ describe('кэш последней GPS-позиции (locationCache)', () => {
   });
 });
 
+describe('karta_my_location — метка «я на карте» узнаёт о GPS-фиксе сразу', () => {
+  it('успешный save транслирует координаты слушателю', () => {
+    const seen = [];
+    const handler = (e) => seen.push(e.detail);
+    window.addEventListener('karta_my_location', handler);
+    try {
+      saveLastLocation({ lat: 42.87, lng: 74.59, accuracy: 15 });
+    } finally {
+      window.removeEventListener('karta_my_location', handler);
+    }
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ lat: 42.87, lng: 74.59, accuracy: 15 });
+  });
+
+  it('невалидный фикс НЕ транслируется (ошибки не рисуют фантомную точку)', () => {
+    const handler = vi.fn();
+    window.addEventListener('karta_my_location', handler);
+    try {
+      saveLastLocation({ lat: 'x', lng: 74.59 });
+      saveLastLocation();
+    } finally {
+      window.removeEventListener('karta_my_location', handler);
+    }
+    expect(handler).not.toHaveBeenCalled();
+  });
+});
+
 describe('cachedReverseGeocode — кэш Nominatim', () => {
   const nomResponse = (display_name) => ({
     ok: true,

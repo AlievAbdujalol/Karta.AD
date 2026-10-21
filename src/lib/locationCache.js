@@ -14,6 +14,11 @@ export const LOCATION_TTL_MS = 24 * 60 * 60 * 1000;
 /** Минимальный интервал записи во время активного watchPosition (троттлинг). */
 export const LOCATION_WRITE_MIN_MS = 10 * 1000;
 
+/** Событие «новая позиция пользователя» — метка на карте слушает его
+ *  и рисует синюю точку сразу после любого GPS-фикса (кнопка «моё
+ *  местоположение», маршрут, поиск рядом), не дожидаясь watchPosition. */
+export const MY_LOCATION_EVENT = 'karta_my_location';
+
 /** Записать последний GPS-фикс. Невалидные координаты → false, ничего не пишем. */
 export function saveLastLocation({ lat, lng, accuracy } = {}) {
   const la = Number(lat);
@@ -29,6 +34,14 @@ export function saveLastLocation({ lat, lng, accuracy } = {}) {
         ts: Date.now(),
       }),
     );
+    // трансляция — отдельный try, чтобы сбой слушателей не помешал записи
+    try {
+      if (typeof window !== 'undefined' && typeof CustomEvent === 'function') {
+        window.dispatchEvent(new CustomEvent(MY_LOCATION_EVENT, {
+          detail: { lat: la, lng: lo, accuracy: Number.isFinite(Number(accuracy)) ? Number(accuracy) : null },
+        }));
+      }
+    } catch { /* слушателей нет (SSR/тесты) — не критично */ }
     return true;
   } catch {
     return false; // quota/private mode — не критично

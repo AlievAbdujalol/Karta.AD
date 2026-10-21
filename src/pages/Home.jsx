@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { City, FavoriteRoute, TripLog } from '@/api/entities';
 import { supabase } from '@/api/supabase';
 import { useLanguage, LANG_KEY } from '@/lib/useLanguage';
-import { getCachedLastLocation, saveLastLocation } from '@/lib/locationCache';
+import { getCachedLastLocation, saveLastLocation, MY_LOCATION_EVENT } from '@/lib/locationCache';
 import { fetchOsmTransitRoutes, bboxAround, mergeTransitRoutes } from '@/lib/osmTransit';
 import { toast } from 'sonner';
 import BusMap from '@/components/BusMap';
@@ -33,6 +33,16 @@ import AiChat from '@/components/AiChat';
 import AlertBanner from '@/components/AlertBanner';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { smartSearch, pickDeepLinkResult } from '@/lib/searchUtils';
+
+/** Рисует позицию из кэша синей точкой: маркер мог смонтироваться раньше,
+ *  чем кэш появился, — шлём событие, которое UserLocationMarker слушает. */
+function broadcastLocation(c) {
+  try {
+    window.dispatchEvent(new CustomEvent(MY_LOCATION_EVENT, {
+      detail: { lat: c.lat, lng: c.lng, accuracy: c.accuracy },
+    }));
+  } catch { /* нет window — не критично */ }
+}
 
 export default function Home() {
   const { t, lang, setLang } = useLanguage();
@@ -370,10 +380,18 @@ export default function Home() {
 
   const handleLocateUser = useCallback(() => {
     if (!navigator.geolocation) { toast.error('Геолокация не поддерживается'); return; }
+    // 1) Мгновенно по кэшу — пользователь сразу видит себя на карте,
+    //    свежий GPS ниже уточнит центр (если пришлёт другие координаты).
+    const cached = getCachedLastLocation(15 * 60 * 1000);
+    if (cached) { setFlyTo({ lat: cached.lat, lng: cached.lng, zoom: 16 }); broadcastLocation(cached); }
     toast.loading('Ищем вас на карте…', { id: 'locate-home' });
-    navigator.geolocation.getCurrentPosition((pos) => {
-      const { latitude, longitude } = pos.coords;
+
+    const onPosition = (pos) => {
+      const { latitude, longitude, accuracy } = pos.coords;
       toast.dismiss('locate-home');
+      // saveLastLocation шлёт karta_my_location — синяя точка рисуется сразу,
+      // не дожидаясь первого кадра watchPosition
+      saveLastLocation({ lat: latitude, lng: longitude, accuracy });
       setFlyTo({ lat: latitude, lng: longitude, zoom: 16 });
       // найти ближайший маршрут по остановкам
       let bestRoute = null; let bestDist = Infinity;
@@ -392,12 +410,41 @@ export default function Home() {
       }
       setActiveTab('stops');
       setSheetState('half');
-    }, (err) => {
+    };
+
+    const onError = (err) => {
       toast.dismiss('locate-home');
-      if (err.code === 1) toast.error('Разрешите доступ к геолокации в настройках браузера');
+      if (err?.code === 1) toast.error('Разрешите доступ к геолокации: иконка слева от адреса сайта');
+      else if (cached) toast.warning('GPS не отвечает — показываем последнее известное место');
       else toast.error('Не удалось определить местоположение');
-    }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
+    };
+
+    // 2) Быстрый фикс (сеть/кэш браузера) — отвечает даже без GPS-чипа на
+    //    десктопе; если точность кошмарная (>800 м) — повтор с точным GPS.
+    navigator.geolocation.getCurrentPosition((pos) => {
+      if ((pos.coords.accuracy ?? 0) > 800) {
+        navigator.geolocation.getCurrentPosition(
+          onPosition,
+          (err) => (err?.code === 1 ? onError(err) : onPosition(pos)),
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+        );
+      } else {
+        onPosition(pos);
+      }
+    }, onError, { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 });
   }, [routes]);
+
+  // «Авто-центр»: при включении сразу показываем пользователя на карте —
+  // иначе кнопка вне навигации визуально «ничего не делает».
+  const autoCenterPrevRef = useRef(autoCenter);
+  useEffect(() => {
+    if (autoCenter === autoCenterPrevRef.current) return;
+    autoCenterPrevRef.current = autoCenter;
+    if (!autoCenter) return;
+    const cached = getCachedLastLocation(15 * 60 * 1000);
+    if (cached) { setFlyTo({ lat: cached.lat, lng: cached.lng, zoom: 16 }); broadcastLocation(cached); }
+    else handleLocateUser(); // нет кэша — запрашиваем геолокацию, как кнопка «местоположение»
+  }, [autoCenter, handleLocateUser]);
 
   return (
     <div className="relative w-full h-full bg-slate-50 dark:bg-slate-950 overflow-hidden select-none">

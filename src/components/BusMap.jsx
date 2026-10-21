@@ -18,7 +18,7 @@ import { useNavigation } from '@/lib/NavigationContext';
 import { readNavSettings, persistNavSettings, customCursorHtml, useNavCursor, applyNightMode } from '@/lib/navCursor';
 import { useTheme } from 'next-themes';
 import { splitRouteByProgress, destPoint, cachedReverseGeocode } from '@/lib/geo';
-import { getCachedLastLocation, saveLastLocation, LOCATION_WRITE_MIN_MS } from '@/lib/locationCache';
+import { getCachedLastLocation, saveLastLocation, LOCATION_WRITE_MIN_MS, MY_LOCATION_EVENT } from '@/lib/locationCache';
 import { supabase } from '@/api/supabase';
 import { toast } from 'sonner';
 import { Heart, X, Crosshair, MapPin, Loader2, Check } from 'lucide-react';
@@ -166,6 +166,19 @@ function UserLocationMarker({ transportMode }) {
   const [accuracy, setAccuracy] = useState(0);
   const [heading, setHeading] = useState(null);
   const cursor = useNavCursor();
+
+  useEffect(() => {
+    // GPS-фикс с любого экрана (кнопка «моё местоположение», маршрут, поиск)
+    // сразу рисует точку — пользователь не ищет себя на карте.
+    const onMyLocation = (e) => {
+      const d = e?.detail || {};
+      if (!Number.isFinite(d.lat) || !Number.isFinite(d.lng)) return;
+      setPos([d.lat, d.lng]);
+      if (Number.isFinite(d.accuracy)) setAccuracy(d.accuracy);
+    };
+    window.addEventListener(MY_LOCATION_EVENT, onMyLocation);
+    return () => window.removeEventListener(MY_LOCATION_EVENT, onMyLocation);
+  }, []);
 
   useEffect(() => {
     // Мгновенный показ из кэша: при каждом открытии не ждём первый GPS-фикс
