@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { Toaster } from "@/components/ui/toaster"
+import { Toaster as SonnerToaster } from 'sonner';
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
@@ -177,6 +178,9 @@ function App() {
               </Routes>
             </Router>
             <Toaster />
+            {/* sonner — основной источник toast.* (60+ модулей); раньше Toaster
+                не был смонтирован и ВСЕ уведомления были невидимы */}
+            <SonnerToaster position="top-center" richColors closeButton />
           </QueryClientProvider>
         </ConnectivityProvider>
         </NotificationProvider>
