@@ -23,6 +23,13 @@ export function cartoRaster(style) {
 const ESRI_REFERENCE_LABELS_URL =
   'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}';
 
+// Keyless-базы вместо CARTO (без ключа cartocdn отдаёт водяной знак «API KEY REQUIRED»):
+// Esri Canvas — светлая и тёмная схема, работает без ключа и без водяного знака.
+export const ESRI_LIGHT_GRAY_URL =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+export const ESRI_DARK_GRAY_URL =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+
 /**
  * Labels-only overlay для карты: CARTO-подписи, когда есть ключ,
  * иначе — Esri reference, чтобы не рисовать «API KEY REQUIRED».

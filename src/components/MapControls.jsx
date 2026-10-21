@@ -2,12 +2,14 @@ import { Layers, Crosshair, Plus, Minus, Navigation, Share2, LocateFixed, Route,
 import { useMap } from 'react-leaflet';
 import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
-import { cartoRaster, cartoLabels, OSM_URL, CARTO_KEY, googleTiles } from '@/lib/tiles';
+import { cartoRaster, cartoLabels, OSM_URL, CARTO_KEY, googleTiles, ESRI_LIGHT_GRAY_URL, ESRI_DARK_GRAY_URL } from '@/lib/tiles';
 import { getCachedLastLocation, saveLastLocation } from '@/lib/locationCache';
 
+// 9 слоёв без needsKey-пропусков: без VITE_CARTO_API_KEY слои CARTO
+// заменяются keyless-базами Esri Canvas — все номера 1..9 достижимы.
 const TILE_LAYERS = [
-  { labelKey: 'mapControls.layerStandard', url: cartoRaster('rastertiles/voyager'), isHybrid: false, needsKey: true },
-  { labelKey: 'mapControls.layerDark', url: cartoRaster('dark_all'), isHybrid: false, needsKey: true },
+  { labelKey: 'mapControls.layerStandard', url: CARTO_KEY ? cartoRaster('rastertiles/voyager') : ESRI_LIGHT_GRAY_URL, isHybrid: false },
+  { labelKey: 'mapControls.layerDark', url: CARTO_KEY ? cartoRaster('dark_all') : ESRI_DARK_GRAY_URL, isHybrid: false },
   { labelKey: 'mapControls.layerGoogle', url: googleTiles('m'), isHybrid: false },
   { labelKey: 'mapControls.layerHybrid', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', isHybrid: true },
   { labelKey: 'mapControls.layerOsm', url: OSM_URL, isHybrid: false },
@@ -51,14 +53,7 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
     );
   };
 
-  const cycleLayer = () => setTileIndex((i) => {
-    // Слои CARTO без ключа показывают водяной знак — пропускаем их.
-    for (let k = 1; k <= TILE_LAYERS.length; k++) {
-      const n = (i + k) % TILE_LAYERS.length;
-      if (!TILE_LAYERS[n].needsKey || CARTO_KEY) return n;
-    }
-    return i;
-  });
+  const cycleLayer = () => setTileIndex((i) => (i + 1) % TILE_LAYERS.length);
 
   const btnBase = "flex items-center justify-center rounded-2xl shadow-[0_4px_16px_rgba(15,23,42,0.1)] border border-slate-200/60 dark:border-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer select-none backdrop-blur-xl";
 
