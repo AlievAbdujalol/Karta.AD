@@ -17,7 +17,8 @@ import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useNavigation } from '@/lib/NavigationContext';
 import { readNavSettings, persistNavSettings, customCursorHtml, useNavCursor, applyNightMode } from '@/lib/navCursor';
 import { useTheme } from 'next-themes';
-import { splitRouteByProgress, destPoint } from '@/lib/geo';
+import { splitRouteByProgress, destPoint, cachedReverseGeocode } from '@/lib/geo';
+import { getCachedLastLocation, saveLastLocation, LOCATION_WRITE_MIN_MS } from '@/lib/locationCache';
 import { supabase } from '@/api/supabase';
 import { toast } from 'sonner';
 import { Heart, X, Crosshair, MapPin, Loader2, Check } from 'lucide-react';
@@ -167,13 +168,26 @@ function UserLocationMarker({ transportMode }) {
   const cursor = useNavCursor();
 
   useEffect(() => {
+    // Мгновенный показ из кэша: при каждом открытии не ждём первый GPS-фикс
+    const cached = getCachedLastLocation();
+    if (cached) {
+      setPos([cached.lat, cached.lng]);
+      if (cached.accuracy != null) setAccuracy(cached.accuracy);
+    }
     if (!navigator.geolocation) return;
+    let lastSaveTs = 0;
     const watchId = navigator.geolocation.watchPosition(
       (p) => {
         // sensor fusion: if accuracy >50 and use_sensors, keep last pos
         try{ const s=JSON.parse(localStorage.getItem('karta_vehicle')||'{}'); if(s.use_sensors===false && p.coords.accuracy>80) return; }catch{}
         setPos([p.coords.latitude, p.coords.longitude]);
         setAccuracy(p.coords.accuracy);
+        // фоново пополняем кэш последней позиции (троттлинг — watchPosition частит)
+        const now = Date.now();
+        if (now - lastSaveTs > LOCATION_WRITE_MIN_MS) {
+          lastSaveTs = now;
+          saveLastLocation({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy });
+        }
         // курс появляется только в движении — запоминаем последний, чтобы стрелка не дёргалась на месте
         if (Number.isFinite(p.coords.heading) && (p.coords.speed ?? 0) > 0.7) setHeading(p.coords.heading);
       },
@@ -880,24 +894,15 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
     let display_name = name;
     let city = '';
     let country = '';
-    try {
-      const resp = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${data.lat}&lon=${data.lng}&accept-language=ru`,
-        { headers: { 'User-Agent': 'KartaAD/1.0' }, signal: AbortSignal.timeout(3000) }
-      );
-      if (resp.ok) {
-        const respData = await resp.json();
-        display_name = respData.display_name || name;
-        if (respData.display_name) {
-          const parts = respData.display_name.split(',');
-          name = parts.slice(0, 2).join(',');
-        }
-        if (respData.address) {
-          city = respData.address.city || respData.address.town || respData.address.village || respData.address.municipality || '';
-          country = respData.address.country || '';
-        }
-      }
-    } catch {}
+    const geo = await cachedReverseGeocode(data.lat, data.lng);
+    if (geo?.display_name) {
+      display_name = geo.display_name;
+      name = geo.display_name.split(',').slice(0, 2).join(',');
+    }
+    if (geo?.address) {
+      city = geo.address.city || geo.address.town || geo.address.village || geo.address.municipality || '';
+      country = geo.address.country || '';
+    }
     const result = { lat: data.lat, lng: data.lng, name, shortName: name, display_name, city, country, target: data.target };
     setMapPickResult(result);
     setMapPickTarget(null);
@@ -910,25 +915,18 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         if (mapRef.current) mapRef.current.flyTo([lat, lng], 16, { animate: true, duration: 0.8 });
+        saveLastLocation({ lat, lng, accuracy: pos.coords.accuracy });
         let name = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
         let display_name = name;
         let city = '', country = '';
-        try {
-          const resp = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=ru`,
-            { headers: { 'User-Agent': 'KartaAD/1.0' }, signal: AbortSignal.timeout(3000) }
-          );
-          if (resp.ok) {
-            const data = await resp.json();
-            display_name = data.display_name || name;
-            if (data.display_name) {
-              const parts = data.display_name.split(',');
-              name = parts.slice(0, 2).join(',');
-            }
-            city = data.address?.city || data.address?.town || data.address?.village || data.address?.municipality || '';
-            country = data.address?.country || '';
-          }
-        } catch {}
+        const geo = await cachedReverseGeocode(lat, lng);
+        if (geo?.display_name) {
+          display_name = geo.display_name;
+          const parts = geo.display_name.split(',');
+          name = parts.slice(0, 2).join(',');
+        }
+        city = geo?.address?.city || geo?.address?.town || geo?.address?.village || geo?.address?.municipality || '';
+        country = geo?.address?.country || '';
         setMapPickResult({ lat, lng, name, shortName: name, display_name, city, country, target: 'from' });
         setMapPickTarget(null);
       },
@@ -981,30 +979,22 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       },
     });
 
+    // Подпись адреса под картой: reverse из кэша (та же ячейка ~110 м → мгновенно, без Nominatim)
     useEffect(() => {
       if (geocodeTimerRef.current) clearTimeout(geocodeTimerRef.current);
       setLoading(true);
       geocodeTimerRef.current = setTimeout(async () => {
-        try {
-          const resp = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${centerLatLng.lat}&lon=${centerLatLng.lng}&accept-language=ru`,
-            { headers: { 'User-Agent': 'KartaAD/1.0' }, signal: AbortSignal.timeout(3000) }
-          );
-          if (resp.ok) {
-            const data = await resp.json();
-            let name = data.display_name ? data.display_name.split(',').slice(0, 2).join(',') : `${centerLatLng.lat.toFixed(5)}, ${centerLatLng.lng.toFixed(5)}`;
-            let city = data.address?.city || data.address?.town || data.address?.village || data.address?.municipality || '';
-            let country = data.address?.country || '';
-            setAddress({
-              name,
-              display_name: data.display_name || name,
-              city,
-              country,
-              lat: centerLatLng.lat,
-              lng: centerLatLng.lng,
-            });
-          }
-        } catch {}
+        const data = await cachedReverseGeocode(centerLatLng.lat, centerLatLng.lng);
+        let name = `${centerLatLng.lat.toFixed(5)}, ${centerLatLng.lng.toFixed(5)}`;
+        if (data?.display_name) name = data.display_name.split(',').slice(0, 2).join(',');
+        setAddress({
+          name,
+          display_name: data?.display_name || name,
+          city: data?.address?.city || data?.address?.town || data?.address?.village || data?.address?.municipality || '',
+          country: data?.address?.country || '',
+          lat: centerLatLng.lat,
+          lng: centerLatLng.lng,
+        });
         setLoading(false);
       }, 400);
       return () => { if (geocodeTimerRef.current) clearTimeout(geocodeTimerRef.current); };

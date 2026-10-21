@@ -3,6 +3,7 @@ import { useMap } from 'react-leaflet';
 import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
 import { cartoRaster, cartoLabels, OSM_URL, CARTO_KEY, googleTiles } from '@/lib/tiles';
+import { getCachedLastLocation, saveLastLocation } from '@/lib/locationCache';
 
 const TILE_LAYERS = [
   { labelKey: 'mapControls.layerStandard', url: cartoRaster('rastertiles/voyager'), isHybrid: false, needsKey: true },
@@ -25,11 +26,19 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
 
   const locate = () => {
     if (onLocate) { onLocate(); return; }
+    // Свежий кэш позиции — прыжок мгновенный, без ожидания GPS
+    const cached = getCachedLastLocation(5 * 60 * 1000);
+    if (cached) {
+      toast.success('Вы на карте', { id: 'locate' });
+      map.flyTo([cached.lat, cached.lng], 16, { animate: true, duration: 0.8 });
+      return;
+    }
     toast.loading(t('mapControls.myLocation') || 'Определяем местоположение…', { id: 'locate' });
     navigator.geolocation?.getCurrentPosition(
       (pos) => {
         toast.dismiss('locate');
         toast.success('Вы на карте');
+        saveLastLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
         map.flyTo([pos.coords.latitude, pos.coords.longitude], 16, { animate: true, duration: 0.8 });
       },
       (err) => {

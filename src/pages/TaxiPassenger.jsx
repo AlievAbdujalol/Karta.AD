@@ -23,6 +23,7 @@ import {
   PASSENGER_TARIFFS, haversineKm, isNight,
 } from '@/lib/taxi';
 import { sendOfferToDriver, withdrawOffer, OFFER_AUTO_WITHDRAW_MS } from '@/lib/taxiOffer';
+import { cachedReverseGeocode } from '@/lib/geo';
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -553,19 +554,13 @@ export default function TaxiPassenger() {
   }, [driverPosition, toCoord]);
 
   const geocodeLatLng = useCallback(async (lat, lng, target) => {
-    try {
-      const resp = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=ru`,
-        { headers: { 'User-Agent': 'KartaAD/1.0' }, signal: AbortSignal.timeout(3000) }
-      );
-      if (resp.ok) {
-        const data = await resp.json();
-        const addr = data.display_name?.split(',').slice(0, 3).join(',') || 'Выбранная точка';
-        if (target === 'from') { setFromText(addr); setFromCoord([lat, lng]); }
-        else { setToText(addr); setToCoord([lat, lng]); }
-        return addr;
-      }
-    } catch {}
+    const data = await cachedReverseGeocode(lat, lng);
+    if (data?.display_name) {
+      const addr = data.display_name.split(',').slice(0, 3).join(',') || 'Выбранная точка';
+      if (target === 'from') { setFromText(addr); setFromCoord([lat, lng]); }
+      else { setToText(addr); setToCoord([lat, lng]); }
+      return addr;
+    }
     return null;
   }, []);
 

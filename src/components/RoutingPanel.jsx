@@ -26,6 +26,8 @@ import {
   findTransitRoutes, fmtDist, fmtDur, distanceM,
 } from '@/lib/transitRouter';
 import { buildOsrmRoute } from '@/lib/osrmClient';
+import { cachedReverseGeocode } from '@/lib/geo';
+import { getCachedLastLocation, saveLastLocation } from '@/lib/locationCache';
 import { fetchOsmTransitRoutes, bboxAround, mergeTransitRoutes } from '@/lib/osmTransit';
 import { toast } from 'sonner';
 
@@ -539,33 +541,48 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
   useEffect(() => {
     if (autoLocRef.current || from || fromText) return;
     autoLocRef.current = true;
-    navigator.geolocation?.getCurrentPosition(async (pos) => {
-      const { latitude: lat, longitude: lng } = pos.coords;
+    const applyFrom = async (lat, lng) => {
       let shortName = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-      try {
-        const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&accept-language=ru&lat=${lat}&lon=${lng}`,
-          { headers: { 'User-Agent': 'KartaAD/1.0' }, signal: AbortSignal.timeout(4000) });
-        if (r.ok) { const d = await r.json(); if (d.display_name) shortName = d.display_name.split(',').slice(0, 2).join(', '); }
-      } catch {}
+      const d = await cachedReverseGeocode(lat, lng);
+      if (d?.display_name) shortName = d.display_name.split(',').slice(0, 2).join(', ');
       const place = { lat, lng, name: shortName, shortName };
       setFrom(place); setFromText(shortName); pushRecent(place);
-    }, () => {}, { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 });
+    };
+    // Свежий кэш позиции (карта тянет watchPosition в фоне) — мгновенно, без ожидания GPS
+    const cached = getCachedLastLocation(10 * 60 * 1000);
+    if (cached) { applyFrom(cached.lat, cached.lng); return; }
+    navigator.geolocation?.getCurrentPosition(
+      (pos) => {
+        saveLastLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
+        applyFrom(pos.coords.latitude, pos.coords.longitude);
+      },
+      () => {},
+      { timeout: 6000, maximumAge: 600000 }
+    );
   }, [from, fromText]);
 
   // Fill with geolocation
   const fillWithMyLocation = useCallback(async (target) => {
+    const cached = getCachedLastLocation(2 * 60 * 1000);
+    if (cached) {
+      const d = await cachedReverseGeocode(cached.lat, cached.lng);
+      let shortName = cached.lat.toFixed(5) + ', ' + cached.lng.toFixed(5);
+      if (d?.display_name) shortName = d.display_name.split(',').slice(0, 2).join(', ');
+      const place = { lat: cached.lat, lng: cached.lng, name: shortName, shortName };
+      if (target === 'from') { setFrom(place); setFromText(shortName); }
+      else { setTo(place); setToText(shortName); }
+      pushRecent(place);
+      toast.success('Местоположение установлено');
+      return;
+    }
     if (!navigator.geolocation) { toast.error('Геолокация не поддерживается'); return; }
     const tid = toast.loading('Определяем местоположение…');
     navigator.geolocation.getCurrentPosition(async (pos) => {
       const { latitude: lat, longitude: lng } = pos.coords;
+      saveLastLocation({ lat, lng, accuracy: pos.coords.accuracy });
       let shortName = lat.toFixed(5) + ', ' + lng.toFixed(5);
-      try {
-        const r = await fetch(
-          'https://nominatim.openstreetmap.org/reverse?format=json&accept-language=ru&lat=' + lat + '&lon=' + lng,
-          { headers: { 'User-Agent': 'KartaAD/1.0' }, signal: AbortSignal.timeout(4000) },
-        );
-        if (r.ok) { const d = await r.json(); if (d.display_name) shortName = d.display_name.split(',').slice(0, 2).join(', '); }
-      } catch {}
+      const d = await cachedReverseGeocode(lat, lng);
+      if (d?.display_name) shortName = d.display_name.split(',').slice(0, 2).join(', ');
       const place = { lat, lng, name: shortName, shortName };
       if (target === 'from') { setFrom(place); setFromText(shortName); }
       else { setTo(place); setToText(shortName); }
@@ -573,7 +590,7 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
     }, (err) => {
       toast.dismiss(tid);
       toast.error(err.code === 1 ? 'Разрешите доступ к геолокации' : 'Не удалось получить местоположение');
-    }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
+    }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 });
   }, []);
 
   // Build route

@@ -95,6 +95,96 @@ export function pickAddressText(result, fallback = '') {
   return name || (fallback || '');
 }
 
+// ─── Reverse-геокодирование с кэшем ──────────────────────────────────
+// У Nominatim лимит 1 запрос/сек на IP. Один и тот же reverse повторялся
+// в BusMap, RoutingPanel и TaxiPassenger при каждом «определить меня»,
+// каждом moveend карты и открытии панели маршрута — отсюда тормоза и 429.
+// Кэш в localStorage: ячейка ~110 м, TTL 7 дней; одновременные запросы
+// к одной ячейке складываются в один fetch (in-flight дедупликация).
+
+const NOMINATIM_UA = 'KartaAD/1.0';
+const REVERSE_CACHE_KEY = 'karta_reverse_cache_v1';
+const REVERSE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const REVERSE_MAX_ENTRIES = 80;
+const REVERSE_CELL_DECIMALS = 3; // ≈110 м: дрожание GPS попадает в ту же ячейку
+
+const reverseInflight = new Map();
+
+/** Сырой ответ Nominatim ({display_name, address, …}) или null; не бросает исключений. */
+export async function reverseGeocode(lat, lng, timeoutMs = 4000) {
+  const url = reverseGeocodeUrl(lat, lng);
+  if (!url) return null;
+  try {
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': NOMINATIM_UA },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch {
+    return null;
+  }
+}
+
+function reverseCacheKey(lat, lng) {
+  return `${Number(lat).toFixed(REVERSE_CELL_DECIMALS)},${Number(lng).toFixed(REVERSE_CELL_DECIMALS)}`;
+}
+
+function readReverseCache() {
+  try {
+    return JSON.parse(localStorage.getItem(REVERSE_CACHE_KEY)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function writeReverseCache(cache) {
+  try {
+    localStorage.setItem(REVERSE_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // quota/private mode — кэш опционален, не критично
+  }
+}
+
+/**
+ * Reverse-геокод с localStorage-кэшем: тот же ~110-метровый район → мгновенно
+ * из кэша. Возвращает сырой ответ Nominatim или null (ошибка сети/лимита — тоже null).
+ */
+export async function cachedReverseGeocode(lat, lng, timeoutMs = 4000) {
+  const la = Number(lat);
+  const lo = Number(lng);
+  if (!Number.isFinite(la) || !Number.isFinite(lo)) return null;
+  const key = reverseCacheKey(la, lo);
+  const cached = readReverseCache()[key];
+  if (cached && Date.now() - cached.ts < REVERSE_TTL_MS) return cached.data;
+  const inflight = reverseInflight.get(key);
+  if (inflight) return inflight;
+
+  const request = reverseGeocode(la, lo, timeoutMs)
+    .then((data) => {
+      reverseInflight.delete(key);
+      if (data) {
+        const cache = readReverseCache();
+        cache[key] = { ts: Date.now(), data };
+        const keys = Object.keys(cache);
+        if (keys.length > REVERSE_MAX_ENTRIES) {
+          keys
+            .sort((a, b) => cache[a].ts - cache[b].ts)
+            .slice(0, keys.length - REVERSE_MAX_ENTRIES)
+            .forEach((k) => { delete cache[k]; });
+        }
+        writeReverseCache(cache);
+      }
+      return data;
+    })
+    .catch(() => {
+      reverseInflight.delete(key);
+      return null;
+    });
+  reverseInflight.set(key, request);
+  return request;
+}
+
 export function smoothPositions(positions, windowSize = 3) {
   if (positions.length < windowSize) return positions;
   const out = [];

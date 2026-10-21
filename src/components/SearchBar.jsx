@@ -5,6 +5,7 @@ import { requestRouteFromPhrase, speakText, askAssistant } from '@/lib/aiAssista
 import { isGeminiConfigured } from '@/lib/gemini';
 import { useLanguage } from '@/lib/useLanguage';
 import { supabase } from '@/api/supabase';
+import { getCachedLastLocation, saveLastLocation } from '@/lib/locationCache';
 
 export default function SearchBar({ cityId, selectedCity, selectedCountry: _selectedCountry, onSelectResult, mapCenter }) {
   const { t } = useLanguage();
@@ -253,10 +254,14 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry: _sele
     inputRef.current?.blur();
   };
   const searchNearby = () => {
+    const go = (latitude, longitude) => onSelectResult?.({ _type:'poi', name:'Рядом', lat: latitude, lng: longitude, fullAddress:'Результаты рядом' });
+    // Свежий кэш позиции — поиск «рядом» стартует сразу, без ожидания GPS
+    const cached = getCachedLastLocation(5 * 60 * 1000);
+    if (cached) { go(cached.lat, cached.lng); return; }
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition((pos)=>{
-      const {latitude, longitude}=pos.coords;
-      onSelectResult?.({ _type:'poi', name:'Рядом', lat: latitude, lng: longitude, fullAddress:'Результаты рядом' });
+      saveLastLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
+      go(pos.coords.latitude, pos.coords.longitude);
     });
   };
 

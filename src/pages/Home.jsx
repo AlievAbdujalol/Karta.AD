@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { City, FavoriteRoute, TripLog } from '@/api/entities';
 import { supabase } from '@/api/supabase';
 import { useLanguage, LANG_KEY } from '@/lib/useLanguage';
+import { getCachedLastLocation, saveLastLocation } from '@/lib/locationCache';
 import { fetchOsmTransitRoutes, bboxAround, mergeTransitRoutes } from '@/lib/osmTransit';
 import { toast } from 'sonner';
 import BusMap from '@/components/BusMap';
@@ -124,28 +125,36 @@ export default function Home() {
 
   const autoDetectCity = useCallback((citiesList) => {
     if (!citiesList?.length) return;
-    if (!navigator.geolocation) return;
     if (localStorage.getItem('karta_city')) return;
 
+    const detectFrom = (latitude, longitude) => {
+      let nearest = null;
+      let minDist = Infinity;
+      citiesList.forEach(city => {
+        if (!city.lat || !city.lng) return;
+        const d = Math.hypot(city.lat - latitude, city.lng - longitude);
+        if (d < minDist) { minDist = d; nearest = city; }
+      });
+      if (nearest && minDist < 2) {
+        setSelectedCity(nearest);
+        setSelectedCountry(nearest.country || '');
+      }
+      setLocating(false);
+    };
+
+    // Свежий кэш позиции — город определяем сразу, без запроса GPS
+    const cached = getCachedLastLocation();
+    if (cached) { detectFrom(cached.lat, cached.lng); return; }
+
+    if (!navigator.geolocation) return;
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const { latitude, longitude } = pos.coords;
-        let nearest = null;
-        let minDist = Infinity;
-        citiesList.forEach(city => {
-          if (!city.lat || !city.lng) return;
-          const d = Math.hypot(city.lat - latitude, city.lng - longitude);
-          if (d < minDist) { minDist = d; nearest = city; }
-        });
-        if (nearest && minDist < 2) {
-          setSelectedCity(nearest);
-          setSelectedCountry(nearest.country || '');
-        }
-        setLocating(false);
+        saveLastLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
+        detectFrom(pos.coords.latitude, pos.coords.longitude);
       },
       () => setLocating(false),
-      { timeout: 6000, maximumAge: 60000 }
+      { timeout: 6000, maximumAge: 600000 }
     );
   }, []);
 
