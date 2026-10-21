@@ -7,8 +7,8 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, ScaleControl,
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'react-leaflet-cluster/lib/assets/MarkerCluster.css';
 import 'react-leaflet-cluster/lib/assets/MarkerCluster.Default.css';
-import MapControls, { TILE_LAYERS, LABEL_OVERLAY_URL, TRANSPORT_OVERLAY_URL } from './MapControls';
-import { CARTO_KEY, cartoRaster } from '@/lib/tiles';
+import MapControls, { TILE_LAYERS, LABEL_OVERLAY_URL, TRANSPORT_OVERLAY_URL, TILE_KEY, initialTileIndex } from './MapControls';
+import { cartoRaster } from '@/lib/tiles';
 import RoutingPanel from './RoutingPanel';
 import BusinessMarkers from './BusinessMarkers';
 import StopInfoPopup, { collectUniqueStops } from './StopInfoPopup';
@@ -757,30 +757,9 @@ function OsmStopMarkers({ routes, routeGeometries, routingOpen, onPickResult }) 
   );
 }
 
-const TILE_KEY = 'karta_tile_index';
 export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute: _groupRoute, panelVisible, onLocate, tiltEnabled: _tiltEnabled = false, autoCenter = true, routeMeta = null, onPlaceSelect: _onPlaceSelect, onCenterChange, onMapClick, eventPos, eventLine=[], roadDir=0, hideEvents=false }) {
-  const [tileIndex, setTileIndex] = useState(() => {
-    const fallback = () => {
-      // Без CARTO-ключа слои CARTO показывают водяной знак —
-      // откатываемся на Google улицы (VITE_GOOGLE_MAPS_KEY уже в .env.local).
-      const google = TILE_LAYERS.findIndex((l) => l.labelKey === 'mapControls.layerGoogle');
-      if (google >= 0) return google;
-      const free = TILE_LAYERS.findIndex((l) => !l.needsKey);
-      return free >= 0 ? free : 0;
-    };
-    try {
-      const v = localStorage.getItem(TILE_KEY);
-      if (v != null) {
-        const n = parseInt(v, 10);
-        if (!isNaN(n) && n >= 0 && n < TILE_LAYERS.length) {
-          if (TILE_LAYERS[n].needsKey && !CARTO_KEY) return fallback();
-          return n;
-        }
-      }
-    } catch {}
-    if (!CARTO_KEY) return fallback();
-    return 0;
-  });
+  // стартовый слой: сохранённый либо «1 Стандарт» — все 9 слоёв работают без ключа
+  const [tileIndex, setTileIndex] = useState(() => initialTileIndex());
   const [showTraffic, setShowTraffic] = useState(() => readNavSettings().show_traffic !== false); // из настроек навигатора
   const toggleTraffic = () => {
     const v = !showTraffic;

@@ -22,6 +22,24 @@ const TILE_LAYERS = [
 const LABEL_OVERLAY_URL = cartoLabels();
 const TRANSPORT_OVERLAY_URL = 'https://tile.memomaps.de/tilegen/{z}/{x}/{y}.png';
 
+export const TILE_KEY = 'karta_tile_index';
+
+/**
+ * Начальный слой: сохранённый индекс из localStorage, иначе «1 Стандарт».
+ * Все 9 слоёв работают без ключа CARTO (см. TILE_LAYERS) — никаких
+ * needsKey-откатов: сохранённый индекс принимается всегда, старт — 0.
+ */
+export function initialTileIndex() {
+  try {
+    const v = localStorage.getItem(TILE_KEY);
+    if (v != null) {
+      const n = parseInt(v, 10);
+      if (!isNaN(n) && n >= 0 && n < TILE_LAYERS.length) return n;
+    }
+  } catch { /* localStorage недоступен — стартовый слой */ }
+  return 0;
+}
+
 export default function MapControls({ tileIndex, setTileIndex, finderActive, onFinderToggle, onShareTrip, rightOffset, isNavigating, onLocate, tiltEnabled: _tiltEnabled, onToggleTilt: _onToggleTilt, autoCenter, onToggleAutoCenter, overviewActive, onToggleOverview, showTraffic, onToggleTraffic, showTransport, onToggleTransport }) {
   const map = useMap();
   const { t } = useLanguage();

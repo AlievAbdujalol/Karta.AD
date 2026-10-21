@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { TILE_LAYERS } from '@/components/MapControls';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { TILE_LAYERS, TILE_KEY, initialTileIndex } from '@/components/MapControls';
 import { CARTO_KEY } from '@/lib/tiles';
 
 /**
@@ -33,5 +33,29 @@ describe('TILE_LAYERS — все девять слоёв карты', () => {
       expect(TILE_LAYERS[0].url).toContain('World_Light_Gray_Base');
       expect(TILE_LAYERS[1].url).toContain('World_Dark_Gray_Base');
     }
+  });
+});
+
+describe('initialTileIndex — стартовый слой карты', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('чистый localStorage → «1 Стандарт» (индекс 0)', () => {
+    expect(initialTileIndex()).toBe(0);
+  });
+
+  it('сохранённый валидный индекс принимается, включая последний слой (8)', () => {
+    localStorage.setItem(TILE_KEY, '8');
+    expect(initialTileIndex()).toBe(8);
+    localStorage.setItem(TILE_KEY, '2');
+    expect(initialTileIndex()).toBe(2);
+  });
+
+  it('мусор, пусто и индекс вне диапазона → 0, не фолбэк на другой слой', () => {
+    localStorage.setItem(TILE_KEY, '9'); // за пределами 9 слоёв
+    expect(initialTileIndex()).toBe(0);
+    localStorage.setItem(TILE_KEY, 'abc');
+    expect(initialTileIndex()).toBe(0);
+    localStorage.setItem(TILE_KEY, '-1');
+    expect(initialTileIndex()).toBe(0);
   });
 });
