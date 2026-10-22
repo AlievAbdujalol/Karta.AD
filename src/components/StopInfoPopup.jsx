@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useLanguage } from '@/lib/useLanguage';
 import { describeStop } from '@/lib/aiAssistant';
-import { isGeminiConfigured } from '@/lib/gemini';
+import { isGeminiConfigured, geminiErrorText } from '@/lib/gemini';
 
 const EPSILON_MERGE = 0.00035;
 const STOP_RADIUS_M = 140;
@@ -131,7 +131,7 @@ export default function StopInfoPopup({ stop, routes, routeGeometries, routingOp
       const txt = await describeStop(stopName, passingRoutes.map(r => ({ number: r.number, name: r.name })));
       setAiText(txt || 'Не удалось получить справку. Попробуй позже.');
     } catch (err) {
-      setAiText(err?.type === 'auth' ? 'Ошибка ключа API.' : 'Ошибка сети, попробуй позже.');
+      setAiText(geminiErrorText(err));
     } finally {
       setAiBusy(false);
     }

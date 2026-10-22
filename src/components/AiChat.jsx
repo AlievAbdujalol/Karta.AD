@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, X, Send, Loader2, Trash2, Volume2, VolumeX, Copy, Check, MapPin, Route, CarTaxiFront, Mic, MicOff, Radar } from 'lucide-react';
 import { askAssistant, getChatSuggestions, speakText, stopSpeak, resolvePlaceFromText, getMyPosition } from '@/lib/aiAssistant';
-import { isGeminiConfigured, GeminiError } from '@/lib/gemini';
+import { isGeminiConfigured, geminiErrorText } from '@/lib/gemini';
 import { toast } from 'sonner';
 
 import { useCurrentUser } from '@/lib/useCurrentUser';
@@ -98,12 +98,8 @@ export default function AiChat({ cityName, mapContext = {}, navMode = false }) {
         setMessages(prev => [...prev, { role: 'assistant', text: 'Не получилось ответить. Попробуй переформулировать.' }]);
       }
     } catch (err) {
-      const msg = err instanceof GeminiError
-        ? err.type === 'auth' ? 'Ошибка ключа API. Проверь VITE_GEMINI_API_KEY.'
-          : err.type === 'rate' ? 'Слишком много запросов. Подожди немного.'
-          : err.type === 'model' ? 'Модель недоступна. Обнови настройки.'
-          : 'Ошибка сети. Проверь подключение к интернету.'
-        : 'Неизвестная ошибка. Попробуй позже.';
+      // Честная классификация: сервер ИИ / таймаут / настоящая сеть — разные причины
+      const msg = geminiErrorText(err);
       setError(msg);
       setMessages(prev => [...prev, { role: 'assistant', text: msg }]);
     } finally {

@@ -15,7 +15,25 @@ export class GeminiError extends Error {
     super(message);
     this.name = 'GeminiError';
     this.status = status;
-    this.type = type; // 'network' | 'auth' | 'rate' | 'model' | 'timeout' | 'unknown'
+    this.type = type; // 'network' | 'auth' | 'rate' | 'model' | 'timeout' | 'server' | 'unknown'
+  }
+}
+
+/**
+ * Пользовательское сообщение об ошибке — честно различает причины.
+ * Раньше server/timeout/unknown маскировались под «ошибку сети»,
+ * из-за чего пользователь с рабочим интернетом видил «проверь подключение».
+ */
+export function geminiErrorText(err) {
+  if (!(err instanceof GeminiError)) return 'Не получилось ответить. Попробуй позже.';
+  switch (err.type) {
+    case 'auth': return 'Ошибка ключа ИИ. Проверь VITE_GEMINI_API_KEY.';
+    case 'rate': return 'Слишком много запросов. Подожди немного.';
+    case 'model': return 'Модель недоступна. Обнови настройки.';
+    case 'server': return 'Сервис ИИ временно недоступен. Попробуй позже.';
+    case 'timeout': return 'ИИ не ответил вовремя. Попробуй ещё раз.';
+    case 'network': return 'Ошибка сети. Проверь подключение к интернету.';
+    default: return 'Не получилось ответить. Попробуй позже.';
   }
 }
 
@@ -109,7 +127,11 @@ export async function geminiGenerate(prompt, {
       });
 
       if (!resp.ok) {
-        const errType = classifyError(resp.status);
+        // Google отдаёт невалидный ключ как 400 API_KEY_INVALID — это auth, а не «сеть»
+        let errBody = '';
+        try { errBody = await resp.text(); } catch {}
+        const keyInvalid = resp.status === 400 && /api_key_invalid|api key not valid/i.test(errBody);
+        const errType = keyInvalid ? 'auth' : classifyError(resp.status);
         const msg = `HTTP ${resp.status}`;
         log('error:', msg, errType);
         // не повторяем auth/404 ошибки

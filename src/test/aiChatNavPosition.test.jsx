@@ -14,6 +14,7 @@ vi.mock('@/lib/aiAssistant', () => ({
 vi.mock('@/lib/gemini', () => ({
   isGeminiConfigured: () => false,
   GeminiError: class GeminiError extends Error {},
+  geminiErrorText: (e) => (e && e.message) || 'err',
 }));
 vi.mock('@/lib/userKeys', () => ({ loadUserKeys: vi.fn(async () => ({ gemini: null })) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
