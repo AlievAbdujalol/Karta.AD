@@ -23,14 +23,16 @@ describe('TILE_LAYERS — все девять слоёв карты', () => {
     }
   });
 
-  it('слои «Стандартная» и «Тёмная»: CARTO при ключе, иначе keyless Esri Canvas', () => {
+  it('слои «Стандартная» и «Тёмная»: CARTO при ключе, иначе OSM / Esri Dark Gray', () => {
     // Локально в .env.local ключ есть, в CI/prod его может не быть —
     // в обоих случаях URL обязан быть рабочим (проверено в test №1).
+    // «Стандарт» без ключа = цветная OSM-схема (пользователь жаловался на
+    // серый Esri Light Gray — «карта не та»); «Тёмная» = Esri Dark Gray Canvas.
     if (CARTO_KEY) {
       expect(TILE_LAYERS[0].url).toContain('cartocdn.com');
       expect(TILE_LAYERS[1].url).toContain('cartocdn.com');
     } else {
-      expect(TILE_LAYERS[0].url).toContain('World_Light_Gray_Base');
+      expect(TILE_LAYERS[0].url).toContain('openstreetmap.org');
       expect(TILE_LAYERS[1].url).toContain('World_Dark_Gray_Base');
     }
   });

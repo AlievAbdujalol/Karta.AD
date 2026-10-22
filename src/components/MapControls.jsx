@@ -2,13 +2,13 @@ import { Layers, Crosshair, Plus, Minus, Navigation, Share2, LocateFixed, Route,
 import { useMap } from 'react-leaflet';
 import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
-import { cartoRaster, cartoLabels, OSM_URL, CARTO_KEY, googleTiles, ESRI_LIGHT_GRAY_URL, ESRI_DARK_GRAY_URL } from '@/lib/tiles';
+import { cartoRaster, cartoLabels, OSM_URL, CARTO_KEY, googleTiles, ESRI_DARK_GRAY_URL } from '@/lib/tiles';
 import { getCachedLastLocation, saveLastLocation } from '@/lib/locationCache';
 
-// 9 слоёв без needsKey-пропусков: без VITE_CARTO_API_KEY слои CARTO
-// заменяются keyless-базами Esri Canvas — все номера 1..9 достижимы.
+// 9 слоёв без needsKey-пропусков: без VITE_CARTO_API_KEY «Стандарт» — OSM
+// (цветная схема), «Тёмная» — Esri Dark Gray Canvas — все номера 1..9 достижимы.
 const TILE_LAYERS = [
-  { labelKey: 'mapControls.layerStandard', url: CARTO_KEY ? cartoRaster('rastertiles/voyager') : ESRI_LIGHT_GRAY_URL, isHybrid: false },
+  { labelKey: 'mapControls.layerStandard', url: cartoRaster('rastertiles/voyager'), isHybrid: false },
   { labelKey: 'mapControls.layerDark', url: CARTO_KEY ? cartoRaster('dark_all') : ESRI_DARK_GRAY_URL, isHybrid: false },
   { labelKey: 'mapControls.layerGoogle', url: googleTiles('m'), isHybrid: false },
   { labelKey: 'mapControls.layerHybrid', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', isHybrid: true },
