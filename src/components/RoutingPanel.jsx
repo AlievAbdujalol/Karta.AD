@@ -89,13 +89,15 @@ function pushRecent(place) {
 
 // Привязка автокомплита к центру карты. Без viewbox Nominatim ранжирует по
 // мировой популярности — пользователь в Худжанде получал адреса из Узбекистана.
-// viewbox порядок: left,top,right,bottom (север шире юга).
+// center: [lat, lng] (из Home/BusMap) или { lat, lng }. viewbox: left,top,right,bottom.
 function nominatimUrl(query, limit, center) {
   const base = 'https://nominatim.openstreetmap.org/search?format=json&accept-language=ru&addressdetails=1'
     + '&q=' + encodeURIComponent(query) + '&limit=' + limit;
-  if (!center || !Number.isFinite(center.lat) || !Number.isFinite(center.lng)) return base;
+  const lat = Array.isArray(center) ? center[0] : center?.lat;
+  const lng = Array.isArray(center) ? center[1] : center?.lng;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return base;
   const dLat = 0.35, dLng = 0.5;
-  return base + `&viewbox=${(center.lng - dLng).toFixed(4)},${(center.lat + dLat).toFixed(4)},${(center.lng + dLng).toFixed(4)},${(center.lat - dLat).toFixed(4)}`;
+  return base + `&viewbox=${(lng - dLng).toFixed(4)},${(lat + dLat).toFixed(4)},${(lng + dLng).toFixed(4)},${(lat - dLat).toFixed(4)}`;
 }
 
 async function searchAddress(query, limit = 5, center = null) {
