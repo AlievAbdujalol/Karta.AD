@@ -87,11 +87,21 @@ function pushRecent(place) {
   } catch {}
 }
 
-async function searchAddress(query, limit = 5) {
+// Привязка автокомплита к центру карты. Без viewbox Nominatim ранжирует по
+// мировой популярности — пользователь в Худжанде получал адреса из Узбекистана.
+// viewbox порядок: left,top,right,bottom (север шире юга).
+function nominatimUrl(query, limit, center) {
+  const base = 'https://nominatim.openstreetmap.org/search?format=json&accept-language=ru&addressdetails=1'
+    + '&q=' + encodeURIComponent(query) + '&limit=' + limit;
+  if (!center || !Number.isFinite(center.lat) || !Number.isFinite(center.lng)) return base;
+  const dLat = 0.35, dLng = 0.5;
+  return base + `&viewbox=${(center.lng - dLng).toFixed(4)},${(center.lat + dLat).toFixed(4)},${(center.lng + dLng).toFixed(4)},${(center.lat - dLat).toFixed(4)}`;
+}
+
+async function searchAddress(query, limit = 5, center = null) {
   if (!query || query.length < 2) return [];
   try {
-    const url = 'https://nominatim.openstreetmap.org/search?format=json&accept-language=ru&addressdetails=1'
-      + '&q=' + encodeURIComponent(query) + '&limit=' + limit;
+    const url = nominatimUrl(query, limit, center);
     const resp = await fetch(url, {
       headers: { 'User-Agent': 'KartaAD/1.0' },
       signal: AbortSignal.timeout(5000),
@@ -131,7 +141,7 @@ function etaToStop(vehicles, routeId, stop) {
 // Sub-component: PlaceField (autocomplete address input)
 // ---------------------------------------------------------------------------
 
-function PlaceField({ value, onChangeText, onPickPlace, placeholder, iconColor, isActive, onRequestMapPick, autoFocus }) {
+function PlaceField({ value, onChangeText, onPickPlace, placeholder, iconColor, isActive, onRequestMapPick, autoFocus, searchCenter = null }) {
   const [suggestions, setSuggestions] = useState([]);
   const [recent, setRecent] = useState([]);
   const [loadingSug, setLoadingSug] = useState(false);
@@ -146,11 +156,11 @@ function PlaceField({ value, onChangeText, onPickPlace, placeholder, iconColor, 
     if (val.length < 2) { setSuggestions([]); return; }
     setLoadingSug(true);
     timerRef.current = setTimeout(async () => {
-      const res = await searchAddress(val);
+      const res = await searchAddress(val, 5, searchCenter);
       setSuggestions(res);
       setLoadingSug(false);
     }, 350);
-  }, [onChangeText]);
+  }, [onChangeText, searchCenter]);
 
   useEffect(() => {
     if (focused && value.length < 2) setRecent(getRecent());
@@ -474,7 +484,7 @@ function OsrmResultBlock({ route, showSteps, onToggleSteps }) {
   );
 }
 
-export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation, onRequestMapPick, mapPickResult, mapPickTarget, routes = [], vehicles = [], externalRoute = null }) {
+export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation, onRequestMapPick, mapPickResult, mapPickTarget, routes = [], vehicles = [], externalRoute = null, mapCenter = null }) {
   const navigate = useNavigate();
   const navCtl = useNavigation();
 
@@ -495,6 +505,9 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
   const [waypoints, setWaypoints] = useState([]);
   const [showPT, setShowPT] = useState(false);
   const prevRef = useRef({ from: null, to: null, mode: 'minibus' });
+  // Токен актуального сбора маршрута: при быстрой смене режима предыдущий (медленный)
+  // сбор транспорта завершался позже и затирал свежие результаты чужим режимом.
+  const buildSeqRef = useRef(0);
 
   // Restore saved points
   useEffect(() => {
@@ -596,6 +609,7 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
   // Build route
   const buildRoute = useCallback(async () => {
     if (!from || !to) return;
+    const seq = ++buildSeqRef.current;
     setLoading(true); setError(null); setOsrmRoute(null); setTransitResults(null);
     setFallbackWalk(null); setSelectedTransitIdx(0); setShowSteps(false);
 
@@ -608,10 +622,12 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
         const osm = await fetchOsmTransitRoutes(bboxAround([from, to], 0.1));
         if (osm.length) allRoutes = mergeTransitRoutes(routes, osm);
       } catch { /* OSM недоступен — ищем только по маршрутам БД */ }
+      if (seq !== buildSeqRef.current) return; // пользователь уже сменил режим/точки
 
       let result;
       try { result = await findTransitRoutes(from, to, allRoutes, transportMode); }
       catch { result = { direct: [], transfers: [], best: null }; }
+      if (seq !== buildSeqRef.current) return;
 
       // В городе есть только автобусы (или только маршрутки) — пробуем соседний тип ОТ.
       // findTransitRoutes сам учитывает allowed_types из настроек пользователя.
@@ -619,6 +635,7 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
         const other = transportMode === 'bus' ? 'minibus' : 'bus';
         try {
           const alt = await findTransitRoutes(from, to, allRoutes, other);
+          if (seq !== buildSeqRef.current) return;
           if (alt.best) { result = alt; setTransportMode(other); }
         } catch { /* остаёмся с пустым результатом */ }
       }
@@ -634,6 +651,7 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
         });
       } else {
         const walk = await buildOsrmRoute(from, to, 'walking');
+        if (seq !== buildSeqRef.current) return;
         if (walk) {
           setFallbackWalk(walk);
           toast.info('Маршрут транспортом не найден — показан пешеходный');
@@ -648,6 +666,7 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
       let truckParams=null; if(transportMode==='truck'){ try{ const t=JSON.parse(localStorage.getItem('karta_truck')||'{}'); truckParams={ weight: t.weight_t||t.weight, height: t.height_m, width: t.width_m }; }catch{} }
       const wps = waypoints.filter(Boolean).map(w=> ({lat:w.lat,lng:w.lng}));
       const result = await buildOsrmRoute(from, to, mode?.osrmProfile || 'driving', { waypoints: wps, exclude, truckParams, alternatives: true });
+      if (seq !== buildSeqRef.current) return;
       if (result) {
         setOsrmRoute(result);
         onRouteBuilt?.({ ...result, mode: transportMode, from, to, fromText, toText, segments: null });
@@ -833,6 +852,7 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
                 isActive={mapPickTarget === 'from'}
                 onRequestMapPick={() => onRequestMapPick?.('from')}
                 autoFocus={!from && !to}
+                searchCenter={mapCenter}
               />
               <PlaceField
                 value={toText}
@@ -842,6 +862,7 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
                 iconColor="#ef4444"
                 isActive={mapPickTarget === 'to'}
                 onRequestMapPick={() => onRequestMapPick?.('to')}
+                searchCenter={mapCenter}
               />
             </div>
             <button
@@ -1070,9 +1091,11 @@ export default function RoutingPanel({ onClose, onRouteBuilt, onStartNavigation,
               showSteps={showSteps}
               onToggleSteps={() => setShowSteps((s) => !s)}
             />
-            <div className="rounded-xl bg-slate-50 dark:bg-slate-800 p-2 text-[11px] text-slate-500 flex flex-wrap gap-2">
-              <span>Пробки: нет данных</span><span>· Платные: {transportMode==='truck'?'учитываются': 'избежать в настройках'}</span><span>· Камеры: —</span><span>· Перекрытия: из Событий</span>
-            </div>
+            {(transportMode === 'auto' || transportMode === 'taxi' || transportMode === 'truck') && (
+              <div className="rounded-xl bg-slate-50 dark:bg-slate-800 p-2 text-[11px] text-slate-500 flex flex-wrap gap-2">
+                <span>Пробки: нет данных</span><span>· Платные: {transportMode==='truck'?'учитываются': 'избежать в настройках'}</span><span>· Камеры: —</span><span>· Перекрытия: из Событий</span>
+              </div>
+            )}
           </div>
         )}
       </div>
