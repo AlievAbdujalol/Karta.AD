@@ -302,7 +302,7 @@ function NavigationUserArrow({ position, heading }) {
   return <Marker position={position} icon={icon} zIndexOffset={1000} interactive={false} />;
 }
 
-function RouteNumberLabel({ positions, routeNumber, routeName, color }) {
+function RouteNumberLabel({ positions, routeNumber, color }) {
   const labels = useMemo(() => {
     if (!positions || positions.length < 3) return [];
     const mid = Math.floor(positions.length / 2);
@@ -311,6 +311,8 @@ function RouteNumberLabel({ positions, routeNumber, routeName, color }) {
 
   if (labels.length === 0) return null;
 
+  // Компактная плашка только с номером маршрута — полное имя на карте создаёт
+  // нечитаемую «стену текста» при десятках линий (UX-фидбек).
   return labels.map((label, i) => (
     <Marker
       key={`rlabel-${i}`}
@@ -320,7 +322,7 @@ function RouteNumberLabel({ positions, routeNumber, routeName, color }) {
           background:${safeColor(color)};
           color:#fff;
           border-radius:8px;
-          padding:3px 8px;
+          padding:2px 6px;
           font-size:10px;
           font-weight:800;
           white-space:nowrap;
@@ -328,7 +330,7 @@ function RouteNumberLabel({ positions, routeNumber, routeName, color }) {
           border:2px solid rgba(255,255,255,0.9);
           font-family:Inter,sans-serif;
           letter-spacing:-0.3px;
-        ">#${esc(routeNumber)}${routeName ? ` ${esc(routeName)}` : ''}</div>`,
+        ">#${esc(routeNumber)}</div>`,
         className: '',
         iconSize: [0, 0],
         iconAnchor: [0, -12],
@@ -700,6 +702,30 @@ const OsmStopIcon = L.divIcon({
   iconAnchor: [9, 9],
 });
 
+// Спокойный кластер остановок: полупрозрачный тёмный круг вместо дефолтного
+// ярко-зелёного — меньше визуального шума на плотной карте.
+function clusterIcon(cluster) {
+  const count = cluster.getChildCount();
+  const size = count < 10 ? 24 : count < 50 ? 28 : 32;
+  return L.divIcon({
+    html: `<div style="
+      width:${size}px;height:${size}px;
+      border-radius:50%;
+      background:rgba(15,23,42,0.55);
+      color:#fff;
+      border:2px solid rgba(255,255,255,0.85);
+      display:flex;align-items:center;justify-content:center;
+      font-size:${size < 28 ? 11 : 12}px;font-weight:700;
+      font-family:Inter,sans-serif;
+      box-shadow:0 2px 6px rgba(0,0,0,0.25);
+      backdrop-filter:blur(2px);
+    ">${count}</div>`,
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+}
+
 function distM2(lat1, lng1, lat2, lng2) {
   const R = 6371000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -737,6 +763,7 @@ function OsmStopMarkers({ routes, routeGeometries, routingOpen, onPickResult }) 
       showCoverageOnHover={false}
       zoomToBoundsOnClick
       animate={false}
+      iconCreateFunction={clusterIcon}
     >
       {limited.map(s => (
         <Marker key={`osm-${s.id}`} position={[s.lat, s.lng]} icon={OsmStopIcon} bubblingMouseEvents={false}
@@ -1218,7 +1245,6 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
             <RouteNumberLabel
               positions={positions}
               routeNumber={r.number}
-              routeName={r.name}
               color={r.color || '#2563EB'}
             />
           </Fragment>
@@ -1271,6 +1297,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
               spiderfyOnMaxZoom
               showCoverageOnHover={false}
               animate={false}
+              iconCreateFunction={clusterIcon}
             >
               {markers}
             </MarkerClusterGroup>

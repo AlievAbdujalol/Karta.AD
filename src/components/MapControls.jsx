@@ -1,4 +1,5 @@
-import { Layers, Crosshair, Plus, Minus, Navigation, Share2, LocateFixed, Route, Car, Bus } from 'lucide-react';
+import { useState } from 'react';
+import { Layers, Crosshair, Plus, Minus, Navigation, Share2, LocateFixed, Route, Car, Bus, MoreHorizontal } from 'lucide-react';
 import { useMap } from 'react-leaflet';
 import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
@@ -43,6 +44,9 @@ export function initialTileIndex() {
 export default function MapControls({ tileIndex, setTileIndex, finderActive, onFinderToggle, onShareTrip, rightOffset, isNavigating, onLocate, tiltEnabled: _tiltEnabled, onToggleTilt: _onToggleTilt, autoCenter, onToggleAutoCenter, overviewActive, onToggleOverview, showTraffic, onToggleTraffic, showTransport, onToggleTransport }) {
   const map = useMap();
   const { t } = useLanguage();
+  // Второстепенные переключатели (трафик/транспорт/авто-центр) свёрнуты в «⋯»:
+  // основная рейка короче и не перегружает экран.
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const locate = () => {
     if (onLocate) { onLocate(); return; }
@@ -103,14 +107,21 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
         <button onClick={() => map.zoomOut()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90`} title={t('mapControls.zoomOut')}>
           <Minus size={18} className="stroke-[2.2]" />
         </button>
-        <button onClick={() => onToggleTraffic?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${showTraffic ? '!bg-orange-500 !text-white' : ''}`} title="Трафик">
-          <Car size={18} className="stroke-[2.2]" />
-        </button>
-        <button onClick={() => onToggleTransport?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${showTransport ? '!bg-blue-600 !text-white' : ''}`} title="Транспорт">
-          <Bus size={18} className="stroke-[2.2]" />
-        </button>
-        <button onClick={() => onToggleAutoCenter?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${autoCenter ? '!bg-emerald-600 !text-white' : ''}`} title="Авто-центр">
-          <LocateFixed size={18} className="stroke-[2.2]" />
+        {moreOpen && (
+          <>
+            <button onClick={() => onToggleTraffic?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${showTraffic ? '!bg-orange-500 !text-white' : ''}`} title="Трафик">
+              <Car size={18} className="stroke-[2.2]" />
+            </button>
+            <button onClick={() => onToggleTransport?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${showTransport ? '!bg-blue-600 !text-white' : ''}`} title="Транспорт">
+              <Bus size={18} className="stroke-[2.2]" />
+            </button>
+            <button onClick={() => onToggleAutoCenter?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${autoCenter ? '!bg-emerald-600 !text-white' : ''}`} title="Авто-центр">
+              <LocateFixed size={18} className="stroke-[2.2]" />
+            </button>
+          </>
+        )}
+        <button onClick={() => setMoreOpen(v => !v)} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${(showTraffic || showTransport) ? '!bg-slate-700 !text-white dark:!bg-slate-600' : ''}`} title="Ещё — трафик, транспорт, авто-центр">
+          <MoreHorizontal size={18} className="stroke-[2.2]" />
         </button>
         <button onClick={cycleLayer} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 relative`} title={`${t('mapControls.layerLabel')} ${t(TILE_LAYERS[tileIndex].labelKey)}`}>
           <Layers size={18} className="stroke-[2.2]" />
@@ -148,11 +159,21 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
         <button onClick={() => map.zoomOut()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90`}>
           <Minus size={15} className="stroke-[2.2]" />
         </button>
-        <button onClick={() => onToggleTraffic?.()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${showTraffic ? '!bg-orange-500 !text-white' : ''}`}>
-          <Car size={15} className="stroke-[2.2]" />
-        </button>
-        <button onClick={() => onToggleTransport?.()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${showTransport ? '!bg-blue-600 !text-white' : ''}`}>
-          <Bus size={15} className="stroke-[2.2]" />
+        {moreOpen && (
+          <>
+            <button onClick={() => onToggleTraffic?.()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${showTraffic ? '!bg-orange-500 !text-white' : ''}`}>
+              <Car size={15} className="stroke-[2.2]" />
+            </button>
+            <button onClick={() => onToggleTransport?.()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${showTransport ? '!bg-blue-600 !text-white' : ''}`}>
+              <Bus size={15} className="stroke-[2.2]" />
+            </button>
+            <button onClick={() => onToggleAutoCenter?.()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${autoCenter ? '!bg-emerald-600 !text-white' : ''}`}>
+              <LocateFixed size={15} className="stroke-[2.2]" />
+            </button>
+          </>
+        )}
+        <button onClick={() => setMoreOpen(v => !v)} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${(showTraffic || showTransport) ? '!bg-slate-700 !text-white dark:!bg-slate-600' : ''}`}>
+          <MoreHorizontal size={15} className="stroke-[2.2]" />
         </button>
         <button onClick={cycleLayer} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 relative`}>
           <Layers size={15} className="stroke-[2.2]" />
