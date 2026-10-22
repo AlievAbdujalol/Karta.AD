@@ -15,8 +15,9 @@ const esc = (s) => String(s ?? '').replace(/[<>&"]/g, '');
 /**
  * Публичные точки бизнесов (магазины с адресом на карте).
  * Данные: RPC get_public_businesses + get_public_sites (у сайтов — ссылка).
+ * visible=false (отдалённый зум) — данные остаются в памяти, маркеры не рисуем.
  */
-export default function BusinessMarkers({ onSelect }) {
+export default function BusinessMarkers({ onSelect, visible = true }) {
   const [shops, setShops] = useState([]);
   const [sites, setSites] = useState([]);
 
@@ -33,6 +34,7 @@ export default function BusinessMarkers({ onSelect }) {
 
   const siteBizIds = new Set(sites.map((s) => s.business_id));
 
+  if (!visible) return null;
   if (!shops.length && !sites.length) return null;
 
   return (

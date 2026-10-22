@@ -122,10 +122,12 @@ function MapController({ center, mapRef }) {
   }, [lat, lng, map, mapRef]);
   return null;
 }
-function CenterWatcher({ onCenterChange }){
+function CenterWatcher({ onCenterChange, onZoomChange }){
   const map = useMap();
   const cbRef = useRef(onCenterChange);
   cbRef.current = onCenterChange;
+  const zoomCbRef = useRef(onZoomChange);
+  zoomCbRef.current = onZoomChange;
   const lastRef = useRef(null);
   useEffect(()=>{
     const upd=()=>{
@@ -138,8 +140,10 @@ function CenterWatcher({ onCenterChange }){
         cbRef.current?.([c.lat, c.lng]);
       }catch{}
     };
+    const updZoom=()=>{ try{ zoomCbRef.current?.(map.getZoom()); }catch{} };
     // без синхронного upd() на маунте: он дёргал setState родителя в коммите и давал петлю обновлений
-    map.on('moveend', upd); return ()=> map.off('moveend', upd);
+    map.on('moveend', upd); map.on('zoomend', updZoom);
+    return ()=>{ map.off('moveend', upd); map.off('zoomend', updZoom); };
   },[map]);
   return null;
 }
@@ -795,6 +799,10 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
   };
   const [showTransport, setShowTransport] = useState(false);
   const [trafficData, setTrafficData] = useState([]);
+  // Текущий зум карты (13 = стартовый). При отдалении (< z12) прячем точки —
+  // остановки, кластеры, машины, бизнесы — и тоньше рисуем линии: издалека
+  // фиксированные по размеру маркеры выглядят «огромными» и мешают (UX-фидбек).
+  const [mapZoom, setMapZoom] = useState(13);
 
   // Fetch or mock real-time traffic data (example: density heatmap)
   useEffect(() => {
@@ -1196,7 +1204,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         />
       )}
       <MapController center={center} mapRef={mapRef} />
-      <CenterWatcher onCenterChange={onCenterChange} />
+      <CenterWatcher onCenterChange={onCenterChange} onZoomChange={setMapZoom} />
       {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
       <FlyToHandler flyTo={flyTo} onDone={onFlyDone} />
       <ScaleControl position="bottomleft" imperial={false} metric={true} />
@@ -1237,16 +1245,21 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
           return null;
         }
         const positions = geoPositions;
+        // при отдалении (< z12) линии тоньше и без плашек номеров — иначе десятки
+        // толстых линий по всему региону выглядят «огромными» (UX-фидбек)
+        const far = mapZoom < 12;
         return (
           <Fragment key={r.id}>
             {/* Белая обводка + яркая линия — главный визуальный элемент */}
-            <Polyline positions={positions} color="white" weight={isSelected ? 9 : 6} opacity={isSelected ? 0.95 : 0.6} lineCap="round" lineJoin="round" />
-            <Polyline positions={positions} color={r.color || '#2563EB'} weight={isSelected ? 6 : 3.5} opacity={isSelected ? 1 : 0.7} lineCap="round" lineJoin="round" />
-            <RouteNumberLabel
-              positions={positions}
-              routeNumber={r.number}
-              color={r.color || '#2563EB'}
-            />
+            <Polyline positions={positions} color="white" weight={isSelected ? (far ? 4 : 9) : (far ? 3 : 6)} opacity={isSelected ? 0.95 : 0.6} lineCap="round" lineJoin="round" />
+            <Polyline positions={positions} color={r.color || '#2563EB'} weight={isSelected ? (far ? 3 : 6) : (far ? 1.8 : 3.5)} opacity={isSelected ? 1 : 0.7} lineCap="round" lineJoin="round" />
+            {!far && (
+              <RouteNumberLabel
+                positions={positions}
+                routeNumber={r.number}
+                color={r.color || '#2563EB'}
+              />
+            )}
           </Fragment>
         );
       })}
@@ -1254,8 +1267,15 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       {(() => {
         const sourceRoutes = route ? [route] : routes;
         const allStops = collectUniqueStops(sourceRoutes);
-        const markers = allStops.map((stop, idx) => {
-          const isWatched = watchedStop && Math.abs(stop.lat - watchedStop.lat) < 0.00012 && Math.abs(stop.lng - watchedStop.lng) < 0.00012;
+        const isWatchedStop = (stop) => watchedStop && Math.abs(stop.lat - watchedStop.lat) < 0.00012 && Math.abs(stop.lng - watchedStop.lng) < 0.00012;
+        // при отдалении (< z12) точки остановок и их кластеры скрыты — издалека это
+        // огромные «пятна» по всему региону (UX-фидбек). Наблюдаемая остановка остаётся;
+        // при выбранном маршруте — точки его остановок видны на любом зуме.
+        const visibleStops = (mapZoom < 12 && !route)
+          ? allStops.filter(isWatchedStop)
+          : allStops;
+        const markers = visibleStops.map((stop, idx) => {
+          const isWatched = isWatchedStop(stop);
           const icon = L.divIcon({
             html: isWatched
               ? `<div style="position:relative;width:30px;height:30px;">
@@ -1288,7 +1308,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
             </Marker>
           );
         });
-        if (!route && allStops.length > 55) {
+        if (!route && visibleStops.length > 55) {
           return (
             <MarkerClusterGroup
               key={`stops-cluster-${markers.length}-${(route?.id) || 'all'}`}
@@ -1313,7 +1333,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         onPickResult={handleStopPickResult}
       />
 
-      {vehicles.filter(v => v.lat && v.lng).map(v => (
+      {mapZoom >= 12 && vehicles.filter(v => v.lat && v.lng).map(v => (
         <AnimatedVehicleMarker key={v.id} vehicle={v} route={route} getEtaLabel={getEtaLabel} />
       ))}
       {eventPos && (
@@ -1516,7 +1536,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       )}
 
       {/* Публичные точки бизнесов (адреса магазинов) */}
-      <BusinessMarkers />
+      <BusinessMarkers visible={mapZoom >= 12} />
 
       {/* Navigation camera follow + arrow */}
       {nav.isActive && <NavigationCamera followUser={nav.followUser} userPosition={nav.userPosition} userHeading={nav.userHeading} autoCenter={autoCenter} routeData={nav.routeData} />}

@@ -288,6 +288,31 @@ export default function Home() {
 
   const filteredCities = selectedCountry ? cities.filter(c => c.country === selectedCountry) : cities;
 
+  // Сохранённый город мог устареть (город пересоздан в БД → новый uuid) или разойтись
+  // со страной: тогда селекты показывают пусто, хотя город выбран и маршруты загружены —
+  // на проде выглядело как «город не выбран» (UX-фидбек). Сверяем выбор со списком.
+  useEffect(() => {
+    if (!cities.length) return;
+    setSelectedCity(prev => {
+      if (!prev) return prev;
+      const byId = cities.find(c => c.id === prev.id);
+      if (byId) {
+        const same = (byId.name || '').trim() === (prev.name || '').trim() && (byId.country || '') === (prev.country || '');
+        return same ? prev : byId;
+      }
+      // id больше нет в БД — ищем по имени (без учёта хвостовых пробелов, в данных они есть)
+      return cities.find(c => (c.name || '').trim() === (prev.name || '').trim()) || null;
+    });
+  }, [cities]);
+
+  // страна в фильтре должна совпадать со страной выбранного города — иначе город
+  // «выпадает» из списка (filteredCities) и селект выглядит пустым
+  useEffect(() => {
+    if (selectedCity?.country && selectedCountry && selectedCity.country !== selectedCountry) {
+      setSelectedCountry(selectedCity.country);
+    }
+  }, [selectedCity, selectedCountry]);
+
   useEffect(() => {
     if (selectedCity) {
       supabase.from('routes').select('*')
@@ -601,7 +626,10 @@ export default function Home() {
       />}
       {!nav.isActive && <SchedulePanel route={selectedRoute} hidden={routingOpen} />}
 
-      <div className="absolute top-40 md:top-3 left-1/2 -translate-x-1/2 md:left-[400px] md:translate-x-0 z-[200] pointer-events-none flex flex-col gap-2 items-start">
+      {/* Подсказка «Выберите город»: на десктопе раньше сидела под шапкой (md:top-3 при
+          z-[200] < z-[600] шапки) и была не видна — пользователь не понимал, что город
+          не выбран (UX-фидбек). Смещена под шапку. */}
+      <div className="absolute top-40 md:top-[116px] left-1/2 -translate-x-1/2 md:left-[400px] md:translate-x-0 z-[200] pointer-events-none flex flex-col gap-2 items-start">
         {locating && (
           <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl px-4 py-2 rounded-full shadow-lg border border-slate-200/50 dark:border-slate-800/80 flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-400 pointer-events-auto">
             <span className="w-3.5 h-3.5 border-2 border-emerald-600 dark:border-emerald-400 border-t-transparent rounded-full animate-spin" />

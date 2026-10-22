@@ -17,7 +17,7 @@ const getFlag = (c) => FLAG_MAP[c?.trim()] || (c ? '🏳️' : '🌍');
 export default function HomeHeader({
   lang: _lang, setLang: _setLang,
   countries = [], selectedCountry, setSelectedCountry,
-  cities = [], filteredCities = [], selectedCity, setSelectedCity,
+  cities: _cities = [], filteredCities = [], selectedCity, setSelectedCity,
   selectedType, setSelectedType,
   routes: _routes = [], filteredRoutes = [], selectedRoute, setSelectedRoute,
   favorites = [], toggleFavorite,
@@ -32,6 +32,19 @@ export default function HomeHeader({
 
   const isAdmin = user?.role === 'admin';
   const isDriver = user?.role === 'driver';
+
+  // Сохранённое значение должно присутствовать в списках опций, иначе селект показывает
+  // пусто, хотя выбор реально сделан (списки ещё не загрузились, устарели или город
+  // разошёлся со страной) — на проде выглядело как «город не выбран» (UX-фидбек).
+  const countryOptions = (selectedCountry && !countries.includes(selectedCountry))
+    ? [...countries, selectedCountry]
+    : countries;
+  const cityOptions = (selectedCity && !filteredCities.some(c => c.id === selectedCity.id))
+    ? [...filteredCities, selectedCity]
+    : filteredCities;
+  const routeOptions = (selectedRoute && !filteredRoutes.some(r => r.id === selectedRoute.id))
+    ? [...filteredRoutes, selectedRoute]
+    : filteredRoutes;
 
   return (
     <div className="flex flex-col gap-1 w-[calc(100vw-16px)] sm:w-full sm:max-w-[640px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl rounded-[20px] border border-slate-200/60 dark:border-slate-800/80 shadow-[0_8px_32px_rgba(15,23,42,0.1)] pointer-events-auto">
@@ -73,13 +86,13 @@ export default function HomeHeader({
         <select value={selectedCountry} onChange={e => { setSelectedCountry(e.target.value); setSelectedCity(null); }}
           className="text-[9px] sm:text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100/80 dark:bg-slate-800/80 rounded-full px-2 py-1 border border-slate-200/50 dark:border-slate-700/50 outline-none flex-shrink-0 cursor-pointer">
           <option value="">{t('home.countryFilter')}</option>
-          {countries.map(c => <option key={c} value={c}>{getFlag(c)} {c}</option>)}
+          {countryOptions.map(c => <option key={c} value={c}>{getFlag(c)} {c}</option>)}
         </select>
 
-        <select value={selectedCity?.id || ''} onChange={e => { const city = cities.find(c => c.id === e.target.value); setSelectedCity(city || null); }}
+        <select value={selectedCity?.id || ''} onChange={e => { const city = cityOptions.find(c => c.id === e.target.value); setSelectedCity(city || null); }}
           className="text-[9px] sm:text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100/80 dark:bg-slate-800/80 rounded-full px-2 py-1 border border-slate-200/50 dark:border-slate-700/50 outline-none flex-shrink-0 cursor-pointer">
           <option value="">{t('home.cityFilter')}</option>
-          {filteredCities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {cityOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
 
         <select value={selectedType} onChange={e => setSelectedType(e.target.value)}
@@ -92,12 +105,12 @@ export default function HomeHeader({
         <div className="flex items-center gap-1 rounded-full px-2 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white transition-all duration-200 shadow-sm flex-shrink-0 cursor-pointer active:scale-95 ml-auto">
           <Zap size={10} className="fill-white" />
           <select value={selectedRoute?.id || ''} onChange={e => {
-            const route = filteredRoutes.find(r => r.id === e.target.value);
+            const route = routeOptions.find(r => r.id === e.target.value);
             setSelectedRoute(route || null);
             if (route && logTrip) logTrip(route);
-          }} className="text-[9px] sm:text-[10px] font-extrabold text-white bg-transparent outline-none cursor-pointer max-w-[100px] sm:max-w-none">
+          }} className="text-[9px] sm:text-[10px] font-extrabold text-white bg-transparent outline-none cursor-pointer max-w-[100px] sm:max-w-[160px]">
             <option value="" className="bg-slate-900 text-white">{t('home.routeFilter')}</option>
-            {filteredRoutes.map(r => <option key={r.id} value={r.id} className="bg-slate-900 text-white">#{r.number} {r.name || ''}</option>)}
+            {routeOptions.map(r => <option key={r.id} value={r.id} className="bg-slate-900 text-white">#{r.number} {r.name || ''}</option>)}
           </select>
           {selectedRoute && (
             <button onClick={e => { e.stopPropagation(); toggleFavorite(selectedRoute); }} className="ml-0.5 p-0.5 hover:scale-110 active:scale-90 transition-transform">
