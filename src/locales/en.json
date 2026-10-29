@@ -231,6 +231,7 @@
     "noRoutes": "No routes found",
     "from": "From here",
     "to": "To here",
+    "startUnscheduled": "Start trip from here",
     "suggestName": "Suggest a local name"
   },
   "stopwatcher": {

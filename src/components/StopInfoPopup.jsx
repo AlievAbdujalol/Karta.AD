@@ -113,7 +113,7 @@ function Chip({ r }) {
   );
 }
 
-export default function StopInfoPopup({ stop, routes, routeGeometries, routingOpen: _routingOpen, onPickFrom, onPickTo }) {
+export default function StopInfoPopup({ stop, routes, routeGeometries, routingOpen: _routingOpen, onPickFrom, onPickTo, onStartUnscheduled }) {
   const { t } = useLanguage();
   const passingRoutes = useMemo(() => findRoutesAtStop(stop, routes, routeGeometries), [stop, routes, routeGeometries]);
   const buses = passingRoutes.filter(r => r.type === 'bus');
@@ -189,6 +189,14 @@ export default function StopInfoPopup({ stop, routes, routeGeometries, routingOp
         <button onClick={() => onPickTo?.(stop)} style={S.btnTo}>
           {t('stopPopup.to') || 'Сюда'}
         </button>
+        {onStartUnscheduled && (
+          <button
+            onClick={() => onStartUnscheduled(stop)}
+            style={{ ...S.btnTo, background: '#f59e0b', boxShadow: '0 2px 8px rgba(245,158,11,0.35)' }}
+          >
+            {t('stopPopup.startUnscheduled') || 'Начать рейс отсюда'}
+          </button>
+        )}
       </div>
     </div>
   );
