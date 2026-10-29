@@ -14,6 +14,7 @@ import BusinessMarkers from './BusinessMarkers';
 import StopInfoPopup, { collectUniqueStops } from './StopInfoPopup';
 import { useOverpassStops } from '@/hooks/useOverpassStops';
 import { useCurrentUser } from '@/lib/useCurrentUser';
+import { visibleStopsAt, routeDetailsVisible, transitPointsVisible, isSameStop } from '@/lib/stopVisibility';
 import { useNavigation } from '@/lib/NavigationContext';
 import { readNavSettings, persistNavSettings, customCursorHtml, useNavCursor, applyNightMode } from '@/lib/navCursor';
 import { useTheme } from 'next-themes';
@@ -1247,7 +1248,9 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         const positions = geoPositions;
         // при сильном отдалении (< z11) линии тоньше и без плашек номеров — иначе
         // десятки толстых линий по всему региону выглядят «огромными» (UX-фидбек)
-        const far = mapZoom < 11;
+        // при сильном отдалении (< z11) линии тоньше и без плашек номеров — иначе
+        // десятки толстых линий по всему региону выглядят «огромными» (UX-фидбек)
+        const far = !routeDetailsVisible(mapZoom);
         return (
           <Fragment key={r.id}>
             {/* Белая обводка + яркая линия — главный визуальный элемент */}
@@ -1267,15 +1270,13 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       {(() => {
         const sourceRoutes = route ? [route] : routes;
         const allStops = collectUniqueStops(sourceRoutes);
-        const isWatchedStop = (stop) => watchedStop && Math.abs(stop.lat - watchedStop.lat) < 0.00012 && Math.abs(stop.lng - watchedStop.lng) < 0.00012;
         // Остановки видны на зумах города и района (z11+); скрываем только при сильном
         // отдалении (< z11, масштаб 10–20 км), где они — огромные «пятна» по региону
         // (UX-фидбек: «если не нужны — пусть исчезают, чтобы не мешать»).
         // Наблюдаемая остановка остаётся всегда; при выбранном маршруте — его
         // остановки видны на любом зуме («верни остановки, которые ранее были»).
-        const visibleStops = (mapZoom < 11 && !route)
-          ? allStops.filter(isWatchedStop)
-          : allStops;
+        const visibleStops = visibleStopsAt(allStops, { zoom: mapZoom, route, watchedStop });
+        const isWatchedStop = (stop) => isSameStop(stop, watchedStop);
         const markers = visibleStops.map((stop, idx) => {
           const isWatched = isWatchedStop(stop);
           const icon = L.divIcon({
@@ -1335,7 +1336,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         onPickResult={handleStopPickResult}
       />
 
-      {mapZoom >= 12 && vehicles.filter(v => v.lat && v.lng).map(v => (
+      {transitPointsVisible(mapZoom) && vehicles.filter(v => v.lat && v.lng).map(v => (
         <AnimatedVehicleMarker key={v.id} vehicle={v} route={route} getEtaLabel={getEtaLabel} />
       ))}
       {eventPos && (
@@ -1538,7 +1539,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       )}
 
       {/* Публичные точки бизнесов (адреса магазинов) */}
-      <BusinessMarkers visible={mapZoom >= 12} />
+      <BusinessMarkers visible={transitPointsVisible(mapZoom)} />
 
       {/* Navigation camera follow + arrow */}
       {nav.isActive && <NavigationCamera followUser={nav.followUser} userPosition={nav.userPosition} userHeading={nav.userHeading} autoCenter={autoCenter} routeData={nav.routeData} />}
