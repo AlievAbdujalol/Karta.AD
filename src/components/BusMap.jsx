@@ -789,7 +789,7 @@ function OsmStopMarkers({ routes, routeGeometries, routingOpen, onPickResult }) 
   );
 }
 
-export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute: _groupRoute, panelVisible, onLocate, tiltEnabled: _tiltEnabled = false, autoCenter = true, routeMeta = null, onPlaceSelect: _onPlaceSelect, onCenterChange, onMapClick, eventPos, eventLine=[], roadDir=0, hideEvents=false }) {
+export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute: _groupRoute, panelVisible, onLocate, locating = false, tiltEnabled: _tiltEnabled = false, autoCenter = true, routeMeta = null, onPlaceSelect: _onPlaceSelect, onCenterChange, onMapClick, eventPos, eventLine=[], roadDir=0, hideEvents=false }) {
   // стартовый слой: сохранённый либо «1 Стандарт» — все 9 слоёв работают без ключа
   const [tileIndex, setTileIndex] = useState(() => initialTileIndex());
   const [showTraffic, setShowTraffic] = useState(() => readNavSettings().show_traffic !== false); // из настроек навигатора
@@ -1209,7 +1209,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
       <FlyToHandler flyTo={flyTo} onDone={onFlyDone} />
       <ScaleControl position="bottomleft" imperial={false} metric={true} />
-      {!mapPickTarget && <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={routingOpen} onFinderToggle={handleFinderToggle} onShareTrip={onShareTrip} rightOffset={routingOpen ? 400 : panelVisible ? 360 : 0} isNavigating={nav.isActive} onLocate={onLocate} autoCenter={autoCenter} onToggleAutoCenter={()=>{ const v=!autoCenter; window.dispatchEvent(new CustomEvent('karta_autocenter',{detail:v})); }} overviewActive={!nav.followUser} onToggleOverview={()=>nav.toggleFollow()} showTraffic={showTraffic} onToggleTraffic={toggleTraffic} showTransport={showTransport} onToggleTransport={()=>setShowTransport(prev=>!prev)} />}
+      {!mapPickTarget && <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={routingOpen} onFinderToggle={handleFinderToggle} onShareTrip={onShareTrip} rightOffset={routingOpen ? 400 : panelVisible ? 360 : 0} isNavigating={nav.isActive} onLocate={onLocate} locating={locating} autoCenter={autoCenter} onToggleAutoCenter={()=>{ const v=!autoCenter; window.dispatchEvent(new CustomEvent('karta_autocenter',{detail:v})); }} overviewActive={!nav.followUser} onToggleOverview={()=>nav.toggleFollow()} showTraffic={showTraffic} onToggleTraffic={toggleTraffic} showTransport={showTransport} onToggleTransport={()=>setShowTransport(prev=>!prev)} />}
 
       {showTraffic && (
         <TileLayer

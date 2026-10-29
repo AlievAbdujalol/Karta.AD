@@ -103,6 +103,7 @@ export function NavigationProvider({ children }) {
   const [snappedPosition, setSnappedPosition] = useState(null);
   const [followingStep, setFollowingStep] = useState(null);
   const [gpsAccuracy, setGpsAccuracy] = useState(null);
+  const [gpsError, setGpsError] = useState(null);
   // Предложение «Другая дорога»: более быстрый маршрут с текущей позиции до конца
   const [alternativeRoute, setAlternativeRoute] = useState(null);
 
@@ -120,6 +121,7 @@ export function NavigationProvider({ children }) {
   const offRouteStartRef = useRef(null);
   const routeProgressRef = useRef(0);
   const routeLenRef = useRef(0);
+  const gpsErrorRef = useRef(null);
   // Трекер прибытия (navigationLogic): подтверждение = ARRIVAL_CONFIRM_FIXES
   // подряд валидных GPS-замеров; сбрасывается только сменой маршрута/цели.
   const arrivalStateRef = useRef(initialArrivalState());
@@ -133,6 +135,7 @@ export function NavigationProvider({ children }) {
   useEffect(() => { isPausedRef.current = isPaused; }, [isPaused]);
   useEffect(() => { voiceEnabledRef.current = voiceEnabled; }, [voiceEnabled]);
   useEffect(() => { routeProgressRef.current = routeProgress; }, [routeProgress]);
+  useEffect(() => { gpsErrorRef.current = gpsError; }, [gpsError]);
 
   const clearGps = useCallback(() => {
     if (watchIdRef.current != null) {
@@ -272,6 +275,7 @@ export function NavigationProvider({ children }) {
     setUserHeading(effectiveHeading || 0);
     setUserSpeed(speed || 0);
     if (Number.isFinite(accuracy)) setGpsAccuracy(accuracy);
+    if (gpsErrorRef.current) setGpsError(null); // первый живой фикс снимает ошибку геолокации
 
     if (isPausedRef.current) return;
 
@@ -429,7 +433,7 @@ export function NavigationProvider({ children }) {
       setRemainingDuration(Math.round(etaSec));
     }
     setTripStats({ distance: traveledRef.current, duration: elapsed, avgSpeed: avgSpd * 3.6 });
-  }, [ensureStepStarts, getManeuverText, getStepsArc, speak]);
+  }, [ensureStepStarts, getManeuverText, getStepsArc, speak, setGpsError]);
 
   const isReroutingRef = useRef(false);
 
@@ -487,8 +491,11 @@ export function NavigationProvider({ children }) {
         processPositionRef.current(latitude, longitude, heading, speed || 0, accuracy ?? null);
       },
       (err) => {
-        if (err?.code === 1) toast.error('Разрешите доступ к геолокации — без неё навигация не следит за вами', { id: 'nav-geo-denied' });
-        else toast.error('Не удаётся получить GPS-позицию', { id: 'nav-geo-error' });
+        const msg = err?.code === 1
+          ? 'Разрешите доступ к геолокации — без неё навигация не следит за вами'
+          : 'Не удаётся получить GPS-позицию';
+        setGpsError(msg);
+        toast.error(msg, { id: 'nav-geo-error' });
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
     );
@@ -735,11 +742,11 @@ export function NavigationProvider({ children }) {
     startTime, voiceEnabled, followUser,
     showSummary, summaryData, tripStats,
     routeProgress, isOffRoute, isRerouting, hasArrived, snappedPosition,
-    followingStep, gpsAccuracy,
+    followingStep, gpsAccuracy, gpsError,
     startNavigation, startNavigationWithFromTo, stopNavigation,
     togglePause, toggleVoice, toggleFollow,
     reroute, alternativeRoute, useAlternative, dismissAlternative, closeSummary,
-    setUserPosition, setUserHeading, setUserSpeed, setFollowUser,
+    setUserPosition, setUserHeading, setUserSpeed, setFollowUser, setGpsError,
   }), [
     isActive, isPaused,
     routeData, userPosition, userHeading, userSpeed,
@@ -747,7 +754,7 @@ export function NavigationProvider({ children }) {
     startTime, voiceEnabled, followUser,
     showSummary, summaryData, tripStats,
     routeProgress, isOffRoute, isRerouting, hasArrived, snappedPosition,
-    followingStep, gpsAccuracy,
+    followingStep, gpsAccuracy, gpsError,
     startNavigation, startNavigationWithFromTo, stopNavigation,
     togglePause, toggleVoice, toggleFollow,
     reroute, alternativeRoute, useAlternative, dismissAlternative, closeSummary,

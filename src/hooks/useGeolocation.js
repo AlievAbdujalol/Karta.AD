@@ -9,16 +9,22 @@ export function useGeolocation(opts = {}) {
   const [error, setError] = useState(null);
   const [watching, setWatching] = useState(false);
   const watchIdRef = useRef(null);
+  const locateOnceRef = useRef(false);
 
   const locateOnce = useCallback(() => {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) { const e = new Error('Геолокация не поддерживается'); setError(e.message); reject(e); return; }
+      if (locateOnceRef.current) { reject(new Error('Определение местоположения уже выполняется')); return; }
+      locateOnceRef.current = true;
+      const release = () => { locateOnceRef.current = false; };
       navigator.geolocation.getCurrentPosition((pos) => {
+        release();
         const { latitude, longitude, accuracy: acc, heading: h, speed: s } = pos.coords;
         const p = [latitude, longitude];
         setPosition(p); setAccuracy(acc); setHeading(h); setSpeed(s); setError(null);
         resolve({ lat: latitude, lng: longitude, accuracy: acc, heading: h, speed: s });
       }, (err) => {
+        release();
         const msg = err.code === 1 ? 'Разрешите доступ к геолокации' : 'Не удалось определить местоположение';
         setError(msg); reject(new Error(msg));
       }, { enableHighAccuracy, timeout, maximumAge });
@@ -32,14 +38,17 @@ export function useGeolocation(opts = {}) {
     watchIdRef.current = navigator.geolocation.watchPosition((pos) => {
       const { latitude, longitude, accuracy: acc, heading: h, speed: s } = pos.coords;
       const p = [latitude, longitude];
-      setPosition(p); setAccuracy(acc); setHeading(h); setSpeed(s);
+      setPosition(p); setAccuracy(acc); setHeading(h); setSpeed(s); setError(null);
       onUpdate?.({ lat: latitude, lng: longitude, accuracy: acc, heading: h, speed: s });
-    }, (err) => setError(err.message), { enableHighAccuracy, timeout: 15000, maximumAge: 3000 });
+    }, (err) => {
+      const msg = err.code === 1 ? 'Разрешите доступ к геолокации' : 'Не удалось определить местоположение';
+      setError(msg); setWatching(false);
+    }, { enableHighAccuracy, timeout: 15000, maximumAge: 3000 });
     return watchIdRef.current;
   }, [enableHighAccuracy]);
 
   const stopWatch = useCallback(() => {
-    if (watchIdRef.current != null) { navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null; }
+    if (watchIdRef.current != null) { navigator.geolocation?.clearWatch(watchIdRef.current); watchIdRef.current = null; }
     setWatching(false);
   }, []);
 

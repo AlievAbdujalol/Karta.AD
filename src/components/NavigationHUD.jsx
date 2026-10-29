@@ -20,7 +20,7 @@ function ManeuverArrow({ instruction, modifier }) {
 
 export default function NavigationHUD() {
   const {
-    nextInstruction, followingStep, userSpeed, gpsAccuracy,
+    nextInstruction, followingStep, userSpeed, gpsAccuracy, gpsError,
     isOffRoute, isRerouting, hasArrived,
     voiceEnabled, toggleVoice,
   } = useNavigation();
@@ -92,8 +92,16 @@ export default function NavigationHUD() {
           </div>
         )}
 
+        {/* Ошибка геолокации — нет доступа к GPS (постоянный индикатор, а не disappearing toast) */}
+        {gpsError && (
+          <div className="mt-1.5 bg-red-500 text-white rounded-xl px-3 py-1.5 flex items-center gap-2 text-[11px] font-bold shadow-lg">
+            <AlertTriangle size={13} className="shrink-0" />
+            {gpsError}
+          </div>
+        )}
+
         {/* Low GPS accuracy */}
-        {gpsLow && !isOffRoute && (
+        {gpsLow && !isOffRoute && !gpsError && (
           <div className="mt-1.5 bg-[#f59e0b] text-white rounded-xl px-3 py-1.5 flex items-center gap-2 text-[11px] font-bold shadow-lg">
             <Satellite size={13} className="shrink-0" />
             Низкий уровень GPS

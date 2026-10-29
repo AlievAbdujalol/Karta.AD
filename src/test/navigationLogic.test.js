@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   ARRIVAL_THRESHOLD_M,
   ARRIVAL_CONFIRM_FIXES,
+  ARRIVAL_MAX_ACCURACY_M,
   OFF_ROUTE_THRESHOLD_M,
   initialArrivalState,
   nextArrivalState,
@@ -147,6 +148,31 @@ describe('остаток маршрута и ETA — единая геометр
   it('без шагов и без данных — нейтральное состояние (null), не ложное «0 мин»', () => {
     expect(computeEtaSec({ remainingM: 300, routeLenM: 1000, durationSec: 0, avgSpeedMps: 0 })).toBeNull();
     expect(computeEtaSec({ remainingM: 0, routeLenM: 0, durationSec: 0, avgSpeedMps: 0 })).toBe(0);
+  });
+
+  it('ETA пересчитывается после смены маршрута (другая длина и длительность)', () => {
+    const before = computeEtaSec({ remainingM: 600, routeLenM: 1000, durationSec: 600, avgSpeedMps: 0 });
+    const after = computeEtaSec({ remainingM: 300, routeLenM: 1000, durationSec: 300, avgSpeedMps: 0 });
+    expect(after).toBeLessThan(before);
+  });
+
+  it('ETA не бывает отрицательным', () => {
+    expect(computeEtaSec({ remainingM: -100, routeLenM: 1000, durationSec: 600, avgSpeedMps: 10 })).toBe(0);
+    expect(computeEtaSec({ remainingM: 0, routeLenM: 0, durationSec: 0, avgSpeedMps: 0 })).toBe(0);
+  });
+
+  it('остаток не отрицателен и не NaN при некорректном прогрессе/длине', () => {
+    expect(computeRemainingM(1000, -1)).toBe(1000);
+    expect(computeRemainingM(1000, 2)).toBe(0);
+    expect(computeRemainingM(-500, 0.5)).toBe(0);
+    expect(computeRemainingM(NaN, 0.5)).toBe(0);
+  });
+
+  it('точность ровно на пороге 100 м засчитывается, 101 м — нет', () => {
+    let s = nextArrivalState(initialArrivalState(), mNear({ accuracyM: ARRIVAL_MAX_ACCURACY_M }));
+    expect(s.streak).toBe(1);
+    s = nextArrivalState(initialArrivalState(), mNear({ accuracyM: ARRIVAL_MAX_ACCURACY_M + 1 }));
+    expect(s.streak).toBe(0);
   });
 
   it('недостоверная скорость (< 1.2 м/с) не используется для ETA', () => {
