@@ -313,6 +313,18 @@ export default function Home() {
     }
   }, [selectedCity, selectedCountry]);
 
+  // При реальной смене города сбрасываем выбранный маршрут и наблюдаемую остановку:
+  // иначе точки старого города «залипают» на карте нового (UX-фидбек: «если выбран
+  // другой город — показать остановки другого города»).
+  const prevCityIdRef = useRef(selectedCity?.id || null);
+  useEffect(() => {
+    const id = selectedCity?.id || null;
+    if (prevCityIdRef.current === id) return;
+    prevCityIdRef.current = id;
+    setSelectedRoute(null);
+    setWatchedStop(null);
+  }, [selectedCity]);
+
   useEffect(() => {
     if (selectedCity) {
       supabase.from('routes').select('*')

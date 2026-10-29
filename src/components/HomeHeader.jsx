@@ -89,7 +89,7 @@ export default function HomeHeader({
           {countryOptions.map(c => <option key={c} value={c}>{getFlag(c)} {c}</option>)}
         </select>
 
-        <select value={selectedCity?.id || ''} onChange={e => { const city = cityOptions.find(c => c.id === e.target.value); setSelectedCity(city || null); }}
+        <select value={selectedCity?.id || ''} onChange={e => { const city = cityOptions.find(c => c.id === e.target.value); setSelectedCity(city || null); setSelectedRoute(null); }}
           className="text-[9px] sm:text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100/80 dark:bg-slate-800/80 rounded-full px-2 py-1 border border-slate-200/50 dark:border-slate-700/50 outline-none flex-shrink-0 cursor-pointer">
           <option value="">{t('home.cityFilter')}</option>
           {cityOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}

@@ -799,9 +799,9 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
   };
   const [showTransport, setShowTransport] = useState(false);
   const [trafficData, setTrafficData] = useState([]);
-  // Текущий зум карты (13 = стартовый). При отдалении (< z12) прячем точки —
-  // остановки, кластеры, машины, бизнесы — и тоньше рисуем линии: издалека
-  // фиксированные по размеру маркеры выглядят «огромными» и мешают (UX-фидбек).
+  // Текущий зум карты (13 = стартовый). Пороги: остановки/линии скрыты/тонкие
+  // при сильном отдалении (< z11, масштаб 10–20 км); машины и точки бизнесов —
+  // ниже z12. Фиксированный по размеру маркер издалека выглядит «огромным» (UX-фидбек).
   const [mapZoom, setMapZoom] = useState(13);
 
   // Fetch or mock real-time traffic data (example: density heatmap)
@@ -1245,9 +1245,9 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
           return null;
         }
         const positions = geoPositions;
-        // при отдалении (< z12) линии тоньше и без плашек номеров — иначе десятки
-        // толстых линий по всему региону выглядят «огромными» (UX-фидбек)
-        const far = mapZoom < 12;
+        // при сильном отдалении (< z11) линии тоньше и без плашек номеров — иначе
+        // десятки толстых линий по всему региону выглядят «огромными» (UX-фидбек)
+        const far = mapZoom < 11;
         return (
           <Fragment key={r.id}>
             {/* Белая обводка + яркая линия — главный визуальный элемент */}
@@ -1268,10 +1268,12 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         const sourceRoutes = route ? [route] : routes;
         const allStops = collectUniqueStops(sourceRoutes);
         const isWatchedStop = (stop) => watchedStop && Math.abs(stop.lat - watchedStop.lat) < 0.00012 && Math.abs(stop.lng - watchedStop.lng) < 0.00012;
-        // при отдалении (< z12) точки остановок и их кластеры скрыты — издалека это
-        // огромные «пятна» по всему региону (UX-фидбек). Наблюдаемая остановка остаётся;
-        // при выбранном маршруте — точки его остановок видны на любом зуме.
-        const visibleStops = (mapZoom < 12 && !route)
+        // Остановки видны на зумах города и района (z11+); скрываем только при сильном
+        // отдалении (< z11, масштаб 10–20 км), где они — огромные «пятна» по региону
+        // (UX-фидбек: «если не нужны — пусть исчезают, чтобы не мешать»).
+        // Наблюдаемая остановка остаётся всегда; при выбранном маршруте — его
+        // остановки видны на любом зуме («верни остановки, которые ранее были»).
+        const visibleStops = (mapZoom < 11 && !route)
           ? allStops.filter(isWatchedStop)
           : allStops;
         const markers = visibleStops.map((stop, idx) => {
