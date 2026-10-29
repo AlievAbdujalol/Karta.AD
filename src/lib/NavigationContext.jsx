@@ -592,7 +592,8 @@ export function NavigationProvider({ children }) {
     setNextInstruction(null);
     setFollowUser(true);
     setAlternativeRoute(null);
-    speak('Вы прибыли');
+    // вручную остановленная навигация — не объявляем прибытие (оно annonceтся
+    // только блоком подтверждения прибытия при достижении цели)
   }, [clearGps, speak]);
 
   const togglePause = useCallback(() => {
