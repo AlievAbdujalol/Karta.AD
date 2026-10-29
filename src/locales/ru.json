@@ -362,7 +362,10 @@
     "routeLabel": "Маршрут",
     "vehicleNumberLabel": "Номер транспорта",
     "allStopsCompleted": "Все остановки пройдены",
-    "activeStopsToday": "Остановки сегодня"
+    "activeStopsToday": "Остановки сегодня",
+    "startFromStop": "Начать с остановки",
+    "unscheduledBadge": "Неплановый рейс",
+    "unscheduledDesc": "Начинается не с первой остановки — можете ехать куда угодно"
   },
   "driver": {
     "driversOnly": "Только для водителей",

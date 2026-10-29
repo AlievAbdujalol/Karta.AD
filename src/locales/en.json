@@ -362,7 +362,10 @@
     "routeLabel": "Route",
     "vehicleNumberLabel": "Vehicle number",
     "allStopsCompleted": "All stops completed",
-    "activeStopsToday": "Stops today"
+    "activeStopsToday": "Stops today",
+    "startFromStop": "Start from stop",
+    "unscheduledBadge": "Unscheduled trip",
+    "unscheduledDesc": "Starts not from the first stop — you can drive anywhere"
   },
   "driver": {
     "driversOnly": "Drivers only",
