@@ -15,6 +15,7 @@ import StopInfoPopup, { collectUniqueStops } from './StopInfoPopup';
 import { useOverpassStops } from '@/hooks/useOverpassStops';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { visibleStopsAt, routeDetailsVisible, transitPointsVisible, isSameStop } from '@/lib/stopVisibility';
+import { loadHeatPlugin } from '@/lib/leafletHeat';
 import { useNavigation } from '@/lib/NavigationContext';
 import { readNavSettings, persistNavSettings, customCursorHtml, useNavCursor, applyNightMode } from '@/lib/navCursor';
 import { useTheme } from 'next-themes';
@@ -789,6 +790,37 @@ function OsmStopMarkers({ routes, routeGeometries, routingOpen, onPickResult }) 
   );
 }
 
+/**
+ * Тепловая карта плотности транспорта. Плагин `leaflet.heat` грузится
+ * асинхронно и может быть недоступен — тогда просто не рисуем слой
+ * (раньше отсутствие плагина валило всю карту через ErrorBoundary).
+ */
+function HeatmapLayer({ points }) {
+  const map = useMap();
+  useEffect(() => {
+    let heat = null;
+    let cancelled = false;
+    loadHeatPlugin().then((ok) => {
+      if (!ok || cancelled) return;
+      try {
+        heat = L.heatLayer(points, {
+          radius: 25,
+          blur: 15,
+          maxZoom: 17,
+          gradient: { 0.4: 'green', 0.6: 'yellow', 0.8: 'red' },
+        }).addTo(map);
+      } catch {
+        heat = null; // слой не критичен — карта должна работать
+      }
+    });
+    return () => {
+      cancelled = true;
+      if (heat && map.hasLayer(heat)) map.removeLayer(heat);
+    };
+  }, [map, points]);
+  return null;
+}
+
 export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute: _groupRoute, panelVisible, onLocate, locating = false, tiltEnabled: _tiltEnabled = false, autoCenter = true, routeMeta = null, onPlaceSelect: _onPlaceSelect, onCenterChange, onMapClick, eventPos, eventLine=[], roadDir=0, hideEvents=false }) {
   // стартовый слой: сохранённый либо «1 Стандарт» — все 9 слоёв работают без ключа
   const [tileIndex, setTileIndex] = useState(() => initialTileIndex());
@@ -868,19 +900,6 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
     setRoutingOpen(true);
     if (onRoutingStateChange) onRoutingStateChange(true);
   }, [routeMeta?.to]);
-  function HeatmapLayer({ points }) {
-  const map = useMap();
-  useEffect(() => {
-    const heat = L.heatLayer(points, {
-      radius: 25,
-      blur: 15,
-      maxZoom: 17,
-      gradient: { 0.4: 'green', 0.6: 'yellow', 0.8: 'red' }
-    }).addTo(map);
-    return () => map.removeLayer(heat);
-  }, [map, points]);
-  return null;
-}
 
   useEffect(()=>{ try{ localStorage.removeItem('karta_tilt'); }catch{}
     if(mapRef.current){
@@ -1255,14 +1274,8 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         if (!pts || pts.length < 2) return null;
         const isSelected = !!route;
         const geoPositions = routeGeometries[r.id];
-        // не рисуем fallback прямую — ждём road geometry
-        if (!geoPositions || geoPositions.length < 2) {
-          if (isSelected) {
-            // покажем тонкую пунктирную заглушку с сообщением в консоль, но не прямую через здания
-            console.log('[BusMap] waiting road geometry for', r.number);
-          }
-          return null;
-        }
+        // не рисуем fallback прямую — ждём road geometry (прямая через дома хуже пустоты)
+        if (!geoPositions || geoPositions.length < 2) return null;
         const positions = geoPositions;
         // при сильном отдалении (< z11) линии тоньше и без плашек номеров — иначе
         // десятки толстых линий по всему региону выглядят «огромными» (UX-фидбек)
