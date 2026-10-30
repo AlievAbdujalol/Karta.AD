@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { Layers, Crosshair, Plus, Minus, Navigation, Share2, LocateFixed, Route, Car, Bus, MoreHorizontal } from 'lucide-react';
 import { useMap } from 'react-leaflet';
 import { useLanguage } from '@/lib/useLanguage';
@@ -41,14 +41,19 @@ export function initialTileIndex() {
   return 0;
 }
 
-export default function MapControls({ tileIndex, setTileIndex, finderActive, onFinderToggle, onShareTrip, rightOffset, isNavigating, onLocate, tiltEnabled: _tiltEnabled, onToggleTilt: _onToggleTilt, autoCenter, onToggleAutoCenter, overviewActive, onToggleOverview, showTraffic, onToggleTraffic, showTransport, onToggleTransport }) {
+export default function MapControls({ tileIndex, setTileIndex, finderActive, onFinderToggle, onShareTrip, rightOffset, isNavigating, onLocate, tiltEnabled: _tiltEnabled, onToggleTilt: _onToggleTilt, autoCenter, onToggleAutoCenter, overviewActive, onToggleOverview, showTraffic, onToggleTraffic, showTransport, onToggleTransport, locating: locatingProp = false }) {
   const map = useMap();
   const { t } = useLanguage();
   // Второстепенные переключатели (трафик/транспорт/авто-центр) свёрнуты в «⋯»:
   // основная рейка короче и не перегружает экран.
   const [moreOpen, setMoreOpen] = useState(false);
+  // Защита от неконтролируемых параллельных запросов геолокации при повторных нажатиях.
+  const locateLockRef = useRef(false);
+  // Локальное состояние загрузки для ветки без onLocate (родитель управляет propre locating сам).
+  const [locatingLocal, setLocatingLocal] = useState(false);
 
-  const locate = () => {
+  const locate = useCallback(() => {
+    if (locateLockRef.current) return;
     if (onLocate) { onLocate(); return; }
     // Свежий кэш позиции — прыжок мгновенный, без ожидания GPS
     const cached = getCachedLastLocation(5 * 60 * 1000);
@@ -57,23 +62,35 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
       map.flyTo([cached.lat, cached.lng], 16, { animate: true, duration: 0.8 });
       return;
     }
+    locateLockRef.current = true;
+    setLocatingLocal(true);
     toast.loading(t('mapControls.myLocation') || 'Определяем местоположение…', { id: 'locate' });
     navigator.geolocation?.getCurrentPosition(
       (pos) => {
+        locateLockRef.current = false;
+        setLocatingLocal(false);
         toast.dismiss('locate');
         toast.success('Вы на карте');
         saveLastLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
         map.flyTo([pos.coords.latitude, pos.coords.longitude], 16, { animate: true, duration: 0.8 });
       },
       (err) => {
+        locateLockRef.current = false;
+        setLocatingLocal(false);
         toast.dismiss('locate');
         if (err.code === 1) toast.error('\u0420\u0430\u0437\u0440\u0435\u0448\u0438\u0442\u0435 \u0434\u043E\u0441\u0442\u0443\u043F \u043A \u0433\u0435\u043E\u043B\u043E\u043A\u0430\u0446\u0438\u0438 \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435');
         else if (err.code === 2) toast.error('\u0413\u0435\u043E\u043B\u043E\u043A\u0430\u0446\u0438\u044F \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430');
+        else if (err.code === 3) toast.error('\u041f\u0440\u0435\u0432\u044b\u0448\u0435\u043d\u043e \u0432\u0440\u0435\u043c\u044f \u043e\u0436\u0438\u0434\u0430\u043d\u0438\u044f \u0413\u041f\u0421 \u2014 \u043f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u0435\u0449\u0435 \u0440\u0430\u0437');
         else toast.error('\u0413\u0435\u043E\u043B\u043E\u043A\u0430\u0446\u0438\u044F \u0438\u0441\u0442\u0435\u043A\u043B\u0430');
       },
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
     );
-  };
+  }, [onLocate, map]);
+
+  // Состояние загрузки определения местоположения: либо родитель управляет процессом
+  // (проп locating), либо мы сами запрашиваем GPS (защита locateLockRef).
+  const locatePending = Boolean(locatedLocating());
+  function locatedLocating() { return locatingProp || locateLockRef.current || locatingLocal; }
 
   const cycleLayer = () => setTileIndex((i) => (i + 1) % TILE_LAYERS.length);
 
@@ -89,17 +106,17 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
         onPointerDown={(e) => e.stopPropagation()}
       >
         {!isNavigating && (
-          <button onClick={() => onFinderToggle?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${finderActive ? '!bg-violet-600 !text-white border-violet-400 shadow-violet-500/30' : ''}`} title={t('routeFinder.button')}>
+          <button onClick={() => onFinderToggle?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${finderActive ? '!bg-violet-600 !text-white border-violet-400 shadow-violet-500/30' : ''}`} title={t('routeFinder.button')} aria-pressed={finderActive ? 'true' : 'false'}>
             <Navigation size={18} className="stroke-[2.2]" />
           </button>
         )}
         {isNavigating && (
-          <button onClick={() => onToggleOverview?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${overviewActive ? '!bg-blue-600 !text-white border-blue-400 shadow-blue-500/30' : ''}`} title="Весь маршрут — от и до">
+          <button onClick={() => onToggleOverview?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${overviewActive ? '!bg-blue-600 !text-white border-blue-400 shadow-blue-500/30' : ''}`} title="Весь маршрут — от и до" aria-pressed={overviewActive ? 'true' : 'false'}>
             <Route size={18} className="stroke-[2.2]" />
           </button>
         )}
-        <button onClick={locate} className={`${btnBase} w-10 h-10 !bg-gradient-to-tr !from-emerald-600 !to-teal-500 hover:!from-emerald-700 hover:!to-teal-600 !text-white border-none shadow-emerald-500/20`} title={t('mapControls.myLocation')}>
-          <Crosshair size={18} className="stroke-[2.2]" />
+        <button onClick={locate} className={`${btnBase} w-10 h-10 ${locatePending ? '!bg-blue-600 !text-white shadow-blue-500/40' : 'bg-white/90 dark:bg-slate-900/90'} border-none`} title={t('mapControls.myLocation')} aria-pressed={locatePending ? 'true' : 'false'}>
+          <Crosshair size={18} className={`stroke-[2.2] ${locatePending ? 'animate-spin' : ''}`} />
         </button>
         <button onClick={() => map.zoomIn()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90`} title={t('mapControls.zoomIn')}>
           <Plus size={18} className="stroke-[2.2]" />
@@ -109,18 +126,18 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
         </button>
         {moreOpen && (
           <>
-            <button onClick={() => onToggleTraffic?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${showTraffic ? '!bg-orange-500 !text-white' : ''}`} title="Трафик">
+            <button onClick={() => onToggleTraffic?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${showTraffic ? '!bg-orange-500 !text-white' : ''}`} title="Трафик" aria-pressed={showTraffic ? 'true' : 'false'}>
               <Car size={18} className="stroke-[2.2]" />
             </button>
-            <button onClick={() => onToggleTransport?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${showTransport ? '!bg-blue-600 !text-white' : ''}`} title="Транспорт">
+            <button onClick={() => onToggleTransport?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${showTransport ? '!bg-blue-600 !text-white' : ''}`} title="Транспорт" aria-pressed={showTransport ? 'true' : 'false'}>
               <Bus size={18} className="stroke-[2.2]" />
             </button>
-            <button onClick={() => onToggleAutoCenter?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${autoCenter ? '!bg-emerald-600 !text-white' : ''}`} title="Авто-центр">
+            <button onClick={() => onToggleAutoCenter?.()} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${autoCenter ? '!bg-emerald-600 !text-white' : ''}`} title="Авто-центр" aria-pressed={autoCenter ? 'true' : 'false'}>
               <LocateFixed size={18} className="stroke-[2.2]" />
             </button>
           </>
         )}
-        <button onClick={() => setMoreOpen(v => !v)} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${(showTraffic || showTransport) ? '!bg-slate-700 !text-white dark:!bg-slate-600' : ''}`} title="Ещё — трафик, транспорт, авто-центр">
+        <button onClick={() => setMoreOpen(v => !v)} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${(showTraffic || showTransport || autoCenter) ? '!bg-slate-700 !text-white dark:!bg-slate-600' : ''}`} title="Ещё — трафик, транспорт, авто-центр" aria-pressed={(showTraffic || showTransport || autoCenter) ? 'true' : 'false'}>
           <MoreHorizontal size={18} className="stroke-[2.2]" />
         </button>
         <button onClick={cycleLayer} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 relative`} title={`${t('mapControls.layerLabel')} ${t(TILE_LAYERS[tileIndex].labelKey)}`}>
@@ -146,12 +163,12 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
           </button>
         )}
         {isNavigating && (
-          <button onClick={() => onToggleOverview?.()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${overviewActive ? '!bg-blue-600 !text-white border-blue-400 shadow-blue-500/30' : ''}`} title="Весь маршрут — от и до">
+          <button onClick={() => onToggleOverview?.()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${overviewActive ? '!bg-blue-600 !text-white border-blue-400 shadow-blue-500/30' : ''}`} title="Весь маршрут — от и до" aria-pressed={overviewActive ? 'true' : 'false'}>
             <Route size={15} className="stroke-[2.2]" />
           </button>
         )}
-        <button onClick={locate} className={`${btnBase} w-9 h-9 !bg-gradient-to-tr !from-emerald-600 !to-teal-500 !text-white border-none shadow-emerald-500/20`}>
-          <Crosshair size={15} className="stroke-[2.2]" />
+        <button onClick={locate} className={`${btnBase} w-9 h-9 ${locatePending ? '!bg-blue-600 !text-white shadow-blue-500/40' : 'bg-white/90 dark:bg-slate-900/90'} border-none`} title={t('mapControls.myLocation')} aria-pressed={locatePending ? 'true' : 'false'}>
+          <Crosshair size={15} className={`stroke-[2.2] ${locatePending ? 'animate-spin' : ''}`} />
         </button>
         <button onClick={() => map.zoomIn()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90`}>
           <Plus size={15} className="stroke-[2.2]" />
@@ -161,18 +178,18 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
         </button>
         {moreOpen && (
           <>
-            <button onClick={() => onToggleTraffic?.()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${showTraffic ? '!bg-orange-500 !text-white' : ''}`}>
+            <button onClick={() => onToggleTraffic?.()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${showTraffic ? '!bg-orange-500 !text-white' : ''}`} aria-pressed={showTraffic ? 'true' : 'false'}>
               <Car size={15} className="stroke-[2.2]" />
             </button>
-            <button onClick={() => onToggleTransport?.()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${showTransport ? '!bg-blue-600 !text-white' : ''}`}>
+            <button onClick={() => onToggleTransport?.()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${showTransport ? '!bg-blue-600 !text-white' : ''}`} aria-pressed={showTransport ? 'true' : 'false'}>
               <Bus size={15} className="stroke-[2.2]" />
             </button>
-            <button onClick={() => onToggleAutoCenter?.()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${autoCenter ? '!bg-emerald-600 !text-white' : ''}`}>
+            <button onClick={() => onToggleAutoCenter?.()} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${autoCenter ? '!bg-emerald-600 !text-white' : ''}`} aria-pressed={autoCenter ? 'true' : 'false'}>
               <LocateFixed size={15} className="stroke-[2.2]" />
             </button>
           </>
         )}
-        <button onClick={() => setMoreOpen(v => !v)} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${(showTraffic || showTransport) ? '!bg-slate-700 !text-white dark:!bg-slate-600' : ''}`}>
+        <button onClick={() => setMoreOpen(v => !v)} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${(showTraffic || showTransport || autoCenter) ? '!bg-slate-700 !text-white dark:!bg-slate-600' : ''}`} aria-pressed={(showTraffic || showTransport || autoCenter) ? 'true' : 'false'}>
           <MoreHorizontal size={15} className="stroke-[2.2]" />
         </button>
         <button onClick={cycleLayer} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 relative`}>

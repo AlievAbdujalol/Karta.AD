@@ -69,6 +69,9 @@ export default function Home() {
   const [flyTo, setFlyTo] = useState(null);
 
   const location = useLocation();
+  // Защита от неконтролируемых параллельных запросов геолокации при повторных
+  // нажатиях кнопки «Моё местоположение» / включении автоцентра.
+  const locateLockRef = useRef(false);
   const [sheetState, setSheetState] = useState('collapsed');
   const [activeTab, setActiveTab] = useState('stops');
   const [routingOpen, setRoutingOpen] = useState(false);
@@ -417,13 +420,20 @@ export default function Home() {
 
   const handleLocateUser = useCallback(() => {
     if (!navigator.geolocation) { toast.error('Геолокация не поддерживается'); return; }
-    // 1) Мгновенно по кэшу — пользователь сразу видит себя на карте,
-    //    свежий GPS ниже уточнит центр (если пришлёт другие координаты).
+    if (locateLockRef.current) return; // уже идет определение — повторный клик игнорируется
+
+    // 1) Кэш только если точность достоверна — иначе не выдаём его за актуальную позицию.
     const cached = getCachedLastLocation(15 * 60 * 1000);
-    if (cached) { setFlyTo({ lat: cached.lat, lng: cached.lng, zoom: 16 }); broadcastLocation(cached); }
+    const fresh = cached && Number.isFinite(cached.accuracy) && cached.accuracy <= 100;
+    if (cached && fresh) { setFlyTo({ lat: cached.lat, lng: cached.lng, zoom: 16 }); broadcastLocation(cached); }
     toast.loading('Ищем вас на карте…', { id: 'locate-home' });
 
+    locateLockRef.current = true;
+    setLocating(true);
+
     const onPosition = (pos) => {
+      locateLockRef.current = false;
+      setLocating(false);
       const { latitude, longitude, accuracy } = pos.coords;
       toast.dismiss('locate-home');
       // saveLastLocation шлёт karta_my_location — синяя точка рисуется сразу,
@@ -450,8 +460,11 @@ export default function Home() {
     };
 
     const onError = (err) => {
+      locateLockRef.current = false;
+      setLocating(false);
       toast.dismiss('locate-home');
       if (err?.code === 1) toast.error('Разрешите доступ к геолокации: иконка слева от адреса сайта');
+      else if (err?.code === 3) toast.error('Превышено время ожидания GPS — попробуйте ещё раз');
       else if (cached) toast.warning('GPS не отвечает — показываем последнее известное место');
       else toast.error('Не удалось определить местоположение');
     };
@@ -469,7 +482,7 @@ export default function Home() {
         onPosition(pos);
       }
     }, onError, { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 });
-  }, [routes]);
+  }, [routes, locateLockRef]);
 
   // «Авто-центр»: при включении сразу показываем пользователя на карте —
   // иначе кнопка вне навигации визуально «ничего не делает».
@@ -479,7 +492,8 @@ export default function Home() {
     autoCenterPrevRef.current = autoCenter;
     if (!autoCenter) return;
     const cached = getCachedLastLocation(15 * 60 * 1000);
-    if (cached) { setFlyTo({ lat: cached.lat, lng: cached.lng, zoom: 16 }); broadcastLocation(cached); }
+    const fresh = cached && Number.isFinite(cached.accuracy) && cached.accuracy <= 100;
+    if (cached && fresh) { setFlyTo({ lat: cached.lat, lng: cached.lng, zoom: 16 }); broadcastLocation(cached); }
     else handleLocateUser(); // нет кэша — запрашиваем геолокацию, как кнопка «местоположение»
   }, [autoCenter, handleLocateUser]);
 
@@ -488,7 +502,7 @@ export default function Home() {
       <AlertBanner />
       <div className="absolute inset-0 w-full h-full z-0">
         <ErrorBoundary fallback={(error) => <BusMapErrorFallback error={error} />}>
-          <BusMap vehicles={vehicles} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} flyTo={flyTo} onFlyDone={() => setFlyTo(null)} routes={routes} onRoutingOpen={() => setSheetState('collapsed')} onRoutingStateChange={(open, meta)=>{setRoutingOpen(open); if(meta) setRouteMeta(meta);}} contactLocations={contactLocations} groupRouteMembers={onlineMembers} onShareTrip={handleShareTrip} groupRoute={groupRoute} panelVisible={panelVisible} onLocate={handleLocateUser} tiltEnabled={tiltEnabled} autoCenter={autoCenter} routeMeta={routeMeta} onPlaceSelect={setPlaceCard} onCenterChange={setLiveCenter} hideEvents={eventsOpen} onMapClick={eventsOpen ? (latlng)=> {
+          <BusMap vehicles={vehicles} route={selectedRoute} center={mapCenter} watchedStop={watchedStop} flyTo={flyTo} onFlyDone={() => setFlyTo(null)} routes={routes} onRoutingOpen={() => setSheetState('collapsed')} onRoutingStateChange={(open, meta)=>{setRoutingOpen(open); if(meta) setRouteMeta(meta);}} contactLocations={contactLocations} groupRouteMembers={onlineMembers} onShareTrip={handleShareTrip} groupRoute={groupRoute} panelVisible={panelVisible} onLocate={handleLocateUser} locating={locating} tiltEnabled={tiltEnabled} autoCenter={autoCenter} routeMeta={routeMeta} onPlaceSelect={setPlaceCard} onCenterChange={setLiveCenter} hideEvents={eventsOpen} onMapClick={eventsOpen ? (latlng)=> {
             if(eventType==='roadwork'){
               setEventLine(prev=>{
                 const next=[...prev, [latlng.lat, latlng.lng]];

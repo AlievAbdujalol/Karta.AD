@@ -357,6 +357,22 @@ describe('NavigationContext — манёвры, остаток, ETA', () => {
 });
 
 describe('NavigationContext — жизненный цикл маршрута', () => {
+  it('ошибка геолокации при старте навигации — gpsError в контексте; живой фикс снимает её', () => {
+    mountNav();
+    act(() => { nav.startNavigation(makeRoute()); });
+    expect(nav.gpsError).toBeNull();
+    expect(geoWatchers.length).toBe(1);
+
+    act(() => { geoWatchers[0].error({ code: 1 }); });
+    expect(nav.gpsError).toContain('геолокации');
+
+    act(() => {
+      geoWatchers[0].success({ coords: { latitude: ORIGIN.lat, longitude: ORIGIN.lng, heading: 90, speed: 3, accuracy: 20 } });
+    });
+    expect(nav.gpsError).toBeNull();
+    expect(nav.userPosition).toEqual([ORIGIN.lat, ORIGIN.lng]);
+  });
+
   it('восстановление маршрута из localStorage; GPS-наблюдение снимается при размонтировании', () => {
     const errSpy = vi.spyOn(console, 'error');
     const route = makeRoute();

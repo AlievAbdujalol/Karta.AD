@@ -1,14 +1,20 @@
 /**
  * Порядок зеркал Overpass закреплён живыми замерами (см. lib/overpass.js):
- * официальное зеркало обязано быть первым — упавший kumi впереди давал
- * пару CORS-ошибок в консоли на каждый новый тайл карты.
+ * первым — самое быстрое живое зеркало (fr отвечает за ~0.7 с), официальное
+ * api.de идёт вторым, потому что с egress Vercel стабильно уходит в таймаут 5 с.
+ * Клиент в проде ходит только на свой прокси: прямые зеркала режутся CORS.
  */
 import { describe, it, expect } from 'vitest';
 import { OVERPASS_URLS, overpassEndpoints, OVERPASS_PROXY_PATH } from '../lib/overpass';
 
 describe('OVERPASS_URLS', () => {
-  it('официальное зеркало первым', () => {
-    expect(OVERPASS_URLS[0]).toBe('https://overpass-api.de/api/interpreter');
+  it('быстрое живое зеркало первым', () => {
+    expect(OVERPASS_URLS[0]).toBe('https://overpass.openstreetmap.fr/api/interpreter');
+  });
+
+  it('официальное зеркало в списке, но не первым', () => {
+    expect(OVERPASS_URLS).toContain('https://overpass-api.de/api/interpreter');
+    expect(OVERPASS_URLS[0]).not.toBe('https://overpass-api.de/api/interpreter');
   });
 
   it('таймаутное openstreetmap.ru только последним', () => {
@@ -21,11 +27,10 @@ describe('OVERPASS_URLS', () => {
 });
 
 describe('overpassEndpoints', () => {
-  it('в проде первым идёт свой прокси, затем прямые зеркала', () => {
+  it('в проде только свой прокси — без кросс-доменных зеркал', () => {
     const eps = overpassEndpoints(true);
-    expect(eps[0]).toBe(OVERPASS_PROXY_PATH);
+    expect(eps).toEqual([OVERPASS_PROXY_PATH]);
     expect(eps[0]).toBe('/api/overpass');
-    expect(eps.slice(1)).toEqual(OVERPASS_URLS);
   });
 
   it('в dev — только прямые зеркала (Vite /api-функции не обслуживает)', () => {
@@ -36,3 +41,4 @@ describe('overpassEndpoints', () => {
     expect(overpassEndpoints()).toEqual(OVERPASS_URLS);
   });
 });
+

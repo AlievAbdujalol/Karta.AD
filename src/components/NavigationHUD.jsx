@@ -20,8 +20,8 @@ function ManeuverArrow({ instruction, modifier }) {
 
 export default function NavigationHUD() {
   const {
-    nextInstruction, followingStep, userSpeed, gpsAccuracy,
-    isOffRoute, isRerouting, hasArrived,
+    nextInstruction, followingStep, userSpeed, gpsAccuracy, gpsError,
+    isOffRoute, isRerouting, hasArrived, remainingDistance,
     voiceEnabled, toggleVoice,
   } = useNavigation();
   if (!nextInstruction) return null;
@@ -92,8 +92,16 @@ export default function NavigationHUD() {
           </div>
         )}
 
+        {/* Ошибка геолокации — нет доступа к GPS (постоянный индикатор, а не disappearing toast) */}
+        {gpsError && (
+          <div className="mt-1.5 bg-red-500 text-white rounded-xl px-3 py-1.5 flex items-center gap-2 text-[11px] font-bold shadow-lg">
+            <AlertTriangle size={13} className="shrink-0" />
+            {gpsError}
+          </div>
+        )}
+
         {/* Low GPS accuracy */}
-        {gpsLow && !isOffRoute && (
+        {gpsLow && !isOffRoute && !gpsError && (
           <div className="mt-1.5 bg-[#f59e0b] text-white rounded-xl px-3 py-1.5 flex items-center gap-2 text-[11px] font-bold shadow-lg">
             <Satellite size={13} className="shrink-0" />
             Низкий уровень GPS
@@ -105,6 +113,13 @@ export default function NavigationHUD() {
           <div className="mt-1.5 bg-emerald-500 text-white rounded-xl px-3 py-1.5 flex items-center gap-2 text-[11px] font-bold shadow-lg">
             <MapPin size={13} />
             Вы прибыли!
+          </div>
+        )}
+
+        {/* Оставшееся расстояние до пункта назначения */}
+        {remainingDistance != null && remainingDistance > 0 && (
+          <div className="mt-1 bg-white/90 dark:bg-slate-900/90 rounded-lg px-2 py-1 text-[10px] font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1">
+            Осталось до цели: {remainingDistance >= 1000 ? `${(remainingDistance / 1000).toFixed(1)} км` : `${Math.round(remainingDistance)} м`}
           </div>
         )}
       </div>

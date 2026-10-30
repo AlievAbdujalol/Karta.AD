@@ -231,6 +231,7 @@
     "noRoutes": "Хатсайрҳо ёфт нашуданд",
     "from": "Аз ин ҷо",
     "to": "Ба ин ҷо",
+    "startUnscheduled": "Сафарро аз ин ҷо оғоз кунед",
     "suggestName": "Номи мардумӣ пешниҳод кунед"
   },
   "stopwatcher": {
@@ -362,7 +363,10 @@
     "routeLabel": "Хатсайр",
     "vehicleNumberLabel": "Рақами нақлиёт",
     "allStopsCompleted": "Ҳамаи истгоҳҳо гузашта шуданд",
-    "activeStopsToday": "Истгоҳҳои имрӯза"
+    "activeStopsToday": "Истгоҳҳои имрӯза",
+    "startFromStop": "Оғоз аз истгоҳ",
+    "unscheduledBadge": "Сафари не планшуда",
+    "unscheduledDesc": "Нағз аз истгоҳи якум оғоз мешавад — метаволед ҳар ҷо сафар кунед"
   },
   "driver": {
     "driversOnly": "Танҳо барои ронандаҳо",

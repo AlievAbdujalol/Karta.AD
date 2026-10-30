@@ -1,18 +1,19 @@
 // Зеркала Overpass — единый источник для клиента и серверного прокси:
 // api/overpass.js читает тот же overpassMirrors.json, списки не расходятся.
-// Только зеркала с полной планетой: сверенные замеры 16.10.2026 (POST+Origin):
-//  1. overpass-api.de — официальное (тест на позицию); в тот день отдавало
-//     502/406 с датацентрных IP (как и в инциденте с картой) — быстрый фейл
-//     за ~0.5 с либо долгий ответ, за его ошибки отвечает прокси;
-//  2. overpass.openstreetmap.fr — 200 за ~1.5 с, планета (Бишкек ✓), CORS `*`;
+// Только зеркала с полной планетой (замеры 16.10.2026 и 31.10.2026, POST+Origin):
+//  1. overpass.openstreetmap.fr — самое быстрое живое (200 за ~0.7 с, CORS `*`);
+//  2. overpass-api.de — официальное, но с egress Vercel почти всегда таймаут 5 с,
+//     поэтому не первым: раньше он съедал 5 секунд у каждого запроса прокси;
 //  3. maps.mail.ru — CORS со звёздочкой, бывает 504 при перегрузке;
 //  4-5. kumi/private.coffee — быстрый 500 в тот день (дешёвый фейл);
 //  6. openstreetmap.ru — таймаут ~7 с, поэтому строго последним.
 // overpass.osm.ch сознательно НЕ в списке: там швейцарская выборка —
 // для Бишкека он отдаёт валидный пустой JSON, и «первое живое зеркало»
 // замаскировало бы реальные данные нулём.
-// В проде первым эндпоинтом идёт свой /api/overpass (см. overpassEndpoints):
-// один same-origin запрос вместо серии кросс-доменных падений в консоли.
+// В проде клиент ходит ТОЛЬКО на свой /api/overpass (см. overpassEndpoints):
+// браузерные запросы к зеркалам падают по CORS (на страницах ошибок 5xx нет
+// Access-Control-Allow-Origin) и засоряют консоль ERR_FAILED — перебор зеркал
+// делает сервер.
 import OVERPASS_MIRRORS from './overpassMirrors.json';
 
 export const OVERPASS_URLS = OVERPASS_MIRRORS;
@@ -20,14 +21,15 @@ export const OVERPASS_PROXY_PATH = '/api/overpass';
 
 /**
  * Цепочка эндпоинтов для запросов Overpass.
- * Прод: первым — свой прокси (нет CORS, перебор зеркал делает сервер),
- * прямые зеркала остаются запасным путём, если прокси упал.
+ * Прод: только свой прокси — один same-origin запрос, перебор зеркал на сервере.
+ * Прямые зеркала в проде бесполезны: 5xx-ответы приходят без CORS-заголовков,
+ * браузер их не читает и пишет ERR_FAILED в консоль.
  * Dev: Vite-сервер /api-функции не поднимает — только прямые зеркала.
  * @param {boolean} [prod] подменяемый параметр для тестов
  * @returns {string[]}
  */
 export function overpassEndpoints(prod = import.meta.env?.PROD) {
-  return prod ? [OVERPASS_PROXY_PATH, ...OVERPASS_URLS] : OVERPASS_URLS;
+  return prod ? [OVERPASS_PROXY_PATH] : OVERPASS_URLS;
 }
 
 export async function fetchOverpass(query, opts = {}) {

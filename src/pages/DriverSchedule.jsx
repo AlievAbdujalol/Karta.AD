@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/api/supabase';
 import { Vehicle, Route, Schedule } from '@/api/entities';
-import { MapPin, Clock, Bus, CheckCircle, AlertCircle, Calendar, ChevronRight, TrendingUp, List } from 'lucide-react';
+import { MapPin, Clock, Bus, CheckCircle, AlertCircle, AlertTriangle, Calendar, ChevronRight, TrendingUp, List } from 'lucide-react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { useLanguage } from '@/lib/useLanguage';
@@ -135,44 +135,66 @@ function ActiveStops({ schedule }) {
   );
 }
 
-function RoutePlan({ route }) {
+function RoutePlan({ route, startStopIndex, onStartStop }) {
   const { t } = useLanguage();
   const [expanded, setExpanded] = useState(false);
   if (!route?.stops?.length) return null;
 
   const stops = expanded ? route.stops : route.stops.slice(0, 5);
+  const isUnscheduled = startStopIndex > 0;
 
   return (
-    <div className="bg-white rounded-2xl p-5 shadow-sm space-y-3">
+    <div className={`bg-white rounded-2xl p-5 shadow-sm space-y-3 border ${isUnscheduled ? 'border-yellow-300 bg-yellow-50' : 'border-gray-100'}`}>
       <h2 className="font-bold text-gray-800 text-sm flex items-center gap-2">
-        <List size={15} className="text-blue-500" />
+        <List size={15} className={isUnscheduled ? 'text-yellow-600' : 'text-blue-500'} />
         {t('schedule.routePlan')}
+        {isUnscheduled && (
+          <span className="bg-yellow-100 text-yellow-700 text-[10px] font-bold px-2 py-0.5 rounded-full ml-2">
+            {t('schedule.unscheduledBadge')}
+          </span>
+        )}
         <span className="ml-auto bg-blue-100 text-blue-700 text-[11px] font-bold px-2 py-0.5 rounded-full">
           {route.stops.length} {t('schedule.stopsAbbr')}
         </span>
       </h2>
       <div className="relative">
-        <div className="absolute left-3.5 top-4 bottom-4 w-0.5 bg-blue-100" />
+        <div className="absolute left-3.5 top-4 bottom-4 w-0.5 {isUnscheduled ? 'bg-yellow-200' : 'bg-blue-100'}" />
         <div className="space-y-0">
           {stops.map((stop, i) => {
             const isFirst = i === 0;
             const isLast = i === route.stops.length - 1 && expanded;
+            const isSelectedStart = i === startStopIndex;
             return (
               <div key={i} className="flex items-center gap-3 py-1.5 relative">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 z-10 border-2 ${
-                  isFirst || isLast
-                    ? 'bg-blue-600 border-blue-600 text-white'
-                    : 'bg-white border-blue-300 text-blue-600'
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 z-10 border-2 ${isSelectedStart
+                  ? isUnscheduled ? 'bg-yellow-600 border-yellow-600 text-white' : 'bg-blue-600 border-blue-600 text-white'
+                  : 'bg-white border-gray-300 text-gray-600'
                 }`}>
                   {i + 1}
                 </div>
-                <div className="flex-1">
-                  <p className="text-xs text-gray-700">{stop.name || `${t('schedule.stopDefaultName')} ${i + 1}`}</p>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-xs font-semibold truncate ${isSelectedStart ? (isUnscheduled ? 'text-yellow-800' : 'text-blue-800') : 'text-gray-700'}`}>
+                    {stop.name || `${t('schedule.stopDefaultName')} ${i + 1}`}
+                  </p>
+                  {isSelectedStart && (
+                    <p className={`text-[10px] ${isUnscheduled ? 'text-yellow-700' : 'text-blue-600'} font-medium`}>
+                      {isUnscheduled ? t('schedule.unscheduledDesc') : t('schedule.startLabel')}
+                    </p>
+                  )}
+                  {!isSelectedStart && !isFirst && !isLast && (
+                    <p className="text-[10px] text-gray-500">{t('schedule.stopDefaultName')} {i + 1}</p>
+                  )}
                 </div>
-                {(isFirst) && (
-                  <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-semibold">{t('schedule.startLabel')}</span>
-                )}
-                {i === route.stops.length - 1 && (
+                <button
+                  onClick={() => onStartStop(i)}
+                  className={`flex-shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold border ${isSelectedStart
+                    ? isUnscheduled ? 'bg-yellow-600 text-white border-yellow-600' : 'bg-blue-600 text-white border-blue-600'
+                    : isUnscheduled ? 'bg-yellow-100 text-yellow-700 border-yellow-200' : 'bg-gray-100 text-gray-600 border-gray-200'
+                  }`}
+                >
+                  {isSelectedStart ? 'В пути' : t('schedule.startLabel')}
+                </button>
+                {i === route.stops.length - 1 && !isSelectedStart && (
                   <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-semibold">{t('schedule.finishLabel')}</span>
                 )}
               </div>
@@ -183,7 +205,7 @@ function RoutePlan({ route }) {
       {route.stops.length > 5 && (
         <button
           onClick={() => setExpanded(!expanded)}
-          className="w-full flex items-center justify-center gap-1 text-xs text-blue-600 font-semibold py-1 hover:bg-blue-50 rounded-xl transition-all"
+          className="w-full flex items-center justify-center gap-1 text-xs font-semibold py-1 hover:bg-blue-50 rounded-xl transition-all text-blue-600"
         >
           {expanded ? t('collapse') : `${t('schedule.showAllStops')} ${route.stops.length}`}
           <ChevronRight size={13} className={`transition-transform ${expanded ? 'rotate-90' : ''}`} />
@@ -200,6 +222,9 @@ export default function DriverSchedule() {
   const [route, setRoute] = useState(null);
   const [schedule, setSchedule] = useState(null);
   const [loading, setLoading] = useState(true);
+  // С какой остановки водитель начинает рейс (0 = первая). Если не 0 — рейс неплановый.
+  const [startStopIndex, setStartStopIndex] = useState(0);
+  const isUnscheduled = startStopIndex > 0;
 
   useEffect(() => {
     const load = async () => {
@@ -291,9 +316,22 @@ export default function DriverSchedule() {
           </div>
         )}
 
+        {isUnscheduled && (
+          <div className="bg-yellow-50 border-l-4 border-yellow-500 bg-yellow-50 rounded-r-xl p-4 shadow-sm">
+            <div className="flex items-start gap-3">
+              <AlertTriangle size={20} className="text-yellow-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-bold text-yellow-800">{t('schedule.unscheduledBadge')}</p>
+                <p className="text-xs text-yellow-700 mt-0.5">{t('schedule.unscheduledDesc')}</p>
+              </div>
+            </div>
+          </div>
+        )}
         <ShiftSummary schedule={schedule} />
         <ActiveStops schedule={schedule} />
-        <RoutePlan route={route} />
+        {route && (
+          <RoutePlan route={route} startStopIndex={startStopIndex} onStartStop={setStartStopIndex} />
+        )}
 
         {route && !schedule && (
           <div className="bg-white rounded-2xl p-4 shadow-sm text-center text-gray-400 text-sm">

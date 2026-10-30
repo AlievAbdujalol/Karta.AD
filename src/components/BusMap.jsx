@@ -15,6 +15,7 @@ import StopInfoPopup, { collectUniqueStops } from './StopInfoPopup';
 import { useOverpassStops } from '@/hooks/useOverpassStops';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { visibleStopsAt, routeDetailsVisible, transitPointsVisible, isSameStop } from '@/lib/stopVisibility';
+import { loadHeatPlugin } from '@/lib/leafletHeat';
 import { useNavigation } from '@/lib/NavigationContext';
 import { readNavSettings, persistNavSettings, customCursorHtml, useNavCursor, applyNightMode } from '@/lib/navCursor';
 import { useTheme } from 'next-themes';
@@ -789,7 +790,38 @@ function OsmStopMarkers({ routes, routeGeometries, routingOpen, onPickResult }) 
   );
 }
 
-export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute: _groupRoute, panelVisible, onLocate, tiltEnabled: _tiltEnabled = false, autoCenter = true, routeMeta = null, onPlaceSelect: _onPlaceSelect, onCenterChange, onMapClick, eventPos, eventLine=[], roadDir=0, hideEvents=false }) {
+/**
+ * Тепловая карта плотности транспорта. Плагин `leaflet.heat` грузится
+ * асинхронно и может быть недоступен — тогда просто не рисуем слой
+ * (раньше отсутствие плагина валило всю карту через ErrorBoundary).
+ */
+function HeatmapLayer({ points }) {
+  const map = useMap();
+  useEffect(() => {
+    let heat = null;
+    let cancelled = false;
+    loadHeatPlugin().then((ok) => {
+      if (!ok || cancelled) return;
+      try {
+        heat = L.heatLayer(points, {
+          radius: 25,
+          blur: 15,
+          maxZoom: 17,
+          gradient: { 0.4: 'green', 0.6: 'yellow', 0.8: 'red' },
+        }).addTo(map);
+      } catch {
+        heat = null; // слой не критичен — карта должна работать
+      }
+    });
+    return () => {
+      cancelled = true;
+      if (heat && map.hasLayer(heat)) map.removeLayer(heat);
+    };
+  }, [map, points]);
+  return null;
+}
+
+export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute: _groupRoute, panelVisible, onLocate, locating = false, tiltEnabled: _tiltEnabled = false, autoCenter = true, routeMeta = null, onPlaceSelect: _onPlaceSelect, onCenterChange, onMapClick, eventPos, eventLine=[], roadDir=0, hideEvents=false }) {
   // стартовый слой: сохранённый либо «1 Стандарт» — все 9 слоёв работают без ключа
   const [tileIndex, setTileIndex] = useState(() => initialTileIndex());
   const [showTraffic, setShowTraffic] = useState(() => readNavSettings().show_traffic !== false); // из настроек навигатора
@@ -804,6 +836,24 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
   // при сильном отдалении (< z11, масштаб 10–20 км); машины и точки бизнесов —
   // ниже z12. Фиксированный по размеру маркер издалека выглядит «огромным» (UX-фидбек).
   const [mapZoom, setMapZoom] = useState(13);
+
+  // Неплановый рейс: старт не с первой остановки маршрута — жёлтая маркировка на карте
+  const [unscheduledStartStop, setUnscheduledStartStop] = useState(null);
+  const [unscheduledRouteId, setUnscheduledRouteId] = useState(null);
+  const isUnscheduled = Boolean(unscheduledStartStop && unscheduledRouteId);
+
+  const handleStartUnscheduled = useCallback((stop) => {
+    const route = (routes || []).find(r =>
+      (r.stops || []).some(s =>
+        Math.abs(s.lat - stop.lat) < 0.00035 && Math.abs(s.lng - stop.lng) < 0.00035
+      )
+    );
+    if (route) {
+      setUnscheduledStartStop(stop);
+      setUnscheduledRouteId(route.id);
+      toast.success('Неплановый рейс: движение от выбранной остановки', { id: 'unscheduled' });
+    }
+  }, [routes]);
 
   // Fetch or mock real-time traffic data (example: density heatmap)
   useEffect(() => {
@@ -850,19 +900,6 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
     setRoutingOpen(true);
     if (onRoutingStateChange) onRoutingStateChange(true);
   }, [routeMeta?.to]);
-  function HeatmapLayer({ points }) {
-  const map = useMap();
-  useEffect(() => {
-    const heat = L.heatLayer(points, {
-      radius: 25,
-      blur: 15,
-      maxZoom: 17,
-      gradient: { 0.4: 'green', 0.6: 'yellow', 0.8: 'red' }
-    }).addTo(map);
-    return () => map.removeLayer(heat);
-  }, [map, points]);
-  return null;
-}
 
   useEffect(()=>{ try{ localStorage.removeItem('karta_tilt'); }catch{}
     if(mapRef.current){
@@ -1209,7 +1246,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
       <FlyToHandler flyTo={flyTo} onDone={onFlyDone} />
       <ScaleControl position="bottomleft" imperial={false} metric={true} />
-      {!mapPickTarget && <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={routingOpen} onFinderToggle={handleFinderToggle} onShareTrip={onShareTrip} rightOffset={routingOpen ? 400 : panelVisible ? 360 : 0} isNavigating={nav.isActive} onLocate={onLocate} autoCenter={autoCenter} onToggleAutoCenter={()=>{ const v=!autoCenter; window.dispatchEvent(new CustomEvent('karta_autocenter',{detail:v})); }} overviewActive={!nav.followUser} onToggleOverview={()=>nav.toggleFollow()} showTraffic={showTraffic} onToggleTraffic={toggleTraffic} showTransport={showTransport} onToggleTransport={()=>setShowTransport(prev=>!prev)} />}
+      {!mapPickTarget && <MapControls tileIndex={tileIndex} setTileIndex={setTileIndex} finderActive={routingOpen} onFinderToggle={handleFinderToggle} onShareTrip={onShareTrip} rightOffset={routingOpen ? 400 : panelVisible ? 360 : 0} isNavigating={nav.isActive} onLocate={onLocate} locating={locating} autoCenter={autoCenter} onToggleAutoCenter={()=>{ const v=!autoCenter; window.dispatchEvent(new CustomEvent('karta_autocenter',{detail:v})); }} overviewActive={!nav.followUser} onToggleOverview={()=>nav.toggleFollow()} showTraffic={showTraffic} onToggleTraffic={toggleTraffic} showTransport={showTransport} onToggleTransport={()=>setShowTransport(prev=>!prev)} />}
 
       {showTraffic && (
         <TileLayer
@@ -1237,30 +1274,26 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         if (!pts || pts.length < 2) return null;
         const isSelected = !!route;
         const geoPositions = routeGeometries[r.id];
-        // не рисуем fallback прямую — ждём road geometry
-        if (!geoPositions || geoPositions.length < 2) {
-          if (isSelected) {
-            // покажем тонкую пунктирную заглушку с сообщением в консоль, но не прямую через здания
-            console.log('[BusMap] waiting road geometry for', r.number);
-          }
-          return null;
-        }
+        // не рисуем fallback прямую — ждём road geometry (прямая через дома хуже пустоты)
+        if (!geoPositions || geoPositions.length < 2) return null;
         const positions = geoPositions;
         // при сильном отдалении (< z11) линии тоньше и без плашек номеров — иначе
         // десятки толстых линий по всему региону выглядят «огромными» (UX-фидбек)
-        // при сильном отдалении (< z11) линии тоньше и без плашек номеров — иначе
-        // десятки толстых линий по всему региону выглядят «огромными» (UX-фидбек)
         const far = !routeDetailsVisible(mapZoom);
+        // Неплановый рейс — жёлтая линия, чтобы выделяться на карте
+        const isUnscheduledRoute = isUnscheduled && r.id === unscheduledRouteId;
+        const lineColor = isUnscheduledRoute ? '#f59e0b' : r.color || '#2563EB';
+        const lineWeight = isUnscheduledRoute ? (isSelected ? (far ? 5 : 10) : (far ? 4 : 8)) : (isSelected ? (far ? 3 : 6) : (far ? 1.8 : 3.5));
         return (
           <Fragment key={r.id}>
             {/* Белая обводка + яркая линия — главный визуальный элемент */}
             <Polyline positions={positions} color="white" weight={isSelected ? (far ? 4 : 9) : (far ? 3 : 6)} opacity={isSelected ? 0.95 : 0.6} lineCap="round" lineJoin="round" />
-            <Polyline positions={positions} color={r.color || '#2563EB'} weight={isSelected ? (far ? 3 : 6) : (far ? 1.8 : 3.5)} opacity={isSelected ? 1 : 0.7} lineCap="round" lineJoin="round" />
+            <Polyline positions={positions} color={lineColor} weight={lineWeight} opacity={isSelected ? 1 : 0.7} lineCap="round" lineJoin="round" />
             {!far && (
               <RouteNumberLabel
                 positions={positions}
                 routeNumber={r.number}
-                color={r.color || '#2563EB'}
+                color={lineColor}
               />
             )}
           </Fragment>
@@ -1277,10 +1310,20 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
         // остановки видны на любом зуме («верни остановки, которые ранее были»).
         const visibleStops = visibleStopsAt(allStops, { zoom: mapZoom, route, watchedStop });
         const isWatchedStop = (stop) => isSameStop(stop, watchedStop);
+        const isUnscheduledStart = (stop) => isUnscheduled && unscheduledStartStop && isSameStop(stop, unscheduledStartStop);
         const markers = visibleStops.map((stop, idx) => {
           const isWatched = isWatchedStop(stop);
+          const isUnscheduledStop = isUnscheduledStart(stop);
           const icon = L.divIcon({
-            html: isWatched
+            html: isUnscheduledStop
+              ? `<div style="position:relative;width:30px;height:30px;">
+                  <div style="position:absolute;inset:0;border-radius:50%;background:rgba(245,158,11,0.35);animation: k-ping 1.4s cubic-bezier(0,0,0.2,1) infinite;"></div>
+                  <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;background:#f59e0b;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(245,158,11,0.5);border:3px solid #fff;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 18v2"/><path d="M17 18v2"/></svg>
+                  </div>
+                </div>
+                <style>@keyframes k-ping{75%,100%{transform:scale(1.6);opacity:0}}</style>`
+              : isWatched
               ? `<div style="position:relative;width:30px;height:30px;">
                   <div style="position:absolute;inset:0;border-radius:50%;background:rgba(245,158,11,0.35);animation: k-ping 1.4s cubic-bezier(0,0,0.2,1) infinite;"></div>
                   <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;background:#f59e0b;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(245,158,11,0.5);border:3px solid #fff;">
@@ -1292,11 +1335,11 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 18v2"/><path d="M17 18v2"/></svg>
             </div>`,
             className: '',
-            iconSize: isWatched ? [30, 30] : [22, 22],
-            iconAnchor: isWatched ? [15, 15] : [11, 11],
+            iconSize: (isUnscheduledStop || isWatched) ? [30, 30] : [22, 22],
+            iconAnchor: (isUnscheduledStop || isWatched) ? [15, 15] : [11, 11],
           });
           return (
-            <Marker key={`stop-all-${idx}`} position={[stop.lat, stop.lng]} icon={icon} zIndexOffset={isWatched ? 1000 : 0} bubblingMouseEvents={false}
+            <Marker key={`stop-all-${idx}`} position={[stop.lat, stop.lng]} icon={icon} zIndexOffset={(isUnscheduledStop || isWatched) ? 1000 : 0} bubblingMouseEvents={false}
               eventHandlers={{ click: () => { try { mapRef.current?.flyTo([stop.lat, stop.lng], Math.max(mapRef.current.getZoom(), 15), { animate: true, duration: 0.5 }); } catch {} try { navigator.vibrate?.(15); } catch {} } }}>
               <Popup maxWidth={300} className="stop-info-popup">
                 <StopInfoPopup
@@ -1306,6 +1349,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
                   routingOpen={routingOpen}
                   onPickFrom={(s) => handleStopPickResult({ lat: s.lat, lng: s.lng, name: s.name, shortName: s.name, display_name: s.name, city: '', country: '', target: 'from' })}
                   onPickTo={(s) => handleStopPickResult({ lat: s.lat, lng: s.lng, name: s.name, shortName: s.name, display_name: s.name, city: '', country: '', target: 'to' })}
+                  onStartUnscheduled={handleStartUnscheduled}
                 />
               </Popup>
             </Marker>
