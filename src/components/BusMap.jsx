@@ -15,7 +15,7 @@ import StopInfoPopup, { collectUniqueStops } from './StopInfoPopup';
 import { useOverpassStops } from '@/hooks/useOverpassStops';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { visibleStopsAt, routeDetailsVisible, transitPointsVisible, isSameStop } from '@/lib/stopVisibility';
-import { loadHeatPlugin } from '@/lib/leafletHeat';
+import { densityCircleSpecs } from '@/lib/densityLayer';
 import { useNavigation } from '@/lib/NavigationContext';
 import { readNavSettings, persistNavSettings, customCursorHtml, useNavCursor, applyNightMode } from '@/lib/navCursor';
 import { useTheme } from 'next-themes';
@@ -791,31 +791,32 @@ function OsmStopMarkers({ routes, routeGeometries, routingOpen, onPickResult }) 
 }
 
 /**
- * Тепловая карта плотности транспорта. Плагин `leaflet.heat` грузится
- * асинхронно и может быть недоступен — тогда просто не рисуем слой
- * (раньше отсутствие плагина валило всю карту через ErrorBoundary).
+ * Плотность транспорта: штатные circleMarker вместо плагина leaflet.heat,
+ * который читает глобальный `L` и в ESM-сборке падал (прод-инцидент
+ * `L.heatLayer is not a function`). Слой не критичен для карты — любые
+ * ошибки отрисовки не должны ломать остальной интерфейс.
  */
-function HeatmapLayer({ points }) {
+function TrafficDensityLayer({ points }) {
   const map = useMap();
   useEffect(() => {
-    let heat = null;
-    let cancelled = false;
-    loadHeatPlugin().then((ok) => {
-      if (!ok || cancelled) return;
-      try {
-        heat = L.heatLayer(points, {
-          radius: 25,
-          blur: 15,
-          maxZoom: 17,
-          gradient: { 0.4: 'green', 0.6: 'yellow', 0.8: 'red' },
-        }).addTo(map);
-      } catch {
-        heat = null; // слой не критичен — карта должна работать
-      }
-    });
+    const group = L.layerGroup();
+    try {
+      densityCircleSpecs(points).forEach((s) => {
+        L.circleMarker([s.lat, s.lng], {
+          radius: s.radius,
+          stroke: false,
+          fillColor: s.color,
+          fillOpacity: s.opacity,
+          interactive: false,
+          className: 'traffic-density-dot',
+        }).addTo(group);
+      });
+      group.addTo(map);
+    } catch {
+      return () => {};
+    }
     return () => {
-      cancelled = true;
-      if (heat && map.hasLayer(heat)) map.removeLayer(heat);
+      if (map.hasLayer(group)) map.removeLayer(group);
     };
   }, [map, points]);
   return null;
@@ -1257,7 +1258,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       )}
 
       {showTraffic && trafficData.length > 0 && (
-        <HeatmapLayer points={trafficData} />
+        <TrafficDensityLayer points={trafficData} />
       )}
 
       {showTraffic && (
