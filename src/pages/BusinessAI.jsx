@@ -1608,21 +1608,25 @@ export default function BusinessAI() {
                     <p className="mt-0.5">Backend недоступен — вставь свой ключ. <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="font-bold underline">Взять ключ</a></p>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                {/* type="password" в <form> — чтобы Chromium не ругался
+                    «Password field is not contained in a form», Enter = сабмит */}
+                <form
+                  onSubmit={(e) => { e.preventDefault(); handleConnectKey(); }}
+                  className="flex gap-2"
+                >
                   <input
                     type="password"
                     value={keyInput}
                     onChange={(e) => setKeyInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleConnectKey(); }}
                     placeholder="sk-or-v1-…"
                     autoComplete="off"
                     className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-amber-500/30 bg-slate-900 text-sm text-slate-100 placeholder:text-slate-500 font-mono"
                   />
-                  <button onClick={handleConnectKey} disabled={keySaving || !keyInput.trim()}
+                  <button type="submit" disabled={keySaving || !keyInput.trim()}
                     className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-sm font-bold">
                     {keySaving ? '…' : 'Подключить'}
                   </button>
-                </div>
+                </form>
               </div>
             )}
           </div>

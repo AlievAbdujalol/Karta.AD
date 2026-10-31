@@ -126,7 +126,12 @@ export default function UserApiKeys({ userId }) {
             </a>
           </div>
           <p className="text-[11px] text-slate-400">{p.desc}</p>
-          <div className="flex gap-1.5">
+          {/* type="password" должен жить в <form>: иначе Chromium пишет
+              «Password field is not contained in a form», а Enter не сохраняет */}
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleSave(p.id); }}
+            className="flex gap-1.5"
+          >
             <div className="relative flex-1">
               <input
                 type={show[p.id] ? 'text' : 'password'}
@@ -137,6 +142,7 @@ export default function UserApiKeys({ userId }) {
                 className="w-full pr-9 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 font-mono"
               />
               <button
+                type="button"
                 onClick={() => setShow((s) => ({ ...s, [p.id]: !s[p.id] }))}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 title={show[p.id] ? 'Скрыть' : 'Показать'}
@@ -145,19 +151,19 @@ export default function UserApiKeys({ userId }) {
               </button>
             </div>
             <button
-              onClick={() => handleSave(p.id)}
+              type="submit"
               disabled={saving === p.id || !values[p.id]?.trim()}
               className="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1"
             >
               {saving === p.id ? '…' : <><Save size={12} /> OK</>}
             </button>
             {saved[p.id] && (
-              <button onClick={() => handleDelete(p.id)} title="Удалить ключ"
+              <button type="button" onClick={() => handleDelete(p.id)} title="Удалить ключ"
                 className="px-2.5 py-2 rounded-lg border border-red-200 dark:border-red-500/30 text-red-500">
                 <Trash2 size={13} />
               </button>
             )}
-          </div>
+          </form>
         </div>
       ))}
     </div>
