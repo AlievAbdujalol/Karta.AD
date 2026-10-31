@@ -349,6 +349,7 @@ function RouteNumberLabel({ positions, routeNumber, color }) {
 }
 
 import { distanceM } from '@/lib/transitRouter';
+import { defaultFare, parseFare, normalizeFare, stepFare } from '@/lib/fareInput';
 // ...
 function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
   const { user, refreshUser } = useCurrentUser();
@@ -357,6 +358,14 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
   const [paying, setPaying] = useState(false);
   const [isFav, setIsFav] = useState(false);
   const [notified, setNotified] = useState(false);
+  // Свободная сумма проезда: тариф — только дефолт, пассажир меняет её ±0.50 TJS
+  // или вводит вручную. Текст держим как ввёл пользователь, число — по blur/оплате.
+  const [fareText, setFareText] = useState(() => defaultFare(vehicle.type).toFixed(2));
+
+  // другой тип транспорта у этого же маркера — возвращаем свой тариф
+  useEffect(() => {
+    setFareText(defaultFare(vehicle.type).toFixed(2));
+  }, [vehicle.type]);
   
   // Simulated occupancy level: low, medium, high
   const occupancy = vehicle.occupancy || 'low'; // low, medium, high
@@ -419,15 +428,20 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
       return;
     }
 
-    const fare = vehicle.type === 'minibus' ? 3.00 : 2.50;
+    const parsedFare = parseFare(fareText);
+    if (parsedFare === null) {
+      toast.error(t('busmap.paymentAmountInvalid'));
+      return;
+    }
+    const fare = normalizeFare(parsedFare);
     const userBalance = Number(user.balance || 0);
 
     if (userBalance < fare) {
-      toast.error(`${t('busmap.paymentInsufficientBalance')} ${fare} TJS. ${t('profile.balanceLabel')} ${userBalance.toFixed(2)} TJS.`);
+      toast.error(`${t('busmap.paymentInsufficientBalance')} ${fare.toFixed(2)} TJS. ${t('profile.balanceLabel')} ${userBalance.toFixed(2)} TJS.`);
       return;
     }
 
-    if (window.confirm(`${t('busmap.paymentConfirmTitle')} #${vehicle.route_number} ${t('schedulePanel.somoni')} ${fare} TJS?`)) {
+    if (window.confirm(`${t('busmap.paymentConfirmTitle')} #${vehicle.route_number} ${t('schedulePanel.somoni')} ${fare.toFixed(2)} TJS?`)) {
       setPaying(true);
       try {
         // Списание на сервере: баланс из браузера не меняем
@@ -441,7 +455,7 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
         });
         if (balErr) {
           if (balErr.message === 'insufficient balance') {
-            throw new Error(`${t('busmap.paymentInsufficientBalance')} ${fare} TJS. ${t('profile.balanceLabel')} ${userBalance.toFixed(2)} TJS.`);
+            throw new Error(`${t('busmap.paymentInsufficientBalance')} ${fare.toFixed(2)} TJS. ${t('profile.balanceLabel')} ${userBalance.toFixed(2)} TJS.`);
           }
           throw new Error(balErr.message);
         }
@@ -540,6 +554,9 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
 
   const icon = createOccupancyIcon(vehicle.route_number || '?', vehicle.type, t, occupancy, occupancyColor);
   const eta = getEtaLabel(vehicle);
+  // что показываем на кнопке оплаты, пока пользователь печатает
+  const typedFare = parseFare(fareText);
+  const shownAmount = typedFare === null ? defaultFare(vehicle.type) : normalizeFare(typedFare);
 
   return (
     <Marker position={pos} icon={icon}>
@@ -572,31 +589,94 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
           )}
 
           {user && vehicle.driver_id && (
-            <button
-              disabled={paying}
-              onClick={handlePay}
-              style={{
-                width: '100%',
-                marginTop: 10,
-                background: '#16a34a',
-                color: 'white',
-                border: 'none',
-                borderRadius: 10,
-                padding: '8px 12px',
-                fontSize: 12,
-                fontWeight: 750,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 4,
-                boxShadow: '0 2px 6px rgba(22,163,74,0.3)',
-                transition: 'all 0.2s',
-              }}
-              className="hover:bg-green-700 active:scale-95 disabled:opacity-50"
-            >
-              {paying ? t('busmap.sending') : `${t('busmap.payButton')} ${vehicle.type === 'minibus' ? '3.00' : '2.50'} TJS`}
-            </button>
+            <>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  marginTop: 10,
+                  background: '#f1f5f9',
+                  borderRadius: 10,
+                  padding: '6px 8px',
+                }}
+              >
+                <span style={{ flex: 1, fontSize: 11, color: '#64748b', fontWeight: 700 }}>
+                  {t('busmap.fareAmount')}
+                </span>
+                <button
+                  type="button"
+                  aria-label={t('busmap.fareDecrease')}
+                  disabled={paying}
+                  onClick={() => setFareText(stepFare(parseFare(fareText), -1).toFixed(2))}
+                  style={{
+                    width: 26, height: 26, borderRadius: 8, border: '1px solid #cbd5e1',
+                    background: '#fff', color: '#0f172a', fontSize: 16, fontWeight: 800,
+                    lineHeight: 1, cursor: 'pointer', padding: 0,
+                  }}
+                  className="active:scale-95 disabled:opacity-50"
+                >
+                  −
+                </button>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={fareText}
+                  disabled={paying}
+                  onChange={(e) => setFareText(e.target.value)}
+                  onBlur={() => {
+                    const p = parseFare(fareText);
+                    setFareText(p === null ? defaultFare(vehicle.type).toFixed(2) : normalizeFare(p).toFixed(2));
+                  }}
+                  aria-label={t('busmap.fareAmount')}
+                  style={{
+                    width: 54, textAlign: 'center', fontSize: 13, fontWeight: 800,
+                    color: '#0f172a', background: '#fff', border: '1px solid #cbd5e1',
+                    borderRadius: 8, padding: '4px 2px',
+                  }}
+                />
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#334155' }}>TJS</span>
+                <button
+                  type="button"
+                  aria-label={t('busmap.fareIncrease')}
+                  disabled={paying}
+                  onClick={() => setFareText(stepFare(parseFare(fareText), 1).toFixed(2))}
+                  style={{
+                    width: 26, height: 26, borderRadius: 8, border: '1px solid #cbd5e1',
+                    background: '#fff', color: '#0f172a', fontSize: 16, fontWeight: 800,
+                    lineHeight: 1, cursor: 'pointer', padding: 0,
+                  }}
+                  className="active:scale-95 disabled:opacity-50"
+                >
+                  +
+                </button>
+              </div>
+              <button
+                disabled={paying}
+                onClick={handlePay}
+                style={{
+                  width: '100%',
+                  marginTop: 6,
+                  background: '#16a34a',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 10,
+                  padding: '8px 12px',
+                  fontSize: 12,
+                  fontWeight: 750,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 4,
+                  boxShadow: '0 2px 6px rgba(22,163,74,0.3)',
+                  transition: 'all 0.2s',
+                }}
+                className="hover:bg-green-700 active:scale-95 disabled:opacity-50"
+              >
+                {paying ? t('busmap.sending') : `${t('busmap.payButton')} ${shownAmount.toFixed(2)} TJS`}
+              </button>
+            </>
           )}
         </div>
       </Popup>

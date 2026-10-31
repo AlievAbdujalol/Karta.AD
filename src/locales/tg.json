@@ -274,6 +274,10 @@
     "favDriverRemoved": "Ронанда аз дӯстдошта хориҷ шуд",
     "sending": "Фиристодан…",
     "payButton": "Пардохтан",
+    "fareAmount": "Маблағи роҳкиро",
+    "fareDecrease": "Кам кардани маблағ",
+    "fareIncrease": "Зиёд кардани маблағ",
+    "paymentAmountInvalid": "Маблағи роҳкиро дуруст ворид кунед",
     "stopDefaultName": "Истгоҳ",
     "poiOther": "Ҷой",
     "poi": {

@@ -274,6 +274,10 @@
     "favDriverRemoved": "Driver removed from favorites",
     "sending": "Sending…",
     "payButton": "Pay",
+    "fareAmount": "Fare amount",
+    "fareDecrease": "Decrease amount",
+    "fareIncrease": "Increase amount",
+    "paymentAmountInvalid": "Enter a valid fare amount",
     "stopDefaultName": "Stop",
     "poiOther": "Place",
     "poi": {

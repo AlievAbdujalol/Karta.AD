@@ -274,6 +274,10 @@
     "favDriverRemoved": "Водитель убран из избранного",
     "sending": "Отправка…",
     "payButton": "Оплатить",
+    "fareAmount": "Сумма проезда",
+    "fareDecrease": "Уменьшить сумму",
+    "fareIncrease": "Увеличить сумму",
+    "paymentAmountInvalid": "Укажите корректную сумму проезда",
     "stopDefaultName": "Остановка",
     "poiOther": "Место",
     "poi": {
