@@ -1,5 +1,6 @@
 import React, { Component } from 'react';
 import { useLanguage } from '@/lib/useLanguage';
+import { tryAutoReloadChunkError } from '@/lib/chunkReload';
 
 export function DefaultErrorFallback({ error, onReset }) {
   const { t } = useLanguage();
@@ -58,6 +59,9 @@ export default class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
+    // Устаревшая вкладка после деплоя: чанк прошлой сборки не найден →
+    // один авто-reload (см. chunkReload.js), дальше — фолбэк с кнопкой
+    if (tryAutoReloadChunkError(error)) return;
     if (import.meta.env.DEV) {
       console.error('[ErrorBoundary]', error.message, info.componentStack);
     }

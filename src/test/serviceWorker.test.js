@@ -126,4 +126,39 @@ describe('public/sw.js: respondWith всегда отдаёт Response', () => {
     const res = await fireFetch(listeners, ASSET);
     expect(res).toBe(cached);
   });
+
+  it('статика: ok-ответ text/html (SPA-fallback на битый чанк) НЕ кешируется', async () => {
+    // Регресс из прод-консоли: deploy удалил старый чанк, Vercel-rewrite отдал
+    // index.html (200, text/html), SW закешировал его под именем .js — и чанк
+    // «отравлен» в кеше до сброса версии CACHE.
+    const htmlRes = {
+      ok: true,
+      status: 200,
+      headers: { get: (k) => (k.toLowerCase() === 'content-type' ? 'text/html; charset=utf-8' : null) },
+      clone: () => ({ html: true }),
+    };
+    const { listeners, cache } = await loadSw({
+      fetchMock: vi.fn(() => Promise.resolve(htmlRes)),
+      matchMock: vi.fn(() => Promise.resolve(undefined)),
+    });
+    const res = await fireFetch(listeners, ASSET);
+    expect(res).toBe(htmlRes); // ответ доходит до страницы как есть
+    expect(cache.put).not.toHaveBeenCalled(); // но в кеш не попадает
+  });
+
+  it('статика: ok-ответ с типом JS кешируется, как раньше', async () => {
+    const jsRes = {
+      ok: true,
+      status: 200,
+      headers: { get: (k) => (k.toLowerCase() === 'content-type' ? 'application/javascript' : null) },
+      clone: () => ({ js: true }),
+    };
+    const { listeners, cache } = await loadSw({
+      fetchMock: vi.fn(() => Promise.resolve(jsRes)),
+      matchMock: vi.fn(() => Promise.resolve(undefined)),
+    });
+    const res = await fireFetch(listeners, ASSET);
+    expect(res).toBe(jsRes);
+    expect(cache.put).toHaveBeenCalled();
+  });
 });

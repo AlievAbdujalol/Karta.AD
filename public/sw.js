@@ -7,8 +7,8 @@
 
 // Имена кешей — с версией: логика офлайн-фолбэка изменилась, а activate
 // чужие кеши не трогает — ядовитые записи старой версии должны уйти.
-// v4: раздел «Отзывы и поддержка» — чистим клиентские кэши старых сборок.
-const CACHE = 'karta-ad-v4';
+// v5: авто-reload при чанковых ошибках + не кешируем text/html (см. fetch-хендлер)
+const CACHE = 'karta-ad-v5';
 const TILE_CACHE = 'karta-ad-tiles-v2';
 const CORE = ['/', '/index.html', '/logo.png', '/icon-192.png', '/icon-512.png', '/manifest.webmanifest'];
 
@@ -41,11 +41,15 @@ self.addEventListener('activate', (e) => {
 
 // stale-while-revalidate для тайлов и статики: кеш сразу, фоном — сеть.
 // При падении сети отдаём кеш, а при пустом кеше — 504, но не undefined.
+// HTML под не-HTML-запросом НЕ кешируем: после деплоя SPA-rewrite может
+// отдать index.html (200, text/html) вместо удалённого чанка — закешировав
+// его под именем .js, «отравим» кеш до сброса версии CACHE.
 function staleWhileRevalidate(request, cacheName) {
   return caches.match(request).then((hit) => {
     const net = fetch(request)
       .then((res) => {
-        if (res && res.ok) {
+        const type = res && res.headers ? String(res.headers.get('Content-Type') || '') : '';
+        if (res && res.ok && !type.includes('text/html')) {
           const copy = res.clone();
           caches.open(cacheName).then((c) => c.put(request, copy)).catch(() => {});
         }
