@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/api/supabase';
 import { CATEGORY_LABELS as TAXI_CATEGORIES } from '@/lib/taxi';
 import { roleChangeFee, renewalFee, isBusinessRoleActive, BUSINESS_ROLE } from '@/lib/roles';
+import { renewParams, payMethodOptions } from '@/lib/hol';
 import {
   PRESET_AMOUNTS, validateTopupAmount, buildTopupRequest, paymentStatusLabel,
 } from '@/lib/topup';
@@ -145,6 +146,9 @@ export default function Profile() {
   const [showTopup, setShowTopup] = useState(false);
   const [topupAmount, setTopupAmount] = useState('');
   const [topupBusy, setTopupBusy] = useState(false);
+  // Оплата подписки: выбор способа — реальный кошелёк или бонусный «Хол»
+  const [renewChoice, setRenewChoice] = useState(false);
+  const [renewBusy, setRenewBusy] = useState(false);
   const [topupRequests, setTopupRequests] = useState([]);
   const [saveFlash, setSaveFlash] = useState(null);
   const [addMode, setAddMode] = useState(false);
@@ -450,26 +454,49 @@ export default function Profile() {
     }
   };
 
-  const handleRenewSubscription = async () => {
-    const fee = renewalFee(form.role);
-    const confirmed = window.confirm(`${t('profile.renewSubscriptionConfirm')}\n${t('profile.costLabel')} ${fee} TJS\n${t('profile.balanceLabel')} ${Number(user?.balance || 0).toFixed(2)} TJS`);
-    if (!confirmed) return;
-    try {
-      if (Number(user?.balance || 0) < fee) {
-        throw new Error(t('profile.insufficientBalanceRenew'));
-      }
+  const handleRenewSubscription = () => setRenewChoice(true);
 
+  /**
+   * Продление подписки выбранным способом: 'money' — реальный кошелёк,
+   * 'hol' — бонусный «Хол» (1 Хол = 1 TJS). Списание всегда на сервере.
+   */
+  const payRenewSubscription = async (method) => {
+    const fee = renewalFee(form.role);
+    const available = payMethodOptions({ balance: user?.balance, hol: user?.hol_balance, fee })
+      .find((o) => o.method === method)?.available;
+    if (!available) {
+      toast.error(method === 'hol' ? t('profile.insufficientHolRenew') : t('profile.insufficientBalanceRenew'));
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `${t('profile.renewSubscriptionConfirm')}\n${t('profile.costLabel')} ${fee} TJS\n` +
+      (method === 'hol'
+        ? `${t('profile.holBalance')}: ${Number(user?.hol_balance || 0).toFixed(2)} ${t('profile.holUnit')}`
+        : `${t('profile.balanceLabel')}: ${Number(user?.balance || 0).toFixed(2)} TJS`)
+    );
+    if (!confirmed) return;
+
+    setRenewBusy(true);
+    try {
       // Продление со списанием на сервере: баланс и подписку нельзя править из клиента
-      const { error } = await supabase.rpc('renew_subscription');
+      const { error } = await supabase.rpc('renew_subscription', renewParams(method));
       if (error) {
         const msg = error.message || '';
-        throw new Error(msg === 'insufficient balance' ? t('profile.insufficientBalanceRenew') : msg);
+        throw new Error(
+          msg === 'insufficient balance' ? t('profile.insufficientBalanceRenew')
+          : msg === 'insufficient hol' ? t('profile.insufficientHolRenew')
+          : msg
+        );
       }
       await refreshUser?.();
-      toast.success(`${t('profile.subscriptionRenewed')} ${fee} TJS.`);
+      setRenewChoice(false);
+      toast.success(`${t('profile.subscriptionRenewed')} ${fee} TJS${method === 'hol' ? ` (${t('profile.holUnit')})` : ''}.`);
     } catch (err) {
       console.error('[Profile] renew error:', err);
       toast.error(err.message || t('profile.subscriptionRenewError'));
+    } finally {
+      setRenewBusy(false);
     }
   };
 
@@ -669,6 +696,20 @@ export default function Profile() {
               >
                 {t('profile.walletTopup')}
               </button>
+            </div>
+
+            {/* «Хол» — бонусная валюта-приз: выдаёт только админ, тратится только на подписку */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 flex items-center justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-violet-400 dark:text-violet-500 uppercase tracking-wider">{t('profile.holBalance')}</p>
+                <p className="text-3xl font-black text-gray-900 dark:text-gray-100">
+                  {Number(user?.hol_balance || 0).toFixed(2)} <span className="text-lg font-bold text-gray-500">{t('profile.holUnit')}</span>
+                </p>
+                <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                  = {Number(user?.hol_balance || 0).toFixed(2)} TJS · {t('profile.holHint')}
+                </p>
+              </div>
+              <span className="text-3xl">🎁</span>
             </div>
 
             {showTopup && (
@@ -1598,6 +1639,60 @@ export default function Profile() {
             Разработчик · Instagram @aliev.abdujalol.0707_in
           </a>
         </div>}
+
+        {/* Оплата подписки: выбор способа — деньги или «Хол» */}
+        {renewChoice && (() => {
+          const fee = renewalFee(form.role);
+          const options = payMethodOptions({ balance: user?.balance, hol: user?.hol_balance, fee });
+          return (
+            <div
+              className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 px-4"
+              onClick={() => { if (!renewBusy) setRenewChoice(false); }}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl p-5 space-y-3 shadow-xl"
+              >
+                <div>
+                  <p className="text-sm font-bold text-gray-800 dark:text-gray-100">{t('profile.renewPayTitle')}</p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                    {t('profile.costLabel')} {fee} TJS · {t('profile.balanceLabel')}: {Number(user?.balance || 0).toFixed(2)} TJS · {t('profile.holBalance')}: {Number(user?.hol_balance || 0).toFixed(2)} {t('profile.holUnit')}
+                  </p>
+                </div>
+                {options.map(({ method, available }) => (
+                  <button
+                    key={method}
+                    type="button"
+                    disabled={!available || renewBusy}
+                    onClick={() => payRenewSubscription(method)}
+                    className={`w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                      method === 'hol'
+                        ? 'bg-violet-600 hover:bg-violet-700 text-white'
+                        : 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                    }`}
+                  >
+                    <span>
+                      {method === 'hol' ? t('profile.payWithHol') : t('profile.payWithMoney')} — {fee} {method === 'hol' ? t('profile.holUnit') : 'TJS'}
+                    </span>
+                    {!available && (
+                      <span className="text-[10px] font-semibold opacity-90 text-right">
+                        {method === 'hol' ? t('profile.insufficientHolRenew') : t('profile.insufficientBalanceRenew')}
+                      </span>
+                    )}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  disabled={renewBusy}
+                  onClick={() => setRenewChoice(false)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs font-semibold"
+                >
+                  {t('cancel')}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

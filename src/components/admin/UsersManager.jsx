@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { UserPlus, Wallet, Search, Loader2, X } from 'lucide-react';
+import { UserPlus, Wallet, Search, Loader2, X, Gift } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/api/supabase';
 import { validateNewUser, validateTopup, formatTJS, ASSIGNABLE_ROLES } from '@/lib/adminUsers';
@@ -28,12 +28,15 @@ export default function UsersManager() {
   const [topupFor, setTopupFor] = useState(null); // { id, name, balance }
   const [topupAmount, setTopupAmount] = useState('');
   const [topupBusy, setTopupBusy] = useState(false);
+  const [holFor, setHolFor] = useState(null); // выдача «Хол» — только из админки
+  const [holAmount, setHolAmount] = useState('');
+  const [holBusy, setHolBusy] = useState(false);
   const [confirmingRequest, setConfirmingRequest] = useState(null);
 
   const load = useCallback(() => {
     supabase
       .from('profiles')
-      .select('id, full_name, email, phone, role, balance, subscription_status, subscription_paid_until, created_at')
+      .select('id, full_name, email, phone, role, balance, hol_balance, subscription_status, subscription_paid_until, created_at')
       .order('created_at', { ascending: false })
       .limit(500)
       .then(({ data, error }) => {
@@ -133,6 +136,34 @@ export default function UsersManager() {
       toast.error(err.message || 'Не удалось пополнить баланс');
     } finally {
       setTopupBusy(false);
+    }
+  };
+
+  // Выдать «Хол» (бонусная валюта-приз): только на сервере, только админом,
+  // курс 1 Хол = 1 TJS, тратится пользователь только на подписку
+  const handleGrantHol = async (e) => {
+    e.preventDefault();
+    const res = validateTopup(holAmount);
+    if (!res.ok) { toast.error(res.error); return; }
+
+    setHolBusy(true);
+    try {
+      const { data, error } = await supabase.rpc('admin_grant_hol', {
+        p_user_id: holFor.id,
+        p_amount: res.amount,
+        p_reason: 'Выдача Хол администратором',
+      });
+      if (error) throw new Error(error.message);
+      const after = Number(data?.hol_balance ?? 0);
+      toast.success(`Выдано ${Number(res.amount).toFixed(2)} Хол · баланс ${after.toFixed(2)} Хол`);
+      setHolFor(null);
+      setHolAmount('');
+      load();
+    } catch (err) {
+      console.error('[UsersManager] grant hol error:', err);
+      toast.error(err.message || 'Не удалось выдать Хол');
+    } finally {
+      setHolBusy(false);
     }
   };
 
@@ -261,6 +292,7 @@ export default function UsersManager() {
                   <th className="text-left px-4 py-2.5 font-bold">Пользователь</th>
                   <th className="text-left px-4 py-2.5 font-bold">Роль</th>
                   <th className="text-left px-4 py-2.5 font-bold">Баланс</th>
+                  <th className="text-left px-4 py-2.5 font-bold">Хол</th>
                   <th className="text-left px-4 py-2.5 font-bold">Подписка</th>
                   <th className="text-right px-4 py-2.5 font-bold">Действия</th>
                 </tr>
@@ -276,18 +308,27 @@ export default function UsersManager() {
                       {ROLE_LABELS[u.role] || u.role || '—'}
                     </td>
                     <td className="px-4 py-2.5 font-bold text-gray-800 dark:text-gray-100">{formatTJS(u.balance)}</td>
+                    <td className="px-4 py-2.5 font-bold text-violet-600 dark:text-violet-400">{Number(u.hol_balance || 0).toFixed(2)} Хол</td>
                     <td className="px-4 py-2.5">
                       {u.subscription_status === 'active'
                         ? <span className="text-green-600 dark:text-green-400">активна{u.subscription_paid_until ? ` до ${new Date(u.subscription_paid_until).toLocaleDateString('ru-RU')}` : ''}</span>
                         : <span className="text-gray-400">{u.subscription_status || 'нет'}</span>}
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      <button
-                        onClick={() => { setTopupFor(u); setTopupAmount(''); }}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold"
-                      >
-                        <Wallet size={12} /> Пополнить
-                      </button>
+                      <div className="inline-flex gap-1.5">
+                        <button
+                          onClick={() => { setHolFor(u); setHolAmount(''); }}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-[11px] font-semibold"
+                        >
+                          <Gift size={12} /> Выдать Хол
+                        </button>
+                        <button
+                          onClick={() => { setTopupFor(u); setTopupAmount(''); }}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold"
+                        >
+                          <Wallet size={12} /> Пополнить
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -346,6 +387,62 @@ export default function UsersManager() {
                 Пополнить
               </button>
               <button type="button" onClick={() => setTopupFor(null)} className="px-4 py-2 rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs font-semibold">
+                Отмена
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      {holFor && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 px-4" onClick={() => setHolFor(null)}>
+          <form
+            onSubmit={handleGrantHol}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl p-5 space-y-3 shadow-xl"
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-bold text-gray-800 dark:text-gray-100">Выдача Хол</p>
+                <p className="text-[11px] text-gray-500">{holFor.full_name || holFor.email} · сейчас {Number(holFor.hol_balance || 0).toFixed(2)} Хол</p>
+                <p className="text-[11px] text-violet-500 font-semibold">1 Хол = 1 TJS · тратится только на подписку</p>
+              </div>
+              <button type="button" onClick={() => setHolFor(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-gray-400 uppercase">Сумма, Хол</label>
+              <input
+                type="number"
+                autoFocus
+                value={holAmount}
+                onChange={(e) => setHolAmount(e.target.value)}
+                placeholder="100"
+                className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100"
+              />
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {[50, 100, 200, 500].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setHolAmount(String(v))}
+                  className="px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 text-[11px] font-semibold text-gray-600 dark:text-gray-300"
+                >
+                  +{v}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={holBusy}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-xs font-semibold"
+              >
+                {holBusy && <Loader2 size={13} className="animate-spin" />}
+                Выдать
+              </button>
+              <button type="button" onClick={() => setHolFor(null)} className="px-4 py-2 rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs font-semibold">
                 Отмена
               </button>
             </div>

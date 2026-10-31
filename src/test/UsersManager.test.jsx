@@ -41,6 +41,7 @@ const USER = {
   phone: '+992900000000',
   role: 'user',
   balance: 502.1,
+  hol_balance: 25,
   subscription_status: 'active',
   subscription_paid_until: '2026-12-01T00:00:00Z',
   created_at: '2026-01-01T00:00:00Z',
@@ -165,5 +166,53 @@ describe('UsersManager', () => {
 
     await waitFor(() => expect(toastMock).toHaveBeenCalledWith('error', 'Введите сумму больше нуля'));
     expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it('показывает баланс Хол рядом с балансом кошелька', async () => {
+    render(<UsersManager />);
+    await waitFor(() => expect(screen.getByText('Тест Клиент')).toBeTruthy());
+    expect(screen.getByText('502.10 TJS')).toBeTruthy();
+    expect(screen.getByText('25.00 Хол')).toBeTruthy();
+  });
+
+  it('выдача Хол вызывает admin_grant_hol с суммой и получателем', async () => {
+    rpcMock.mockResolvedValue({ data: { hol_balance: 100, amount: 75 }, error: null });
+    render(<UsersManager />);
+    await waitFor(() => expect(screen.getByText('Тест Клиент')).toBeTruthy());
+
+    fireEvent.click(screen.getByText('Выдать Хол'));
+    fireEvent.change(screen.getByPlaceholderText('100'), { target: { value: '75' } });
+    fireEvent.click(screen.getByText('Выдать', { selector: 'button[type="submit"]' }));
+
+    await waitFor(() => expect(rpcMock).toHaveBeenCalledWith('admin_grant_hol', {
+      p_user_id: 'u1',
+      p_amount: 75,
+      p_reason: 'Выдача Хол администратором',
+    }));
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith('success', 'Выдано 75.00 Хол · баланс 100.00 Хол'));
+  });
+
+  it('выдача Хол с нулевой суммой не отправляется', async () => {
+    render(<UsersManager />);
+    await waitFor(() => expect(screen.getByText('Тест Клиент')).toBeTruthy());
+
+    fireEvent.click(screen.getByText('Выдать Хол'));
+    fireEvent.click(screen.getByText('Выдать', { selector: 'button[type="submit"]' }));
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith('error', 'Введите сумму больше нуля'));
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it('ошибка выдачи Хол показывается, модалка не закрывается', async () => {
+    rpcMock.mockResolvedValue({ data: null, error: { message: 'Только администратор может выдать Хол' } });
+    render(<UsersManager />);
+    await waitFor(() => expect(screen.getByText('Тест Клиент')).toBeTruthy());
+
+    fireEvent.click(screen.getByText('Выдать Хол'));
+    fireEvent.change(screen.getByPlaceholderText('100'), { target: { value: '10' } });
+    fireEvent.click(screen.getByText('Выдать', { selector: 'button[type="submit"]' }));
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith('error', 'Только администратор может выдать Хол'));
+    expect(screen.getByPlaceholderText('100')).toBeTruthy();
   });
 });
