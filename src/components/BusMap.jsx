@@ -16,6 +16,7 @@ import { useOverpassStops } from '@/hooks/useOverpassStops';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { visibleStopsAt, routeDetailsVisible, transitPointsVisible, isSameStop } from '@/lib/stopVisibility';
 import { densityCircleSpecs } from '@/lib/densityLayer';
+import { takePendingStart, pendingStartAction } from '@/lib/tripStartHandoff';
 import { useNavigation } from '@/lib/NavigationContext';
 import { readNavSettings, persistNavSettings, customCursorHtml, useNavCursor, applyNightMode } from '@/lib/navCursor';
 import { useTheme } from 'next-themes';
@@ -842,6 +843,9 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
   const [unscheduledStartStop, setUnscheduledStartStop] = useState(null);
   const [unscheduledRouteId, setUnscheduledRouteId] = useState(null);
   const isUnscheduled = Boolean(unscheduledStartStop && unscheduledRouteId);
+  // Выбор стартовой остановки из «Расписания» — одноразовый, читаем при монтировании
+  const [pendingStart] = useState(() => takePendingStart());
+  const pendingStartAppliedRef = useRef(false);
 
   const handleStartUnscheduled = useCallback((stop) => {
     const route = (routes || []).find(r =>
@@ -887,6 +891,23 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
   const { user } = useCurrentUser();
   const mapRef = useRef(null);
   const nav = useNavigation();
+  // «Расписание» прервало авто-рейс и выбрало остановку старта: подъезжаем к ней
+  // на карте и (если это не первая остановка) помечаем рейс неплановым — жёлтым.
+  useEffect(() => {
+    if (!pendingStart || pendingStartAppliedRef.current) return;
+    const action = pendingStartAction(pendingStart, routes || []);
+    if (!action) return; // маршрут ещё не загружен — пробуем на следующем рендере
+    pendingStartAppliedRef.current = true;
+    if (action.unscheduled) {
+      setUnscheduledStartStop(action.stop);
+      setUnscheduledRouteId(action.routeId);
+      toast.success('Неплановый рейс: старт с выбранной остановки', { id: 'unscheduled' });
+    }
+    try {
+      const m = mapRef.current;
+      if (m) m.flyTo(action.focus, Math.max(m.getZoom(), 14), { animate: true, duration: 0.7 });
+    } catch { /* карта ещё не готова — остановка уже отмечена */ }
+  }, [pendingStart, routes]);
   // Кнопка «Маршрут» в карточки места (Home держит meta в routeMeta): открываем панель
   // и отдаём точку «куда». «Откуда» подставится геолокацией, если позиции ещё нет.
   useEffect(() => {

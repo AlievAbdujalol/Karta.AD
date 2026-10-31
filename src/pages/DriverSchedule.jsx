@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/api/supabase';
 import { Vehicle, Route, Schedule } from '@/api/entities';
 import { MapPin, Clock, Bus, CheckCircle, AlertCircle, AlertTriangle, Calendar, ChevronRight, TrendingUp, List } from 'lucide-react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { useLanguage } from '@/lib/useLanguage';
+import { useTrip } from '@/lib/TripContext';
+import { savePendingStart } from '@/lib/tripStartHandoff';
 
 const timeToMinutes = (t) => {
   const [h, m] = (t || '').split(':').map(Number);
@@ -217,6 +220,8 @@ function RoutePlan({ route, startStopIndex, onStartStop }) {
 
 export default function DriverSchedule() {
   const { t } = useLanguage();
+  const navigate = useNavigate();
+  const { isTracking, endTrip } = useTrip();
   const [user, setUser] = useState(null);
   const [vehicle, setVehicle] = useState(null);
   const [route, setRoute] = useState(null);
@@ -225,6 +230,28 @@ export default function DriverSchedule() {
   // С какой остановки водитель начинает рейс (0 = первая). Если не 0 — рейс неплановый.
   const [startStopIndex, setStartStopIndex] = useState(0);
   const isUnscheduled = startStopIndex > 0;
+
+  /**
+   * «Старт» на остановке: прерываем автоматический рейс (GPS-ретрансляция
+   * из TripContext) и уходим на карту — там карта встанет к этой остановке,
+   * водитель начнёт с неё вручную (жёлтая отметка непланового старта).
+   * Выбор сохраняется до перехода — карта читает его одноразово.
+   */
+  const handleStartStop = (index) => {
+    setStartStopIndex(index);
+    savePendingStart({
+      routeId: route?.id || null,
+      stopIndex: index,
+      stop: route?.stops?.[index] || null,
+    });
+    (async () => {
+      try {
+        if (isTracking) await endTrip(); // рейс больше не идёт «сам»
+      } finally {
+        navigate('/');
+      }
+    })();
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -330,7 +357,7 @@ export default function DriverSchedule() {
         <ShiftSummary schedule={schedule} />
         <ActiveStops schedule={schedule} />
         {route && (
-          <RoutePlan route={route} startStopIndex={startStopIndex} onStartStop={setStartStopIndex} />
+          <RoutePlan route={route} startStopIndex={startStopIndex} onStartStop={handleStartStop} />
         )}
 
         {route && !schedule && (
