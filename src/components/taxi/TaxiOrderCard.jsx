@@ -16,7 +16,7 @@ const PAYMENT_METHODS = [
 ];
 
 export default function TaxiOrderCard({
-  order, passengerInfo, phase = 'active', onAction, onPaid, onRated, onSos, onChat, onShare, unread = 0,
+  order, passengerInfo, phase = 'active', onAction, onPaid, onRated, onSos, onChat, onShare, unread = 0, busy = false,
 }) {
   const [method, setMethod] = useState('cash');
   const [clientStars, setClientStars] = useState(0);
@@ -98,7 +98,8 @@ export default function TaxiOrderCard({
               <button
                 type="button"
                 onClick={() => onPaid(method)}
-                className="flex h-12 w-full items-center justify-center rounded-2xl bg-emerald-500 text-sm font-bold text-white"
+                disabled={busy}
+                className="flex h-12 w-full items-center justify-center rounded-2xl bg-emerald-500 text-sm font-bold text-white disabled:opacity-60"
               >
                 Получить · {formatTJS(earnings)} TJS
               </button>
@@ -124,7 +125,7 @@ export default function TaxiOrderCard({
               <button
                 type="button"
                 onClick={() => onRated(clientStars)}
-                disabled={!clientStars}
+                disabled={!clientStars || busy}
                 className={`h-12 w-full rounded-2xl text-sm font-bold ${
                   clientStars ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-400 dark:bg-slate-800'
                 }`}
@@ -166,7 +167,8 @@ export default function TaxiOrderCard({
                   <button
                     type="button"
                     onClick={() => onAction('arrived')}
-                    className="flex h-12 w-full items-center justify-center rounded-2xl bg-emerald-500 text-sm font-bold text-white"
+                    disabled={busy}
+                    className="flex h-12 w-full items-center justify-center rounded-2xl bg-emerald-500 text-sm font-bold text-white disabled:opacity-60"
                   >
                     Я на месте
                   </button>
@@ -181,7 +183,8 @@ export default function TaxiOrderCard({
                   <button
                     type="button"
                     onClick={() => onAction('riding')}
-                    className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 text-sm font-bold text-white"
+                    disabled={busy}
+                    className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 text-sm font-bold text-white disabled:opacity-60"
                   >
                     <Navigation size={16} /> Начать поездку
                   </button>
@@ -196,7 +199,8 @@ export default function TaxiOrderCard({
                   <button
                     type="button"
                     onClick={() => onAction('completed')}
-                    className="flex h-12 w-full items-center justify-center rounded-2xl bg-emerald-500 text-sm font-bold text-white"
+                    disabled={busy}
+                    className="flex h-12 w-full items-center justify-center rounded-2xl bg-emerald-500 text-sm font-bold text-white disabled:opacity-60"
                   >
                     Завершить
                   </button>

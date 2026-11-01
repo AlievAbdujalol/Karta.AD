@@ -15,6 +15,7 @@ import TaxiBottomSheet from '@/components/taxi/TaxiBottomSheet';
 import TaxiChat from '@/components/taxi/TaxiChat';
 import ShareMenu from '@/components/taxi/ShareMenu';
 import { haversineKm, DRIVER_MATCH_RADIUS_KM, formatTJS, TAXI_COMMISSION } from '@/lib/taxi';
+import { applyRideStatus } from '@/lib/taxiRide';
 import { releaseOffer } from '@/lib/taxiOffer';
 import { snapToRoad } from '@/lib/osrm';
 import { cartoRaster } from '@/lib/tiles';
@@ -72,12 +73,14 @@ export default function TaxiDriverDashboard() {
   const [shareOpen, setShareOpen] = useState(false);
   const [unreadChat, setUnreadChat] = useState(0);
   const [watchId, setWatchId] = useState(null);
+  const [rideBusy, setRideBusy] = useState(false);
 
   const driverCategoryRef = useRef(null);
   const currentOrderRef = useRef(null);
   const driverPosRef = useRef(null);
   const isVerifiedRef = useRef(true);
   const incomingOrderRef = useRef(null);
+  const rideBusyRef = useRef(false);
 
   useEffect(() => { currentOrderRef.current = currentOrder; }, [currentOrder]);
   useEffect(() => { driverPosRef.current = driverPosition; }, [driverPosition]);
@@ -244,7 +247,8 @@ export default function TaxiDriverDashboard() {
           setCurrentOrder(payload.new);
         } else if (payload.new.status === 'completed') {
           setCurrentOrder(prev => prev ? { ...prev, status: 'completed' } : null);
-          setCardPhase('payment');
+          // Кошелёк списывается автоматически — «Получить оплату» не показываем
+          setCardPhase(payload.new.payment_method === 'wallet' ? 'rate' : 'payment');
         } else if (payload.new.status === 'searching') {
           // Направленное предложение: пассажир выбрал этого водителя на карте
           // (см. src/lib/taxiOffer.js). Занят — сразу возвращаем заказ в общий
@@ -383,133 +387,180 @@ export default function TaxiDriverDashboard() {
   }, [user?.id]);
 
   const handleOrderAction = useCallback(async (newStatus) => {
-    if (!currentOrder?.id) return;
+    if (!currentOrder?.id || rideBusyRef.current) return;
+    // Двойной клик не должен отправлять пачку параллельных переходов
+    rideBusyRef.current = true;
+    setRideBusy(true);
+    const order = currentOrder;
+    let serverApplied = false;
     try {
-    if (newStatus === 'cancelled') {
-      await supabase.from('taxi_orders').update({ status: 'cancelled', cancelled_by: 'driver' }).eq('id', currentOrder.id);
-      await supabase.from('taxi_drivers').update({ status: 'free' }).eq('user_id', user.id);
-      await supabase.from('taxi_driver_locations').update({ status: 'free' }).eq('driver_id', user.id);
-      setCurrentOrder(null);
-      setCardPhase('active');
-      setChatOpen(false);
-      toast.info('Заказ отменён');
-      return;
-    }
-    await supabase.from('taxi_orders').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', currentOrder.id);
-    await supabase.from('taxi_ride_events').insert({ order_id: currentOrder.id, status: newStatus });
-
-    const driverMap = { arrived: 'arrived', riding: 'riding' };
-    const locMap = { arrived: 'arrived', riding: 'riding' };
-    if (driverMap[newStatus]) {
-      await supabase.from('taxi_drivers').update({ status: driverMap[newStatus] }).eq('user_id', user.id);
-      await supabase.from('taxi_driver_locations').update({ status: locMap[newStatus] }).eq('driver_id', user.id);
-    }
-    if (newStatus === 'completed') {
-      await supabase.from('taxi_orders').update({ completed_at: new Date().toISOString() }).eq('id', currentOrder.id);
-      // Автосписание для оплаты через кошелёк
-      if (currentOrder.payment_method === 'wallet') {
-        const { data: payResult } = await supabase.rpc('taxi_pay_wallet', {
-          p_passenger_id: currentOrder.passenger_id,
-          p_driver_id: user.id,
-          p_amount: Number(currentOrder.price) || 0,
-          p_order_id: currentOrder.id,
-        });
-        if (payResult === false) {
-          toast.error('Оплата через кошелёк не удалась — недостаточно средств');
-        } else {
-          const { data: pp } = await supabase.from('profiles').select('phone').eq('id', currentOrder.passenger_id).maybeSingle();
-          const last4 = (pp?.phone || '').slice(-4);
-          const amt = Number(currentOrder.price) || 0;
-          addLocalNotification({ title: `Оплата ${formatTJS(amt)} TJS`, body: `Кошелёк · ****${last4}`, type: 'taxi_wallet_payment' });
-          supabase.from('notifications').insert({
-            user_id: user.id,
-            title: `Оплата ${formatTJS(amt)} TJS`,
-            body: `Кошелёк · ****${last4}`,
-            type: 'taxi_wallet_payment',
-          }).then(({ error }) => { if (error) console.error('[TaxiDriver] wallet notification failed:', error); }).catch(() => {});
-          // Записать платёж + начислить водителю
-          const amount = Number(currentOrder.price) || 0;
-          const commission = Math.round(amount * TAXI_COMMISSION * 100) / 100;
-          const earnings = Math.round((amount - commission) * 100) / 100;
-          await supabase.from('taxi_ride_payments').insert({
-            order_id: currentOrder.id, amount, commission, driver_earnings: earnings,
-            method: 'wallet', status: 'completed', paid_at: new Date().toISOString(),
-          });
-          await supabase.from('taxi_wallet_transactions').insert({
-            driver_id: user.id, amount: earnings, type: 'earnings',
-            order_id: currentOrder.id, description: 'Оплата поездки (кошелёк)',
-          });
-          const { data: drv } = await supabase.from('taxi_drivers').select('rides_count, total_earnings').eq('user_id', user.id).maybeSingle();
-          await supabase.from('taxi_drivers').update({
-            rides_count: (drv?.rides_count || 0) + 1,
-            total_earnings: Math.round(((Number(drv?.total_earnings) || 0) + earnings) * 100) / 100,
-            status: 'free',
-          }).eq('user_id', user.id);
-          await supabase.from('taxi_driver_locations').update({ status: 'free' }).eq('driver_id', user.id);
-          setStats(prev => ({ ...prev, rides: (prev.rides || 0) + 1, today: Math.round((prev.today + earnings) * 100) / 100 }));
-        }
-      } else {
-        // Для наличных/карты/QR — сбросить статус сразу
-        await supabase.from('taxi_drivers').update({ status: 'free' }).eq('user_id', user.id);
-        await supabase.from('taxi_driver_locations').update({ status: 'free' }).eq('driver_id', user.id);
+      if (newStatus === 'cancelled') {
+        const [cancelled, driver, location] = await Promise.all([
+          supabase.from('taxi_orders').update({ status: 'cancelled', cancelled_by: 'driver' }).eq('id', order.id),
+          supabase.from('taxi_drivers').update({ status: 'free' }).eq('user_id', user.id),
+          supabase.from('taxi_driver_locations').update({ status: 'free' }).eq('driver_id', user.id),
+        ]);
+        const err = cancelled.error || driver.error || location.error;
+        if (err) { toast.error(err.message || 'Не удалось отменить заказ'); return; }
+        setCurrentOrder(null);
+        setCardPhase('active');
+        setChatOpen(false);
+        toast.info('Заказ отменён');
+        return;
       }
-      setCurrentOrder(prev => prev ? { ...prev, status: 'completed' } : null);
-      setCardPhase(currentOrder.payment_method === 'wallet' ? 'rate' : 'payment');
-      toast.success(currentOrder.payment_method === 'wallet' ? 'Оплата списана автоматически!' : 'Поездка завершена! Получите оплату');
-      return;
+
+      // Оптимистично: карточка меняет статус сразу — клик не «висит» 1.5–2 с
+      setCurrentOrder(prev => (prev ? { ...prev, status: newStatus } : prev));
+
+      const res = await applyRideStatus(supabase, {
+        orderId: order.id,
+        driverId: user.id,
+        status: newStatus,
+      });
+      if (!res.ok) {
+        // Сервер отказал — возвращаем реальный статус, не врём водителю
+        setCurrentOrder(prev => (prev ? { ...prev, status: order.status } : prev));
+        toast.error(res.error);
+        return;
+      }
+      serverApplied = true;
+
+      if (newStatus === 'completed') {
+        // completed_at и статус водителя free уже записаны applyRideStatus
+        // Автосписание для оплаты через кошелёк
+        if (order.payment_method === 'wallet') {
+          const { data: payResult, error: payError } = await supabase.rpc('taxi_pay_wallet', {
+            p_passenger_id: order.passenger_id,
+            p_driver_id: user.id,
+            p_amount: Number(order.price) || 0,
+            p_order_id: order.id,
+          });
+          if (payError) {
+            toast.error(payError.message || 'Оплата через кошелёк не удалась');
+          } else if (payResult === false) {
+            toast.error('Оплата через кошелёк не удалась — недостаточно средств');
+          } else {
+            const { data: pp } = await supabase.from('profiles').select('phone').eq('id', order.passenger_id).maybeSingle();
+            const last4 = (pp?.phone || '').slice(-4);
+            const amt = Number(order.price) || 0;
+            addLocalNotification({ title: `Оплата ${formatTJS(amt)} TJS`, body: `Кошелёк · ****${last4}`, type: 'taxi_wallet_payment' });
+            supabase.from('notifications').insert({
+              user_id: user.id,
+              title: `Оплата ${formatTJS(amt)} TJS`,
+              body: `Кошелёк · ****${last4}`,
+              type: 'taxi_wallet_payment',
+            }).then(({ error }) => { if (error) console.error('[TaxiDriver] wallet notification failed:', error); }).catch(() => {});
+            // Записать платёж + начислить водителю
+            const amount = Number(order.price) || 0;
+            const commission = Math.round(amount * TAXI_COMMISSION * 100) / 100;
+            const earnings = Math.round((amount - commission) * 100) / 100;
+            const [payRow, txnRow] = await Promise.all([
+              supabase.from('taxi_ride_payments').insert({
+                order_id: order.id, amount, commission, driver_earnings: earnings,
+                method: 'wallet', status: 'completed', paid_at: new Date().toISOString(),
+              }),
+              supabase.from('taxi_wallet_transactions').insert({
+                driver_id: user.id, amount: earnings, type: 'earnings',
+                order_id: order.id, description: 'Оплата поездки (кошелёк)',
+              }),
+            ]);
+            const rowErr = payRow.error || txnRow.error;
+            if (rowErr) console.error('[TaxiDriver] wallet ledger failed:', rowErr);
+            const { data: drv } = await supabase.from('taxi_drivers').select('rides_count, total_earnings').eq('user_id', user.id).maybeSingle();
+            await supabase.from('taxi_drivers').update({
+              rides_count: (drv?.rides_count || 0) + 1,
+              total_earnings: Math.round(((Number(drv?.total_earnings) || 0) + earnings) * 100) / 100,
+              status: 'free',
+            }).eq('user_id', user.id);
+            setStats(prev => ({ ...prev, rides: (prev.rides || 0) + 1, today: Math.round((prev.today + earnings) * 100) / 100 }));
+          }
+        }
+        setCurrentOrder(prev => prev ? { ...prev, status: 'completed' } : null);
+        setCardPhase(order.payment_method === 'wallet' ? 'rate' : 'payment');
+        toast.success(order.payment_method === 'wallet' ? 'Оплата списана автоматически!' : 'Поездка завершена! Получите оплату');
+        return;
+      }
+
+      if (newStatus === 'arrived') toast.info('Ожидаем пассажира...');
+      if (newStatus === 'riding') toast.info('Поездка началась!');
+    } catch (err) {
+      console.error('[TaxiDriver] ride status failed:', err);
+      // Откат только если сервер статус не принял — иначе UI разойдётся с БД
+      if (!serverApplied) setCurrentOrder(prev => (prev ? { ...prev, status: order.status } : prev));
+      toast.error('Ошибка сети. Проверьте подключение');
+    } finally {
+      rideBusyRef.current = false;
+      setRideBusy(false);
     }
-    setCurrentOrder(prev => prev ? { ...prev, status: newStatus } : null);
-    if (newStatus === 'arrived') toast.info('Ожидаем пассажира...');
-    if (newStatus === 'riding') toast.info('Поездка началась!');
-    } catch { toast.error('Ошибка сети. Проверьте подключение'); }
   }, [currentOrder, user?.id]);
 
   const handlePaid = useCallback(async (method) => {
-    if (!currentOrder?.id) return;
+    if (!currentOrder?.id || rideBusyRef.current) return;
+    rideBusyRef.current = true;
+    setRideBusy(true);
     try {
     const amount = Number(currentOrder.price) || 0;
     const commission = Math.round(amount * TAXI_COMMISSION * 100) / 100;
     const earnings = Math.round((amount - commission) * 100) / 100;
-    await supabase.from('taxi_ride_payments').insert({
-      order_id: currentOrder.id,
-      amount,
-      commission,
-      driver_earnings: earnings,
-      method,
-      status: 'completed',
-      paid_at: new Date().toISOString(),
-    });
-    await supabase.from('taxi_wallet_transactions').insert({
-      driver_id: user.id,
-      amount: earnings,
-      type: 'earnings',
-      order_id: currentOrder.id,
-      description: `Оплата поездки (${method})`,
-    });
-    const { data: driver } = await supabase.from('taxi_drivers').select('rides_count, total_earnings').eq('user_id', user.id).maybeSingle();
+    const [payRow, txnRow] = await Promise.all([
+      supabase.from('taxi_ride_payments').insert({
+        order_id: currentOrder.id,
+        amount,
+        commission,
+        driver_earnings: earnings,
+        method,
+        status: 'completed',
+        paid_at: new Date().toISOString(),
+      }),
+      supabase.from('taxi_wallet_transactions').insert({
+        driver_id: user.id,
+        amount: earnings,
+        type: 'earnings',
+        order_id: currentOrder.id,
+        description: `Оплата поездки (${method})`,
+      }),
+    ]);
+    const ledgerErr = payRow.error || txnRow.error;
+    if (ledgerErr) throw new Error(ledgerErr.message || 'Не удалось записать оплату');
+    const { data: driver, error: driverReadError } = await supabase.from('taxi_drivers').select('rides_count, total_earnings').eq('user_id', user.id).maybeSingle();
+    if (driverReadError) console.error('[TaxiDriver] driver stats read failed:', driverReadError);
     await supabase.from('taxi_drivers').update({
       rides_count: (driver?.rides_count || 0) + 1,
       total_earnings: Math.round(((Number(driver?.total_earnings) || 0) + earnings) * 100) / 100,
       status: 'free',
     }).eq('user_id', user.id);
-    await supabase.from('taxi_driver_locations').update({ status: 'free' }).eq('driver_id', user.id);
     setStats(prev => ({ ...prev, rides: (prev.rides || 0) + 1, today: Math.round((prev.today + earnings) * 100) / 100 }));
     setCardPhase('rate');
     toast.success(`Оплата получена: ${formatTJS(earnings)} TJS`);
-    } catch { toast.error('Ошибка сети при оплате'); }
+    } catch (err) {
+      console.error('[TaxiDriver] handlePaid failed:', err);
+      toast.error(err.message || 'Ошибка сети при оплате');
+    } finally {
+      rideBusyRef.current = false;
+      setRideBusy(false);
+    }
   }, [currentOrder, user?.id]);
 
   const handleRated = useCallback(async (stars) => {
-    if (!currentOrder?.id || !stars) return;
+    if (!currentOrder?.id || !stars || rideBusyRef.current) return;
+    rideBusyRef.current = true;
+    setRideBusy(true);
     try {
-    await supabase.from('taxi_ratings').insert({
+    const { error: ratingError } = await supabase.from('taxi_ratings').insert({
       order_id: currentOrder.id,
       from_id: user.id,
       to_id: currentOrder.passenger_id,
       rating: stars,
     });
-    await supabase.from('taxi_drivers').update({ status: 'free' }).eq('user_id', user.id);
-    await supabase.from('taxi_driver_locations').update({ status: 'free' }).eq('driver_id', user.id);
+    if (ratingError) {
+      // Не глотаем: без оценки водитель думает, что всё сохранено
+      toast.error(ratingError.message || 'Не удалось сохранить оценку');
+      return;
+    }
+    await Promise.all([
+      supabase.from('taxi_drivers').update({ status: 'free' }).eq('user_id', user.id),
+      supabase.from('taxi_driver_locations').update({ status: 'free' }).eq('driver_id', user.id),
+    ]);
     toast.success('Спасибо! Поездка завершена');
     setCurrentOrder(null);
     setCardPhase('active');
@@ -521,6 +572,9 @@ export default function TaxiDriverDashboard() {
     } catch (err) {
       console.error('[handleRated]', err);
       toast.error('Ошибка сохранения оценки');
+    } finally {
+      rideBusyRef.current = false;
+      setRideBusy(false);
     }
   }, [currentOrder, user?.id, loadStats]);
 
@@ -621,6 +675,7 @@ export default function TaxiDriverDashboard() {
           order={currentOrder}
           passengerInfo={passengerInfo}
           phase={cardPhase}
+          busy={rideBusy}
           onAction={handleOrderAction}
           onPaid={handlePaid}
           onRated={handleRated}
