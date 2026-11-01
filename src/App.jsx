@@ -39,6 +39,7 @@ const SiteView = lazy(() => import('./pages/SiteView'));
 const StoreView = lazy(() => import('./pages/StoreView'));
 
 import ErrorBoundary, { BusMapErrorFallback } from '@/components/ErrorBoundary';
+import RequireBusiness from '@/components/RequireBusiness';
 import { TripProvider } from '@/lib/TripContext';
 import { NavigationProvider } from '@/lib/NavigationContext';
 
@@ -82,13 +83,17 @@ const AuthenticatedApp = () => {
           <Route path="/taxi/driver" element={<ErrorBoundary><TaxiDriverDashboard /></ErrorBoundary>} />
           <Route path="/taxi/history" element={<ErrorBoundary><TaxiHistory /></ErrorBoundary>} />
           <Route path="/taxi/finance" element={<ErrorBoundary><TaxiFinance /></ErrorBoundary>} />
-          <Route path="/business" element={<ErrorBoundary><BusinessDashboard /></ErrorBoundary>} />
-          <Route path="/business/products" element={<ErrorBoundary><BusinessProducts /></ErrorBoundary>} />
-          <Route path="/business/orders" element={<ErrorBoundary><BusinessOrders /></ErrorBoundary>} />
-          <Route path="/business/delivery" element={<ErrorBoundary><BusinessDelivery /></ErrorBoundary>} />
-          <Route path="/business/analytics" element={<ErrorBoundary><BusinessAnalytics /></ErrorBoundary>} />
-          <Route path="/business/settings" element={<ErrorBoundary><BusinessSettings /></ErrorBoundary>} />
-          <Route path="/business/ai" element={<ErrorBoundary><BusinessAI /></ErrorBoundary>} />
+          {/* Раздел «Бизнес» закрыт без активной подписки «Бизнес» (админ — исключение).
+              Гейт снаружи страниц: при отказе они не монтируются и не грузят данные. */}
+          <Route element={<RequireBusiness />}>
+            <Route path="/business" element={<ErrorBoundary><BusinessDashboard /></ErrorBoundary>} />
+            <Route path="/business/products" element={<ErrorBoundary><BusinessProducts /></ErrorBoundary>} />
+            <Route path="/business/orders" element={<ErrorBoundary><BusinessOrders /></ErrorBoundary>} />
+            <Route path="/business/delivery" element={<ErrorBoundary><BusinessDelivery /></ErrorBoundary>} />
+            <Route path="/business/analytics" element={<ErrorBoundary><BusinessAnalytics /></ErrorBoundary>} />
+            <Route path="/business/settings" element={<ErrorBoundary><BusinessSettings /></ErrorBoundary>} />
+            <Route path="/business/ai" element={<ErrorBoundary><BusinessAI /></ErrorBoundary>} />
+          </Route>
           <Route path="/offline-maps" element={<ErrorBoundary><OfflineMaps /></ErrorBoundary>} />
           <Route path="/settings/navigator" element={<ErrorBoundary><NavigatorSettings /></ErrorBoundary>} />
           <Route path="/settings/vehicle" element={<ErrorBoundary><VehicleSettings /></ErrorBoundary>} />
