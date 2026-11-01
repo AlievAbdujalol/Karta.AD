@@ -39,3 +39,16 @@ export function canAccessBusiness(user) {
   const state = businessAccessState(user);
   return state === BUSINESS_ACCESS.active || state === BUSINESS_ACCESS.admin;
 }
+
+/**
+ * Показывать ли вкладку «Бизнес» в нижней навигации.
+ *
+ * Требование: без роли «Бизнес» раздела не должно быть видно вообще.
+ * Вкладку оставляем при роли «Бизнес» даже с истёкшей подпиской — иначе
+ * продлить её можно только по прямому URL, а пейволл объясняет, что делать.
+ * Админ — исключение (поддержка).
+ */
+export function showBusinessTab(user) {
+  if (!user) return false;
+  return user.role === BUSINESS_ROLE || user.role === 'admin';
+}

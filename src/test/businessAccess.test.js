@@ -10,7 +10,7 @@
  *   • админ → доступ (поддержка и модерация), даже без подписки.
  */
 import { describe, it, expect } from 'vitest';
-import { businessAccessState, canAccessBusiness, BUSINESS_ACCESS } from '@/lib/businessAccess';
+import { businessAccessState, canAccessBusiness, BUSINESS_ACCESS, showBusinessTab } from '@/lib/businessAccess';
 
 const DAY = 24 * 60 * 60 * 1000;
 const future = new Date(Date.now() + 30 * DAY).toISOString();
@@ -64,5 +64,25 @@ describe('businessAccessState', () => {
     expect(canAccessBusiness(null)).toBe(false);
     expect(canAccessBusiness(undefined)).toBe(false);
     expect(canAccessBusiness({})).toBe(false);
+  });
+});
+
+describe('showBusinessTab', () => {
+  it('у пассажира вкладки «Бизнес» нет — даже если он владеет бизнесом', () => {
+    expect(showBusinessTab({ id: 'u2', role: 'passenger' })).toBe(false);
+    expect(showBusinessTab({ id: 'u3', role: 'driver' })).toBe(false);
+    expect(showBusinessTab({ id: 'u4', role: 'taxi_driver' })).toBe(false);
+  });
+
+  it('роль «Бизнес» — вкладка есть, в том числе при истёкшей подписке (нужно продлить)', () => {
+    expect(showBusinessTab(businessUser())).toBe(true);
+    expect(showBusinessTab(businessUser({ subscription_paid_until: past }))).toBe(true);
+  });
+
+  it('админ видит вкладку, гость/незагруженный профиль — нет', () => {
+    expect(showBusinessTab({ id: 'a1', role: 'admin' })).toBe(true);
+    expect(showBusinessTab(null)).toBe(false);
+    expect(showBusinessTab(undefined)).toBe(false);
+    expect(showBusinessTab({})).toBe(false);
   });
 });
