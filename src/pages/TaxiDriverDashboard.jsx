@@ -519,6 +519,8 @@ export default function TaxiDriverDashboard() {
         order_id: currentOrder.id,
         description: `Оплата поездки (${method})`,
       }),
+      // Идемпотентно: заказ мог быть завершён и с другого устройства
+      supabase.from('taxi_driver_locations').update({ status: 'free' }).eq('driver_id', user.id),
     ]);
     const ledgerErr = payRow.error || txnRow.error;
     if (ledgerErr) throw new Error(ledgerErr.message || 'Не удалось записать оплату');
