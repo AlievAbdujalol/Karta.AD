@@ -124,7 +124,22 @@ npm run build
 | 7 | `SECURITY DEFINER`-функции | `pg_proc` + `pg_get_functiondef` | ✅ фиксированный `search_path`, проверки роли |
 
 Пробы 1 и 2 выполнены в транзакциях с `ROLLBACK`: id заказа и цена в БД не
-остались. Миграции к прод-БД **не применялись**.
+остались. На момент проб (до применения) миграции к прод-БД не применялись.
+
+### 5.1 После применения миграций (02.11.2026)
+
+| # | Проверка | Результат |
+|---|---|---|
+| 1 | `pg_policies` для `orders_insert_public` / `order_items_insert_public` | ✅ 0 строк (удалены) |
+| 2 | `pg_indexes.taxi_orders_one_active_per_passenger` | ✅ `UNIQUE ... WHERE status = ANY('searching','found','en_route','arrived','riding')` |
+| 3 | `pg_trigger.trg_protect_taxi_order_price` | ✅ `BEFORE INSERT OR UPDATE` |
+| 4 | `has_function_privilege('anon','create_store_order(...)','EXECUTE')` | ✅ `true` |
+| 5 | Проба A: INSERT `price = 0.01` от реального пассажира, `ROLLBACK` | ✅ `price below route minimum` |
+| 6 | Проба B: два активных заказа подряд, `ROLLBACK` | ✅ первый принят, второй `SECOND_REJECTED` |
+| 7 | Следы проб | ✅ `probe_rows = 0`, активных заказов 0, `probe_store_orders = 0` |
+| 8 | Security advisor после DDL | ✅ новых замечаний нет (`spatial_ref_sys` — известный KI-04) |
+
+Пробы выполнены в транзакциях с `ROLLBACK`; данные не изменились.
 
 ## 6. Что не проверялось (и почему)
 
@@ -162,7 +177,7 @@ npx vitest run src/test/publicOrdersPolicy.test.js
 - Все автоматические гейты зелёные: lint, typecheck, 855 тестов, build.
 - Подтверждённые дефекты RA-01…RA-05 закрыты кодом и/или миграцией, каждый —
   с воспроизведением или регрессионным тестом.
-- Прод-БД не изменялась; исправления P1 вступят в силу только после применения
-  трёх миграций (`RELEASE_CHECKLIST.md` §2).
+- Три миграции применены к прод-БД 02.11.2026; schema-checks и боевые пробы
+  (цена `0.01`, второй активный заказ) дали ожидаемый отказ, следов в данных нет.
 - Ручные сценарии на устройстве остаются непроверенными — это ограничение
   среды, а не результат тестов.
