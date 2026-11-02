@@ -204,6 +204,9 @@ export default function TaxiPassenger() {
   // Целевое предложение: кому из водителей отправлен текущий searching-заказ
   const [offeredDriverId, setOfferedDriverId] = useState(null);
   const offeredDriverRef = useRef(null);
+  // Защита от двойного тапа «Заказать»: RLS не мешает создать два заказа,
+  // partial unique index в БД — второй рубеж.
+  const placingOrderRef = useRef(false);
   // Авто-снятие предложения (M2): водитель может получить push, но не открыть
   // приложение — заказ не должен вечно висеть закреплённым за ним
   const offerTimerRef = useRef(null);
@@ -656,6 +659,7 @@ export default function TaxiPassenger() {
   }, [pickTarget, saveTarget, geocodeLatLng]);
 
   const handleOrder = useCallback(async () => {
+    if (placingOrderRef.current) return;
     if (!fromText) { toast.error('Укажите откуда'); return; }
     if (!routeInfo || selectedPrice == null) { toast.error('Рассчитываем цену...'); return; }
     if (paymentMethod === 'wallet' && (user?.balance || 0) < selectedPrice) {
@@ -703,6 +707,7 @@ export default function TaxiPassenger() {
     const tariffComment = detailLines.filter(Boolean).join(' | ') || undefined;
 
     setOrderState('searching');
+    placingOrderRef.current = true;
     clearOfferTimer();
     offeredDriverRef.current = null;
     setOfferedDriverId(null);
@@ -732,9 +737,15 @@ export default function TaxiPassenger() {
       if (error) throw error;
       setOrderId(data.id);
       toast.success(`Ищем водителя · ${formatTJS(selectedPrice)} TJS${paymentMethod !== 'cash' ? '' : ' · наличные'}`);
-    } catch {
-      toast.error(navigator.onLine ? 'Ошибка при создании заказа' : 'Нет интернета. Проверьте подключение');
+    } catch (err) {
+      // 23505 — сработал unique index активного заказа (миграция
+      // 20261102030000): у пассажира уже есть незавершённая поездка.
+      toast.error(err?.code === '23505'
+        ? 'У вас уже есть активный заказ'
+        : (navigator.onLine ? 'Ошибка при создании заказа' : 'Нет интернета. Проверьте подключение'));
       setOrderState('idle');
+    } finally {
+      placingOrderRef.current = false;
     }
   }, [fromText, fromCoord, toText, toCoord, category, paymentMethod, routeInfo, selectedPrice, demandCoef, user?.id, tariffExtras, clearOfferTimer]);
 
@@ -1426,9 +1437,9 @@ export default function TaxiPassenger() {
                 <button
                   type="button"
                   onClick={handleOrder}
-                  disabled={!fromText || selectedPrice == null || (['delivery', 'courier'].includes(category) && !toText)}
+                  disabled={!fromText || selectedPrice == null || orderState === 'searching' || (['delivery', 'courier'].includes(category) && !toText)}
                   className={`flex h-12 w-full items-center justify-center gap-1 rounded-2xl text-sm font-bold ${
-                    fromText && selectedPrice != null && (!['delivery', 'courier'].includes(category) || toText)
+                    fromText && selectedPrice != null && orderState !== 'searching' && (!['delivery', 'courier'].includes(category) || toText)
                       ? 'bg-blue-600 text-white active:scale-[0.98]'
                       : 'cursor-not-allowed bg-slate-200 text-slate-400 dark:bg-slate-800'
                   }`}
