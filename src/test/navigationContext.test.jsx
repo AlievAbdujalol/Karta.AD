@@ -213,6 +213,21 @@ describe('NavigationContext — прибытие', () => {
     expect(arrivedCount()).toBe(1);
   });
 
+  it('карточка не объявляет прибытие до подтверждения, даже вплотную к цели', () => {
+    mountNav();
+    act(() => { nav.startNavigation(makeRoute()); });
+    feedFix(1000); // 0 м до цели, но подтверждения ещё нет
+
+    expect(nav.hasArrived).toBe(false);
+    expect(nav.nextInstruction.instruction).toBe('arrive');
+    expect(nav.nextInstruction.text).not.toBe(ARRIVED_RU);
+    expect(nav.nextInstruction.text).toMatch(/пункт назначения/);
+
+    feedFix(1000); // второй валидный замер — прибытие подтверждено
+    expect(nav.hasArrived).toBe(true);
+    expect(nav.nextInstruction.text).toBe(ARRIVED_RU);
+  });
+
   it('состояние прибытия меняется ровно один раз: остаток/ETA обнуляются, повторных объявлений нет', () => {
     mountNav();
     act(() => { nav.startNavigation(makeRoute()); });
@@ -357,6 +372,31 @@ describe('NavigationContext — манёвры, остаток, ETA', () => {
 });
 
 describe('NavigationContext — жизненный цикл маршрута', () => {
+  it('после GPS-разрыва навигация догоняет позицию, а невозможный выброс отклоняется', () => {
+    let now = Date.now();
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+
+    mountNav();
+    act(() => { nav.startNavigation(makeRoute({ totalM: 5000 })); });
+    feedFix(0);
+    const [lat0, lng0] = atM(0);
+    expect(nav.userPosition).toEqual([lat0, lng0]);
+
+    // 10 секунд без фиксов (туннель/фон), затем реальные 400 м
+    now += 10_000;
+    feedFix(400);
+    const [lat400, lng400] = atM(400);
+    expect(nav.userPosition[0]).toBeCloseTo(lat400, 6);
+    expect(nav.userPosition[1]).toBeCloseTo(lng400, 6);
+
+    // 3.6 км за 1 секунду — GPS-выброс, позиция не должна прыгнуть
+    now += 1000;
+    feedFix(4000);
+    expect(nav.userPosition[1]).toBeCloseTo(lng400, 6);
+
+    nowSpy.mockRestore();
+  });
+
   it('ошибка геолокации при старте навигации — gpsError в контексте; живой фикс снимает её', () => {
     mountNav();
     act(() => { nav.startNavigation(makeRoute()); });

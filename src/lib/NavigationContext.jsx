@@ -2,7 +2,6 @@ import { createContext, useContext, useState, useCallback, useRef, useEffect, us
 import { projectOnPolyline, haversineM } from '@/lib/geo';
 import { parseOsrmRoute } from '@/lib/osrmClient';
 import {
-  ARRIVAL_THRESHOLD_M,
   OFF_ROUTE_THRESHOLD_M,
   initialArrivalState,
   nextArrivalState,
@@ -11,6 +10,7 @@ import {
   routeLengthM,
   computeStepsArcM,
   pickNextStep,
+  isPlausibleGpsJump,
 } from '@/lib/navigationLogic';
 import { toast } from 'sonner';
 
@@ -115,6 +115,7 @@ export function NavigationProvider({ children }) {
   const traveledRef = useRef(0);
   const startTimeRef = useRef(null);
   const positionsRef = useRef([]);
+  const lastFixAtRef = useRef(0);
   const isPausedRef = useRef(false);
   const voiceEnabledRef = useRef(false);
   const lastRerouteRef = useRef(0);
@@ -178,16 +179,14 @@ export function NavigationProvider({ children }) {
     const L = PHRASE[lang] || PHRASE.ru;
     const D = DIR_WORD[lang] || DIR_WORD.ru;
     const dir = D[modifier] || '';
-    // Манёвр arrive: пока до цели есть расстояние — нейтральная подсказка
-    // «Через X — пункт назначения». «Вы прибыли» показывается/озвучивается
-    // только при подтверждённом прибытии, а не по факту манёвра (D6:
-    // карточка показывала «924 м · Вы прибыли» за километры до цели).
+    // Манёвр arrive: пока прибытие не подтверждено серией замеров, карточка
+    // нейтральная («Через X — пункт назначения»). «Вы прибыли» показывает и
+    // озвучивает только блок подтверждения прибытия: сам манёвр arrive ещё не
+    // значит, что GPS дошёл до финального участка и прогресс ≥ порога.
     if (instruction === 'arrive') {
-      if (distance > ARRIVAL_THRESHOLD_M) {
-        const distStr = distance >= 1000 ? `${(distance / 1000).toFixed(1)} ${L.km}` : `${Math.round(distance)} ${L.m}`;
-        return L.via(distStr, L.dest);
-      }
-      return L.arrive;
+      const d = Math.max(1, Math.round(Number.isFinite(distance) ? distance : 0));
+      const distStr = d >= 1000 ? `${(d / 1000).toFixed(1)} ${L.km}` : `${d} ${L.m}`;
+      return L.via(distStr, L.dest);
     }
     const action = {
       depart: L.depart,
@@ -258,10 +257,16 @@ export function NavigationProvider({ children }) {
       if (Math.hypot(avgLat - lat, avgLng - lng) * 111320 < 40) { lat = avgLat; lng = avgLng; }
     }
     const last = positionsRef.current[positionsRef.current.length - 1];
+    const nowTs = Date.now();
     if (last) {
       const jump = Math.hypot(lat - last.lat, lng - last.lng) * 111320;
-      if (jump > 150) return;
+      // Отклоняем только физически невозможный скачок. Абсолютный порог 150 м
+      // после туннеля/фона отбрасывал реальное движение, и все следующие фиксы
+      // сравнивались со старой точкой — навигация замирала навсегда.
+      const gapMs = lastFixAtRef.current ? nowTs - lastFixAtRef.current : Infinity;
+      if (!isPlausibleGpsJump(jump, gapMs)) return;
     }
+    lastFixAtRef.current = nowTs;
     setUserPosition([lat, lng]);
 
     const lastPos = positionsRef.current[positionsRef.current.length - 1];
@@ -522,6 +527,7 @@ export function NavigationProvider({ children }) {
     traveledRef.current = 0;
     setTraveledDistance(0);
     positionsRef.current = [];
+    lastFixAtRef.current = 0;
     lastAnnounceRef.current = 0;
     setTripStats({ distance: 0, duration: 0, avgSpeed: 0 });
     setShowSummary(false);

@@ -10,6 +10,7 @@ import {
   computeEtaSec,
   computeStepsArcM,
   pickNextStep,
+  isPlausibleGpsJump,
 } from '@/lib/navigationLogic';
 
 // Измерение «рядом с целью» на маршруте, по умолчанию — все не-accuracy гейты пройдены
@@ -21,6 +22,29 @@ const mNear = (over = {}) => ({
   accuracyM: 10,
   routeValid: true,
   ...over,
+});
+
+describe('правдоподобность GPS-скачка', () => {
+  it('обычное движение и мелкий шум принимаются', () => {
+    expect(isPlausibleGpsJump(10, 1000)).toBe(true);
+    expect(isPlausibleGpsJump(150, 1000)).toBe(true);
+  });
+
+  it('после GPS-разрыва реальное движение принимается, а не блокируется навсегда', () => {
+    // 400 м за 10 секунд (туннель/фон) = 40 м/с — правдоподобно
+    expect(isPlausibleGpsJump(400, 10_000)).toBe(true);
+  });
+
+  it('физически невозможный выброс отклоняется', () => {
+    expect(isPlausibleGpsJump(3600, 1000)).toBe(false);
+    expect(isPlausibleGpsJump(500, 500)).toBe(false);
+  });
+
+  it('неизвестный интервал не блокирует, нулевой — трактуется консервативно', () => {
+    expect(isPlausibleGpsJump(5000, Infinity)).toBe(true);
+    expect(isPlausibleGpsJump(5000, NaN)).toBe(true);
+    expect(isPlausibleGpsJump(3600, 0)).toBe(false);
+  });
 });
 
 describe('прибытие — пороги, подтверждение несколькими замерами', () => {

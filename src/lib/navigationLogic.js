@@ -25,6 +25,11 @@ export const OFF_ROUTE_THRESHOLD_M = 35;    // порог «отклонилис
 export const ETA_MIN_SPEED_MPS = 1.2;       // ниже — скорость недостоверна
 export const ETA_MAX_SEC = 43200;           // 12 ч — дальше прогноз недостоверен
 export const NEXT_STEP_EPS_M = 2;           // допуск при выборе следующего манёвра
+// Максимальная правдоподобная скорость перемещения между GPS-фиксами (~198 км/ч).
+// Абсолютный порог «прыжок > 150 м» отбрасывал и реальное движение после
+// туннеля/фонового режима: следующий фикс снова сравнивался со старой точкой,
+// и навигация замирала навсегда.
+export const GPS_MAX_PLAUSIBLE_SPEED_MPS = 55;
 
 // ── Прибытие ─────────────────────────────────────────────────────────
 
@@ -63,6 +68,21 @@ export function nextArrivalState(state, measurement) {
   if (prev.confirmed) return { confirmed: true, streak: prev.streak };
   const streak = isArrivalMeasurement(measurement) ? prev.streak + 1 : 0;
   return { confirmed: streak >= ARRIVAL_CONFIRM_FIXES, streak };
+}
+
+/**
+ * Правдоподобен ли скачок GPS между двумя фиксами.
+ * Небольшие смещения (≤150 м) принимаются всегда; большие — только если
+ * подразумеваемая скорость не превышает GPS_MAX_PLAUSIBLE_SPEED_MPS.
+ * Без интервала времени (gapMs ≤ 0/NaN) оценка консервативная: 0.5 с.
+ * @param {number} jumpM - расстояние между фиксами, м
+ * @param {number} gapMs - время между фиксами, мс (Infinity — интервал неизвестен)
+ */
+export function isPlausibleGpsJump(jumpM, gapMs) {
+  if (!Number.isFinite(jumpM) || jumpM <= 150) return true;
+  if (!Number.isFinite(gapMs)) return true; // интервал неизвестен — не блокируем
+  const sec = Math.max(0.5, (gapMs > 0 ? gapMs : 0) / 1000);
+  return jumpM / sec <= GPS_MAX_PLAUSIBLE_SPEED_MPS;
 }
 
 // ── Остаток маршрута и ETA ───────────────────────────────────────────
