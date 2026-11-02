@@ -120,6 +120,28 @@
 - **Факт:** единственная таблица `public` без RLS — системная таблица PostGIS; advisor `rls_disabled_in_public`.
 - **Оценка:** не содержит пользовательских данных; включение RLS может сломать PostGIS. Оставляем, фиксируем в `KNOWN_ISSUES`.
 
+### RA-10 · P2 · Прод без защитных заголовков и с нулевым кэшем ассетов (исправлено)
+
+- **Факт (проверено на `https://karta-ad.vercel.app` 02.11.2026):**
+  `strict-transport-security` есть (Vercel по умолчанию), а
+  `x-content-type-options`, `x-frame-options`, `referrer-policy`,
+  `permissions-policy` — отсутствуют. Хэшированный
+  `/assets/index-*.js` отдаётся с `cache-control: public, max-age=0,
+  must-revalidate`, то есть браузер перепроверяет каждый ассет при каждом
+  заходе, хотя имя файла содержит хэш содержимого.
+- **Риск:** MIME-sniffing, кликджекинг во фрейме, утечка полного URL через
+  `Referer` на сторонние домены (тайлы, OSRM, Nominatim), лишние
+  ревалидации статики на мобильных сетях.
+- **Исправление:** блок `headers` в `vercel.json` — `nosniff`,
+  `SAMEORIGIN`, `strict-origin-when-cross-origin`,
+  `geolocation=(self), camera=(self), microphone=()`,
+  `same-origin-allow-popups` (нужен для `window.open` в шаринге) и
+  `Cache-Control: public, max-age=31536000, immutable` для `/assets/*`.
+- **Проверка:** `src/test/securityHeaders.test.js` — 8 статических тестов на
+  конфиг; живые заголовки проверяются после деплоя (§5.1 `TEST_RESULTS.md`).
+- **Почему без CSP:** см. `KNOWN_ISSUES.md` KI-10 — карта и сторонние
+  источники требуют отдельного прогона в `Report-Only`.
+
 ## 4. Проверено — дефектов не найдено
 
 | Область | Что проверено | Результат |
@@ -149,8 +171,8 @@
 
 ## 6. Итог этапа
 
-Подтверждено и исправлено **5** дефектов: RA-01…RA-05 (из них P1 — RA-01,
-RA-02, RA-03; P2 — RA-04, RA-05).
+Подтверждено и исправлено **6** дефектов: RA-01…RA-05 (из них P1 — RA-01,
+RA-02, RA-03; P2 — RA-04, RA-05) и RA-10 (P2, заголовки и кэш статики).
 Открыто и вынесено в `KNOWN_ISSUES`: RA-06 (тестовый платёж), RA-07…RA-09
-(принятые/мелкие).
+(принятые/мелкие), KI-10 (CSP).
 Вердикт готовности — в `RELEASE_CHECKLIST.md`; результаты прогонов — в `TEST_RESULTS.md`.
