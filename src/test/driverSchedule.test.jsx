@@ -70,7 +70,7 @@ describe('DriverSchedule — неплановый рейс', () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('Остановка 1')).toBeInTheDocument());
 
-    expect(screen.getByText('В пути')).toBeInTheDocument();
+    expect(screen.getByText('schedule.inProgress')).toBeInTheDocument();
     expect(screen.queryByText('schedule.unscheduledBadge')).not.toBeInTheDocument();
     expect(screen.getByTestId('path')).toHaveTextContent('/driver-schedule');
     expect(endTripMock).not.toHaveBeenCalled();
@@ -87,7 +87,7 @@ describe('DriverSchedule — неплановый рейс', () => {
     // жёлтая маркировка появляется синхронно — до ухода на карту
     expect(screen.getAllByText('schedule.unscheduledBadge').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('schedule.unscheduledDesc').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('В пути')).toBeInTheDocument();
+    expect(screen.getByText('schedule.inProgress')).toBeInTheDocument();
 
     // авто-рейс прерван, приложение уходит к остановке на карте
     await waitFor(() => expect(endTripMock).toHaveBeenCalledTimes(1));
@@ -149,5 +149,73 @@ describe('DriverSchedule — «Старт» прерывает автомати�
     });
     expect(endTripMock).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByTestId('path')).toHaveTextContent('/'));
+  });
+});
+
+describe('DriverSchedule — устойчивость и действия', () => {
+  it('без авторизации показывает приглашение войти, а не пустой экран', async () => {
+    authGetUser.mockResolvedValueOnce({ data: { user: null } });
+    const { container } = renderPage();
+
+    await waitFor(() => expect(screen.getByText('schedule.loginRequired')).toBeInTheDocument());
+    expect(container.textContent.trim().length).toBeGreaterThan(0);
+    expect(screen.getByText('schedule.loginAction').closest('a')).toHaveAttribute('href', '/');
+  });
+
+  it('ошибка загрузки: карточка ошибки и рабочая кнопка «Повторить»', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    profileFetch.mockRejectedValueOnce(new Error('network down'));
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('schedule.loadError')).toBeInTheDocument());
+    // Никакого вечного спиннера после ошибки.
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('schedule.retry'));
+    await waitFor(() => expect(screen.getByText('Остановка 1')).toBeInTheDocument());
+
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it('кнопка «Начать рейс» стартует с первой остановки', async () => {
+    tripState.isTracking = false;
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Остановка 1')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('schedule.startTrip'));
+
+    await waitFor(() => {
+      const pending = JSON.parse(localStorage.getItem('karta_route_start'));
+      expect(pending.stopIndex).toBe(0);
+      expect(pending.routeId).toBe('r1');
+    });
+    await waitFor(() => expect(screen.getByTestId('path')).toHaveTextContent('/'));
+  });
+
+  it('при идущем рейсе главная кнопка не завершает его, а открывает карту', async () => {
+    tripState.isTracking = true;
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Остановка 1')).toBeInTheDocument());
+
+    expect(screen.getByText('schedule.openTrip')).toBeInTheDocument();
+    expect(screen.queryByText('schedule.startTrip')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('schedule.openTrip'));
+
+    await waitFor(() => expect(screen.getByTestId('path')).toHaveTextContent('/'));
+    expect(endTripMock).not.toHaveBeenCalled();
+    expect(localStorage.getItem('karta_route_start')).toBeNull();
+  });
+
+  it('линия таймлайна получает настоящий цвет, а не литерал в className', async () => {
+    const { container } = renderPage();
+    await waitFor(() => expect(screen.getByText('Остановка 1')).toBeInTheDocument());
+
+    const line = [...container.querySelectorAll('div')]
+      .find((el) => typeof el.className === 'string' && el.className.includes('absolute left-3.5'));
+    expect(line).toBeTruthy();
+    expect(line.className).not.toContain('{');
+    expect(line.className).toContain('bg-blue-100');
   });
 });

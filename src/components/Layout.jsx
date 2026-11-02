@@ -97,7 +97,8 @@ export default function Layout() {
             <Link
               key={to}
               to={to}
-              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-xl transition-all duration-300 relative group active:scale-95 min-w-0 ${
+              aria-current={active ? 'page' : undefined}
+              className={`flex flex-col items-center justify-center gap-0.5 px-1.5 py-1 rounded-xl transition-all duration-300 relative group active:scale-95 min-w-0 flex-1 basis-0 max-w-[88px] min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-1 ${
                 active ? 'bg-blue-50/80 dark:bg-blue-500/15' : 'hover:bg-slate-100/60 dark:hover:bg-slate-800/40'
               }`}
             >
@@ -110,21 +111,26 @@ export default function Layout() {
                       : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'
                   }`}
                   strokeWidth={active ? 2.4 : 1.8}
+                  aria-hidden="true"
                 />
               </div>
 
               <span
-                className={`text-[10px] leading-none font-medium transition-colors duration-300 ${
+                className={`leading-none font-medium transition-colors duration-300 max-w-full truncate ${
                   active
                     ? 'text-blue-600 dark:text-blue-400 font-bold'
                     : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'
                 }`}
+                style={{ fontSize: 'clamp(9px, 2.4vw, 11px)' }}
               >
                 {label}
               </span>
 
               {active && (
-                <span className="absolute -bottom-0.5 w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400 shadow-sm shadow-blue-500/50" />
+                <span
+                  className="absolute -bottom-0.5 w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400 shadow-sm shadow-blue-500/50"
+                  aria-hidden="true"
+                />
               )}
             </Link>
           );
