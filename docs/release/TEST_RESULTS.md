@@ -159,6 +159,14 @@ npm run build
 | 7 | Кэш ассетов | HTTP | ❌ до фикса: `max-age=0, must-revalidate` → RA-10 |
 | 8 | `ai-proxy` | HTTP POST без JWT | ✅ функция жива, отвечает `401 unauthorized` (не 503); end-to-end с ключом — KI-05 |
 
+После деплоя `b16cc92` (`security(headers)`, `READY`) проверено повторно:
+
+| # | Проверка | Факт |
+|---|---|---|
+| 9 | Заголовки HTML | ✅ `nosniff`, `SAMEORIGIN`, `strict-origin-when-cross-origin`, `geolocation=(self), camera=(self), microphone=()`, `same-origin-allow-popups`, HSTS |
+| 10 | Кэш ассетов | ✅ `/assets/index-CMJc75zU.js` → `public, max-age=31536000, immutable` |
+| 11 | Приложение после смены конфига | ✅ 200, «Karta-AD», 0 ошибок в консоли, 0 ответов ≥400 |
+
 Пункты 4–8 чек-листа §8.4 (заказ такси, второй заказ, навигация, поддержка,
 AI-конструктор) требуют живого аккаунта — остаются в §6.
 

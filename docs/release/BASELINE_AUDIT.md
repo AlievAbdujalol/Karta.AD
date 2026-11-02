@@ -138,7 +138,8 @@
   `same-origin-allow-popups` (нужен для `window.open` в шаринге) и
   `Cache-Control: public, max-age=31536000, immutable` для `/assets/*`.
 - **Проверка:** `src/test/securityHeaders.test.js` — 8 статических тестов на
-  конфиг; живые заголовки проверяются после деплоя (§5.1 `TEST_RESULTS.md`).
+  конфиг; после деплоя `b16cc92` живые заголовки и `immutable`-кэш
+  подтверждены на `karta-ad.vercel.app` (`TEST_RESULTS.md` §5.2, п.9–11).
 - **Почему без CSP:** см. `KNOWN_ISSUES.md` KI-10 — карта и сторонние
   источники требуют отдельного прогона в `Report-Only`.
 

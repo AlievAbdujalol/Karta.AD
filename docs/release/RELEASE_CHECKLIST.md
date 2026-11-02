@@ -134,7 +134,7 @@ ROLLBACK;
 | 4.3 | CI-секреты (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`) заданы | ✅ (косвенно) | деплой `73f5a2b` собран GitHub Actions → `READY`; значения в Dashboard не читались |
 | 4.4 | Домен и SSL | ✅ | MCP: единственный прод-домен `karta-ad.vercel.app`, `verified: true`; HSTS `max-age=63072000; includeSubDomains; preload` |
 | 4.5 | Прод-URL отвечает 200 и отдаёт приложение | ✅ | `https://karta-ad.vercel.app` → 200, «Karta-AD», Vite-entry; Chromium: 0 ошибок в консоли, 0 ответов ≥400 |
-| 4.6 | Защитные заголовки | ✅ | `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy`, `Permissions-Policy`, COOP — `vercel.json` + `securityHeaders.test.js`; CSP — `KI-10` |
+| 4.6 | Защитные заголовки | ✅ | живые значения: `nosniff`, `SAMEORIGIN`, `strict-origin-when-cross-origin`, `geolocation=(self), camera=(self), microphone=()`, COOP, HSTS — `vercel.json` + `securityHeaders.test.js`; CSP — `KI-10` |
 
 ## 5. Функциональные проверки
 
@@ -351,9 +351,9 @@ SELECT pg_notify('pgrst', 'reload schema');
 1. Код: линт, типы, **863 теста** и сборка — зелёные (`TEST_RESULTS.md`).
 2. БД: три миграции применены, проверки §2.3 и боевые пробы §2.4 дали
    ожидаемый результат. Дыра с ценой `0.01` и дубли заказов закрыты на сервере.
-3. Прод: деплой `73f5a2b` — `READY` (production, `karta-ad.vercel.app`);
-   `/` и `/taxi` отдают 200 без ошибок в консоли; защитные заголовки и
-   годовой кэш ассетов — в `vercel.json` (RA-10).
+3. Прод: деплой `73f5a2b`, затем `b16cc92` — `READY` (production,
+   `karta-ad.vercel.app`); `/` и `/taxi` отдают 200 без ошибок в консоли;
+   защитные заголовки и годовой кэш ассетов проверены на живом домене (RA-10).
 4. Ограничения задокументированы в `KNOWN_ISSUES.md`:
    - **KI-01** — тестовый платёж (`mock`) до подключения реальных провайдеров;
    - **KI-05** — `ai-proxy` вернёт 503, пока не задан `OPENROUTER_API_KEY`;
