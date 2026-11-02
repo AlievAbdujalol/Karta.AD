@@ -9,7 +9,7 @@ import {
 import { useLanguage } from '@/lib/useLanguage';
 import { useTrip } from '@/lib/TripContext';
 import { savePendingStart } from '@/lib/tripStartHandoff';
-import { summarizeShift, upcomingStops, splitDuration } from '@/lib/scheduleLogic';
+import { summarizeShift, upcomingStops, hasIntermediateTimes, splitDuration } from '@/lib/scheduleLogic';
 
 /** Дата смены: локализована через Intl, без жёсткой привязки к ru. */
 const LOCALE_BY_LANG = { ru: 'ru-RU', en: 'en-US', tg: 'tg-TJ' };
@@ -366,6 +366,7 @@ export default function DriverSchedule() {
 
   const shift = useMemo(() => summarizeShift(schedule, now), [schedule, now]);
   const stops = useMemo(() => upcomingStops(schedule, now), [schedule, now]);
+  const hasStopTimes = useMemo(() => hasIntermediateTimes(schedule), [schedule]);
 
   /**
    * «Старт» на остановке: прерываем автоматический рейс (GPS-ретрансляция
@@ -513,7 +514,7 @@ export default function DriverSchedule() {
           />
         )}
 
-        {vehicle && schedule && shift.totalTrips > 0 && <ActiveStops t={t} stops={stops} />}
+        {vehicle && schedule && hasStopTimes && <ActiveStops t={t} stops={stops} />}
 
         {vehicle && route && (
           <RoutePlan

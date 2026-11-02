@@ -4,6 +4,7 @@ import {
   departureTimes,
   summarizeShift,
   upcomingStops,
+  hasIntermediateTimes,
   splitDuration,
 } from '@/lib/scheduleLogic';
 
@@ -124,8 +125,14 @@ describe('summarizeShift', () => {
 describe('upcomingStops', () => {
   it('отдаёт только будущие остановки, по времени', () => {
     const stops = upcomingStops(schedule, at(5, 30));
-    // 05:40 — «Атуш», 06:00 — следующее отправление с первой остановки,
-    // 06:10 — «Терминал». Прошедшие 05:00/05:10 не попадают.
+    // Стартовая остановка не дублируется: её отправление показывает
+    // карточка «Ближайший рейс». Остаются 05:40 «Атуш» и 06:10 «Терминал».
+    expect(stops.map((s) => s.time)).toEqual(['05:40', '06:10']);
+    expect(stops.map((s) => s.name)).toEqual(['Атуш', 'Терминал']);
+  });
+
+  it('по запросу включает стартовую остановку', () => {
+    const stops = upcomingStops(schedule, at(5, 30), 10, { includeOrigin: true });
     expect(stops.map((s) => s.time)).toEqual(['05:40', '06:00', '06:10']);
     expect(stops.map((s) => s.name)).toEqual(['Атуш', 'Канешни 66', 'Терминал']);
   });
@@ -156,6 +163,26 @@ describe('upcomingStops', () => {
 
   it('после последней остановки список пуст', () => {
     expect(upcomingStops(schedule, at(23, 0))).toEqual([]);
+  });
+
+  it('без времён на промежуточных остановках список пуст', () => {
+    const onlyOrigin = { stops_schedule: [{ stop_index: 0, times: ['05:00', '06:00'] }] };
+    expect(upcomingStops(onlyOrigin, at(4, 0))).toEqual([]);
+  });
+});
+
+describe('hasIntermediateTimes', () => {
+  it('истина, когда время есть у промежуточной остановки', () => {
+    expect(hasIntermediateTimes(schedule)).toBe(true);
+  });
+
+  it('ложь, когда есть только отправления стартовой', () => {
+    expect(hasIntermediateTimes({ stops_schedule: [{ stop_index: 0, times: ['05:00'] }] })).toBe(false);
+  });
+
+  it('ложь без расписания', () => {
+    expect(hasIntermediateTimes(null)).toBe(false);
+    expect(hasIntermediateTimes({ stops_schedule: [] })).toBe(false);
   });
 });
 

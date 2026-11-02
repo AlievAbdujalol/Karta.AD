@@ -44,15 +44,20 @@ function stopsOf(schedule) {
   return Array.isArray(stops) ? stops.filter((s) => s && typeof s === 'object') : [];
 }
 
-/** Времена отправления рейсов: только стартовая остановка. */
-export function departureTimes(schedule) {
+/** Стартовая остановка: с неё уходят рейсы, а не «проезжают мимо». */
+function findOriginStop(schedule) {
   const stopsWithTimes = stopsOf(schedule).filter((stop) => {
     const times = Array.isArray(stop.times) ? stop.times : [];
     return times.some((time) => toMinutes(time) !== null);
   });
-  const origin = stopsWithTimes.find((stop) => Number(stop.stop_index) === 0)
+  return stopsWithTimes.find((stop) => Number(stop.stop_index) === 0)
     || stopsWithTimes[0]
     || null;
+}
+
+/** Времена отправления рейсов: только стартовая остановка. */
+export function departureTimes(schedule) {
+  const origin = findOriginStop(schedule);
   if (!origin) return [];
 
   const seen = new Set();
@@ -65,6 +70,16 @@ export function departureTimes(schedule) {
     }
   }
   return minutes.sort((a, b) => a - b).map(toLabel);
+}
+
+/** Есть ли вообще времена на промежуточных остановках (а не только отправления). */
+export function hasIntermediateTimes(schedule) {
+  const origin = findOriginStop(schedule);
+  return stopsOf(schedule).some((stop) => {
+    if (stop === origin) return false;
+    const times = Array.isArray(stop.times) ? stop.times : [];
+    return times.some((time) => toMinutes(time) !== null);
+  });
 }
 
 /**
@@ -93,15 +108,20 @@ export function summarizeShift(schedule, now = new Date()) {
 }
 
 /**
- * Ближайшие остановки сегодня: для каждой — ближайшее время не раньше `now`.
- * Остановки без времени и уже пройденные не попадают.
+ * Ближайшие остановки: для каждой — ближайшее время не раньше `now`.
+ * По умолчанию стартовая остановка не попадает: её отправление показывает
+ * карточка «Ближайший рейс», дублировать его в списке остановок не нужно.
+ * `includeOrigin: true` возвращает и её.
  */
-export function upcomingStops(schedule, now = new Date(), limit = 10) {
+export function upcomingStops(schedule, now = new Date(), limit = 10, options = {}) {
   if (limit <= 0) return [];
   const current = nowMinutes(now);
+  const origin = findOriginStop(schedule);
+  const includeOrigin = options.includeOrigin === true;
 
   const result = [];
   stopsOf(schedule).forEach((stop, arrayIndex) => {
+    if (!includeOrigin && stop === origin) return;
     const times = Array.isArray(stop.times) ? stop.times : [];
     const upcoming = times
       .map(toMinutes)
