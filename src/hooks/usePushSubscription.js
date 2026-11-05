@@ -11,7 +11,9 @@ import { subscribeToPush, isPushSupported } from '@/lib/push';
 export function usePushSubscription(user) {
   useEffect(() => {
     if (!user?.id) return;
-    if (!import.meta.env.PROD) return;
+    // MODE, а не PROD: PROD зависит от NODE_ENV, который можно переопределить
+    // (.env.local / Vercel) — подписка в проде молча отключилась бы.
+    if (import.meta.env.MODE !== 'production') return;
     if (!isPushSupported()) return;
 
     // Разрешение запрашиваем один раз; если пользователь отказался — тихо

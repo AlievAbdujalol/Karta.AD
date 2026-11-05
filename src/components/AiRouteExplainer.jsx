@@ -1,8 +1,18 @@
 import { useState } from 'react';
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Sparkles, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { geminiGenerate, geminiErrorText, isGeminiConfigured } from '@/lib/gemini';
 
+/**
+ * «Объяснить маршрут с ИИ».
+ *
+ * Раньше здесь был свой вызов через @google/generative-ai: SDK ходит на
+ * v1beta с жёстко зашитой моделью gemini-3.5-flash — в проде это 503
+ * («AI explanation failed») и POST напрямую на generativelanguage.googleapis.com.
+ * Теперь используется общий клиент проекта (src/lib/gemini.js): endpoint v1,
+ * модель gemini-3.6-flash, thinkingConfig { thinkingBudget: 0 }, фильтр
+ * thought-частей, ретраи и честная классификация ошибок.
+ */
 export default function AiRouteExplainer({ routeData }) {
   const [explanation, setExplanation] = useState('');
   const [loading, setLoading] = useState(false);
@@ -10,13 +20,21 @@ export default function AiRouteExplainer({ routeData }) {
   const explain = async () => {
     setLoading(true);
     try {
-      const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
+      if (!isGeminiConfigured()) {
+        toast.error('ИИ не настроен: нет ключа API');
+        return;
+      }
       const prompt = `Explain this route: ${JSON.stringify(routeData)}. Keep it helpful and concise.`;
-      const result = await model.generateContent(prompt);
-      setExplanation(result.response.text());
-    } catch {
-      toast.error('AI explanation failed');
+      const text = await geminiGenerate(prompt, {
+        jsonMode: false,
+        maxTokens: 512,
+        retries: 1,
+        timeoutMs: 20000,
+      });
+      if (text) setExplanation(text);
+      else toast.error('ИИ не ответил. Попробуй ещё раз.');
+    } catch (err) {
+      toast.error(geminiErrorText(err));
     } finally {
       setLoading(false);
     }

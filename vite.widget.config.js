@@ -7,7 +7,13 @@ import path from 'path'
  * Запускается второй командой в `npm run build`, поэтому НЕ стирает dist
  * (emptyOutDir: false) после основной сборки.
  */
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
+  // Как в vite.config.js: NODE_ENV из .env*/окружения не должен превращать
+  // прод-сборку виджета в dev (React/dep-ветки по process.env.NODE_ENV).
+  if (command === 'build' && !process.env.VITEST) {
+    process.env.NODE_ENV = 'production'
+  }
+
   const env = loadEnv(mode, process.cwd(), '')
   return {
     resolve: {

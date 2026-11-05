@@ -5,7 +5,9 @@
 
 const DEFAULT_MODEL = import.meta.env.VITE_GEMINI_MODEL || 'gemini-3.6-flash';
 const API_BASE = 'https://generativelanguage.googleapis.com/v1/models';
-const IS_DEV = import.meta.env.DEV;
+// MODE, а не DEV: DEV = (NODE_ENV !== 'production') и зависит от NODE_ENV,
+// который можно переопределить — тогда dev-логи Gemini уехали бы в прод.
+const IS_DEV = import.meta.env.MODE !== 'production';
 
 import { getApiKey as getUserApiKey } from './userKeys';
 

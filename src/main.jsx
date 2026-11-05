@@ -17,7 +17,10 @@ ReactDOM.createRoot(document.getElementById("root")).render(
 
 // PWA: service worker только в проде — в dev он мешает HMR и кеширует
 // dev index.html (двойная регистрация и «SW registered» в консоли — были баги).
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
+// MODE, а не PROD: PROD = (NODE_ENV === 'production'), а NODE_ENV можно
+// переопределить (.env.local / переменные Vercel) — тогда в проде молча
+// не регистрировался бы SW. MODE задаётся режимом сборки и не зависит от NODE_ENV.
+if ('serviceWorker' in navigator && import.meta.env.MODE === 'production') {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   });
@@ -25,7 +28,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 
 // Dev: снимаем SW, зарегистрированные до этой правки, — иначе падавший
 // офлайн-фолбэк продолжает отвечать network error'ом до авто-обновления.
-if ('serviceWorker' in navigator && import.meta.env.DEV) {
+if ('serviceWorker' in navigator && import.meta.env.MODE !== 'production') {
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .getRegistrations()

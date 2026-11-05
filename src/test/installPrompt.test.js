@@ -20,7 +20,7 @@ describe('initInstallPrompt', () => {
     delete window.__kartaInstallPrompt;
   });
 
-  it('перехватывает beforeinstallprompt при старте приложения', async () => {
+  it('сохраняет beforeinstallprompt при старте приложения', async () => {
     const mod = await loadModule();
     mod.initInstallPrompt();
 
@@ -28,7 +28,10 @@ describe('initInstallPrompt', () => {
     event.preventDefault = function () { this.__prevented = true; };
     window.dispatchEvent(event);
 
-    expect(event.__prevented).toBe(true); // браузерный промпт подавлен, будет наш
+    // Системный баннер НЕ подавляем: иначе Chromium пишет в консоль
+    // «Banner not shown: preventDefault() called…», а prompt() мы вызываем
+    // только по кнопке пользователя. Событие сохраняем для нашей кнопки.
+    expect(event.__prevented).toBeUndefined();
     expect(mod.getInstallPrompt()).not.toBeNull();
   });
 

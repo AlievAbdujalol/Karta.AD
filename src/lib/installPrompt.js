@@ -21,7 +21,12 @@ export function initInstallPrompt() {
   subscribed = true;
 
   window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault(); // свой промпт вместо системного
+    // preventDefault НЕ вызываем: подавление системного баннера без
+    // последующего prompt() Chromium логирует предупреждением
+    // «Banner not shown: beforeinstallpromptevent.preventDefault() called…».
+    // Пока пользователь не нажал нашу кнопку установки, пусть браузер сам
+    // показывает свой стандартный мини-баннер; событие всё равно сохраняем —
+    // кнопка в профиле вызывает promptInstall() и работает как раньше.
     window[PROMPT_KEY] = e;
     window.dispatchEvent(new CustomEvent(READY_EVENT));
   });

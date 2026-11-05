@@ -62,7 +62,7 @@ export default class ErrorBoundary extends Component {
     // Устаревшая вкладка после деплоя: чанк прошлой сборки не найден →
     // один авто-reload (см. chunkReload.js), дальше — фолбэк с кнопкой
     if (tryAutoReloadChunkError(error)) return;
-    if (import.meta.env.DEV) {
+    if (import.meta.env.MODE !== 'production') {
       console.error('[ErrorBoundary]', error.message, info.componentStack);
     }
   }

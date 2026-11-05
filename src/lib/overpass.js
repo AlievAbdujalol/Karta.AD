@@ -25,10 +25,19 @@ export const OVERPASS_PROXY_PATH = '/api/overpass';
  * Прямые зеркала в проде бесполезны: 5xx-ответы приходят без CORS-заголовков,
  * браузер их не читает и пишет ERR_FAILED в консоль.
  * Dev: Vite-сервер /api-функции не поднимает — только прямые зеркала.
+ *
+ * ВАЖНО: детект прода — `import.meta.env.MODE === 'production'`, а НЕ
+ * `import.meta.env.PROD`. PROD вычисляется как NODE_ENV === 'production',
+ * а NODE_ENV можно переопределить: строка `NODE_ENV=development` в .env.local
+ * или в переменных окружения Vercel заставляет Vite собирать прод как dev
+ * (PROD=false, React dev-сборка в проде) — и тогда клиент снова уходил
+ * напрямую в зеркала с CORS-ошибками. MODE берётся из mode сборки
+ * (`vite build` → всегда 'production') и от NODE_ENV не зависит.
+ * Регрессии закреплены тестом consoleFixes.test.js.
  * @param {boolean} [prod] подменяемый параметр для тестов
  * @returns {string[]}
  */
-export function overpassEndpoints(prod = import.meta.env?.PROD) {
+export function overpassEndpoints(prod = import.meta.env.MODE === 'production') {
   return prod ? [OVERPASS_PROXY_PATH] : OVERPASS_URLS;
 }
 

@@ -2,6 +2,7 @@ import L from 'leaflet';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Marker, Popup, useMap } from 'react-leaflet';
 import { useLanguage } from '@/lib/useLanguage';
+import { fetchOverpass } from '@/lib/overpass';
 
 export const CATEGORIES = {
   hospital:    { color: '#ef4444', icon: '🏥', zoom: 14, osmKey: 'amenity', osmVal: 'hospital' },
@@ -85,20 +86,20 @@ export default function PoiOverlay({ enabled }) {
     const maxResults = zoomLevel >= 16 ? 150 : zoomLevel >= 15 ? 100 : 60;
     const query = `[out:json][timeout:12];(${queries.join('')});out center tags(${maxResults});`;
 
-    fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`)
-      .then(r => {
-        if (!r.ok) {
-          cacheRef.current[cacheKey] = [];
-          if (Object.keys(cacheRef.current).length > 50) {
-            const keys = Object.keys(cacheRef.current);
-            delete cacheRef.current[keys[0]];
-          }
-          return null;
-        }
-        return r.json();
-      })
-      .then(data => { if (!data) return;
-        const items = (data.elements || []).map(el => {
+    // Раньше здесь был прямой GET на overpass-api.de — в проде это кросс-доменный
+    // запрос без CORS-заголовков на ошибках зеркала (ERR_FAILED в консоли).
+    // Теперь общий клиент: в проде — свой /api/overpass, в dev — перебор зеркал.
+    const cacheMiss = () => {
+      cacheRef.current[cacheKey] = [];
+      if (Object.keys(cacheRef.current).length > 50) {
+        const keys = Object.keys(cacheRef.current);
+        delete cacheRef.current[keys[0]];
+      }
+    };
+
+    fetchOverpass(query, { timeout: 15000 })
+      .then((data) => {
+        const items = (data?.elements || []).map(el => {
           const tags = el.tags || {};
           const catKey = getCategory(tags);
           const cat = CATEGORIES[catKey] || { icon: '📍', color: '#6b7280' };
@@ -129,7 +130,7 @@ export default function PoiOverlay({ enabled }) {
         }
         setPois(items);
       })
-      .catch(() => {});
+      .catch(() => { cacheMiss(); }); // зеркала недоступны — кэшируем пусто без спама
   }, [enabled, map]);
 
   useEffect(() => {
