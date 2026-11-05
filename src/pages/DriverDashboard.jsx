@@ -7,11 +7,12 @@ import { Play, Square, Navigation, Bus, Gauge, Truck } from 'lucide-react';
 import { supabase } from '@/api/supabase';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
+import TripProgressPanel from '@/components/driver/TripProgressPanel';
 
 export default function DriverDashboard() {
   const { t } = useLanguage();
   const { user } = useCurrentUser();
-  const { isTracking, gpsInfo, activeRoute, startTrip, endTrip } = useTrip();
+  const { isTracking, gpsInfo, activeRoute, tripStartedAt, startTrip, endTrip } = useTrip();
   const [cities, setCities] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [approvedDriverRoutes, setApprovedDriverRoutes] = useState([]);
@@ -168,6 +169,10 @@ export default function DriverDashboard() {
             )}
           </div>
         </div>
+
+        {isTracking && currentRoute && (
+          <TripProgressPanel route={currentRoute} gpsInfo={gpsInfo} tripStartedAt={tripStartedAt} />
+        )}
 
         <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl rounded-3xl p-6 border border-slate-200/60 dark:border-slate-800/80 shadow-xl space-y-4">
           <div>

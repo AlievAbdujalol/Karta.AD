@@ -20,7 +20,14 @@ import { takePendingStart, pendingStartAction } from '@/lib/tripStartHandoff';
 import { useNavigation } from '@/lib/NavigationContext';
 import { readNavSettings, persistNavSettings, customCursorHtml, useNavCursor, applyNightMode } from '@/lib/navCursor';
 import { useTheme } from 'next-themes';
-import { splitRouteByProgress, destPoint, cachedReverseGeocode } from '@/lib/geo';
+import { splitRouteByProgress, destPoint, cachedReverseGeocode, haversineM } from '@/lib/geo';
+import {
+  formatDistanceM,
+  gpsFreshness,
+  vehicleStatus,
+  estimateArrivalMinutes,
+  directionKey,
+} from '@/lib/trackingLogic';
 import { getCachedLastLocation, saveLastLocation, LOCATION_WRITE_MIN_MS, MY_LOCATION_EVENT } from '@/lib/locationCache';
 import { supabase } from '@/api/supabase';
 import { toast } from 'sonner';
@@ -113,7 +120,7 @@ function MapController({ center, mapRef }) {
   const lng = center?.[1];
   useEffect(() => {
     mapRef.current = map;
-    if (import.meta.env.DEV && typeof window !== 'undefined') window.__kartaMap = map;
+    if (import.meta.env.MODE !== 'production' && typeof window !== 'undefined') window.__kartaMap = map;
     if (lat && lng) {
       // двигаем карту только если центр реально ушёл — иначе setView плодит moveend-циклы
       try {
@@ -348,16 +355,16 @@ function RouteNumberLabel({ positions, routeNumber, color }) {
   ));
 }
 
-import { distanceM } from '@/lib/transitRouter';
 import { defaultFare, parseFare, normalizeFare, stepFare } from '@/lib/fareInput';
 // ...
-function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
+function AnimatedVehicleMarker({ vehicle, route, getEtaLabel, watchedStop = null }) {
   const { user, refreshUser } = useCurrentUser();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  const { userPosition } = useNavigation();
   const [pos, setPos] = useState([vehicle.lat, vehicle.lng]);
   const [paying, setPaying] = useState(false);
   const [isFav, setIsFav] = useState(false);
-  const [notified, setNotified] = useState(false);
+  const [dirKey, setDirKey] = useState(null);
   // Свободная сумма проезда: тариф — только дефолт, пассажир меняет её ±0.50 TJS
   // или вводит вручную. Текст держим как ввёл пользователь, число — по blur/оплате.
   const [fareText, setFareText] = useState(() => defaultFare(vehicle.type).toFixed(2));
@@ -377,18 +384,15 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
   const DURATION = 4000;
 
   useEffect(() => {
-    // Proximity monitoring
-    const watchedStop = JSON.parse(localStorage.getItem('karta_watched_stop') || 'null');
-    if (watchedStop && vehicle.route_id === route?.id) {
-      const dist = distanceM(vehicle.lat, vehicle.lng, watchedStop.lat, watchedStop.lng);
-      if (dist < 500 && !notified) {
-        if (Notification.permission === 'granted') {
-          new Notification(`Автобус близко!`, { body: `Ваш автобус в 500м от остановки ${watchedStop.name}` });
-        }
-        setNotified(true);
-      } else if (dist > 600) {
-        setNotified(false);
-      }
+    // Направление движения — пеленг между предыдущим и текущим фиксом.
+    // За один GPS-шаг направление не определить — ждём второй координаты.
+    const prev = targetRef.current;
+    if (prev[0] !== vehicle.lat || prev[1] !== vehicle.lng) {
+      const key = directionKey(
+        { lat: prev[0], lng: prev[1] },
+        { lat: vehicle.lat, lng: vehicle.lng },
+      );
+      if (key) setDirKey(key);
     }
 
     // Animation logic
@@ -396,8 +400,10 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
     setPos(pos);
     currentRef.current = pos;
     targetRef.current = pos;
-    
+
+    let alive = true;
     snapToRoad(vehicle.lat, vehicle.lng).then(snapped => {
+      if (!alive) return; // маркера уже нет — не анимируем и не стейтим
       const snappedPos = [snapped.lat, snapped.lng];
       if (snappedPos[0] === targetRef.current[0] && snappedPos[1] === targetRef.current[1]) return;
       const startPerf = performance.now();
@@ -416,6 +422,11 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
       };
       rafRef.current = requestAnimationFrame(animate);
     });
+
+    return () => {
+      alive = false;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
   }, [vehicle.lat, vehicle.lng]);
 
   const handlePay = async () => {
@@ -554,6 +565,63 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
 
   const icon = createOccupancyIcon(vehicle.route_number || '?', vehicle.type, t, occupancy, occupancyColor);
   const eta = getEtaLabel(vehicle);
+
+  // ── Данные карточки: расстояние, статус, свежесть, ETA ─────────────
+  const now = Date.now();
+  const status = vehicleStatus(vehicle, now);
+  const freshness = gpsFreshness(vehicle.last_updated, now);
+
+  // Позиция пользователя: живая из навигации, иначе свежий кэш (≤15 мин, accuracy ≤100).
+  // Без позиции расстояние не показываем — не выдумываем.
+  const cachedPos = getCachedLastLocation(15 * 60 * 1000);
+  const userPos = userPosition
+    || (cachedPos && Number.isFinite(cachedPos.accuracy) && cachedPos.accuracy <= 100
+      ? { lat: cachedPos.lat, lng: cachedPos.lng }
+      : null);
+
+  // Цель ETA: выбранная пассажиром остановка, но только если она входит в
+  // список остановок ЭТОГО маршрута (координаты с допуском ~40 м или то же
+  // название) — иначе ETA до «чужой» остановки показывался бы каждому
+  // автобусу города. Нет подходящей цели — считаем до пользователя.
+  const watchedInRoute = watchedStop && Array.isArray(route?.stops)
+    && route.stops.some((s) => (
+      Number.isFinite(s?.lat) && Number.isFinite(s?.lng)
+      && Number.isFinite(watchedStop.lat) && Number.isFinite(watchedStop.lng)
+      && Math.abs(s.lat - watchedStop.lat) < 0.00035
+      && Math.abs(s.lng - watchedStop.lng) < 0.00035
+    ) || (s?.name && watchedStop.name && s.name === watchedStop.name));
+  const watched = watchedInRoute ? watchedStop : null;
+
+  const target = watched || userPos;
+  const targetDistM = target
+    ? haversineM(target.lat, target.lng, vehicle.lat, vehicle.lng)
+    : null;
+  // ETA только из реальных данных: свежий GPS + скорость. Иначе — «неизвестно».
+  const etaMinutes = targetDistM !== null
+    ? estimateArrivalMinutes({
+      distanceM: targetDistM,
+      speedKmh: vehicle.speed,
+      lastUpdated: vehicle.last_updated,
+      now,
+    })
+    : null;
+
+  const distFromUserM = userPos
+    ? haversineM(userPos.lat, userPos.lng, vehicle.lat, vehicle.lng)
+    : null;
+
+  const statusMeta = {
+    moving: { label: t('busmap.statusMoving'), color: '#16a34a' },
+    stopped: { label: t('busmap.statusStopped'), color: '#f59e0b' },
+    ended: { label: t('busmap.statusEnded'), color: '#64748b' },
+    stale: { label: t('busmap.statusStale'), color: '#dc2626' },
+    unknown: { label: t('busmap.statusUnknown'), color: '#94a3b8' },
+  }[status] || { label: t('busmap.statusUnknown'), color: '#94a3b8' };
+
+  const gpsTime = vehicle.last_updated
+    ? new Date(vehicle.last_updated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : null;
+
   // что показываем на кнопке оплаты, пока пользователь печатает
   const typedFare = parseFare(fareText);
   const shownAmount = typedFare === null ? defaultFare(vehicle.type) : normalizeFare(typedFare);
@@ -581,8 +649,45 @@ function AnimatedVehicleMarker({ vehicle, route, getEtaLabel }) {
               </button>
             )}
           </div>
-          {vehicle.speed > 0 && <div style={{ fontSize: 12, color: '#999' }}>⚡ {Math.round(vehicle.speed)} {t('speedUnit')}</div>}
-          {eta && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+            <span style={{
+              fontSize: 11, fontWeight: 700, color: '#fff', background: statusMeta.color,
+              borderRadius: 6, padding: '2px 8px',
+            }}>
+              {statusMeta.label}
+            </span>
+            {dirKey && (
+              <span style={{ fontSize: 11, color: '#555' }}>
+                🧭 {t('busmap.directionLabel')}: {t(`compass.${dirKey}`)}
+              </span>
+            )}
+            {vehicle.speed > 0 && (
+              <span style={{ fontSize: 11, color: '#999' }}>⚡ {Math.round(vehicle.speed)} {t('speedUnit')}</span>
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: freshness === 'fresh' ? '#999' : '#dc2626', marginTop: 4 }}>
+            {t('busmap.gpsUpdated')}: {gpsTime || '—'}
+            {freshness === 'stale' && ` — ${t('busmap.statusStale')}`}
+          </div>
+          {distFromUserM !== null && (
+            <div style={{ fontSize: 12, color: '#334155', marginTop: 6 }}>
+              📍 {t('busmap.distanceFromYou')}: <b>{formatDistanceM(distFromUserM, lang)}</b>
+              <span style={{ color: '#94a3b8' }}> ({t('busmap.straightLine')})</span>
+            </div>
+          )}
+          {target && targetDistM !== null && (
+            <div style={{ marginTop: 6, background: '#e3f2fd', borderRadius: 8, padding: '5px 10px', fontSize: 12, color: '#1565c0', fontWeight: 600 }}>
+              ⏱ {watched ? `${watched.name}: ` : ''}
+              {etaMinutes !== null
+                ? `${t('busmap.etaApprox')} ${etaMinutes} ${t('minutes')}`
+                : t('busmap.etaUnknown')}
+              <div style={{ fontWeight: 500, color: '#64748b', marginTop: 2 }}>
+                {t('busmap.distanceToStop')}: {formatDistanceM(targetDistM, lang)}
+                <span style={{ color: '#94a3b8' }}> ({t('busmap.straightLine')})</span>
+              </div>
+            </div>
+          )}
+          {!target && eta && (
             <div style={{ marginTop: 8, background: '#e3f2fd', borderRadius: 8, padding: '5px 10px', fontSize: 12, color: '#1565c0', fontWeight: 600 }}>
               ⏱ {eta.stop?.name ? `${eta.stop.name}: ` : ''}{eta.etaMinutes} {t('minutes')}
             </div>
@@ -1483,7 +1588,7 @@ export default function BusMap({ vehicles = [], route = null, center = [38.559, 
       />
 
       {transitPointsVisible(mapZoom) && vehicles.filter(v => v.lat && v.lng).map(v => (
-        <AnimatedVehicleMarker key={v.id} vehicle={v} route={route} getEtaLabel={getEtaLabel} />
+        <AnimatedVehicleMarker key={v.id} vehicle={v} route={route} getEtaLabel={getEtaLabel} watchedStop={watchedStop} />
       ))}
       {eventPos && (
         <Marker position={[eventPos[0], eventPos[1]]} icon={L.divIcon({ html:`<div style="width:30px;height:30px;border-radius:50% 50% 50% 0; transform:rotate(-45deg); background:#e10600;border:2px solid #fff; display:flex; align-items:center; justify-content:center; box-shadow:0 3px 10px rgba(0,0,0,0.3);"><span style="transform:rotate(45deg); color:#fff; font-weight:800; font-size:16px;">—</span></div>`, className:'', iconSize:[30,38], iconAnchor:[15,30]})} zIndexOffset={1000} />

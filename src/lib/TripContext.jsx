@@ -5,11 +5,24 @@ import { toast } from 'sonner';
 
 const TripContext = createContext(null);
 
+// Время старта рейса (для «Продолжительность рейса» в панели водителя).
+// Храним в localStorage: рейс переживает перезагрузку страницы, и после
+// восстановления из vehicles длительность не должна начинаться заново.
+const TRIP_START_KEY = 'karta_trip_started_at';
+
+function readTripStart() {
+  try {
+    const v = Number(localStorage.getItem(TRIP_START_KEY));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  } catch { return null; }
+}
+
 export function TripProvider({ children, user }) {
   const [isTracking, setIsTracking] = useState(false);
   const [gpsInfo, setGpsInfo] = useState({ speed: 0, lat: 0, lng: 0 });
   const [activeRoute, setActiveRoute] = useState(null);
   const [vehicleNumber, setVehicleNumber] = useState('');
+  const [tripStartedAt, setTripStartedAt] = useState(null);
   const watchIdRef = useRef(null);
   const vehicleIdRef = useRef(null);
   const intervalRef = useRef(null);
@@ -70,6 +83,7 @@ export function TripProvider({ children, user }) {
       vehicleIdRef.current = vehicle.id;
       setVehicleNumber(vehicle.vehicle_number || '');
       setIsTracking(true);
+      setTripStartedAt(readTripStart());
       if (vehicle.route_id) {
         const { data: route } = await supabase.from('routes').select('*').eq('id', vehicle.route_id).maybeSingle();
         if (route) setActiveRoute(route);
@@ -125,6 +139,9 @@ export function TripProvider({ children, user }) {
     setActiveRoute(route);
     setVehicleNumber(vNumber || driverUser.vehicle_number || '');
     setIsTracking(true);
+    const startedAt = Date.now();
+    setTripStartedAt(startedAt);
+    try { localStorage.setItem(TRIP_START_KEY, String(startedAt)); } catch { /* private mode */ }
 
     if (route?.created_by_id) {
       supabase.from('notifications').insert({
@@ -154,6 +171,8 @@ export function TripProvider({ children, user }) {
     setIsTracking(false);
     setActiveRoute(null);
     setGpsInfo({ speed: 0, lat: 0, lng: 0 });
+    setTripStartedAt(null);
+    try { localStorage.removeItem(TRIP_START_KEY); } catch { /* private mode */ }
     toast.success('Рейс завершён');
   }, [stopGpsWatch]);
 
@@ -169,6 +188,7 @@ export function TripProvider({ children, user }) {
       gpsInfo,
       activeRoute,
       vehicleNumber,
+      tripStartedAt,
       startTrip,
       endTrip,
     }}>

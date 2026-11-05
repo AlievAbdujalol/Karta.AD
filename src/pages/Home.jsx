@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import BusMap from '@/components/BusMap';
 import StopWatcher from '@/components/StopWatcher';
 import { useStopNotifier } from '@/hooks/useStopNotifier';
+import { isVehicleLive } from '@/lib/trackingLogic';
 import { useLocationSharing } from '@/hooks/useLocationSharing';
 import { useGroupRoute } from '@/hooks/useGroupRoute';
 import SchedulePanel from '@/components/SchedulePanel';
@@ -22,7 +23,7 @@ import { WifiOff } from 'lucide-react';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import ErrorBoundary, { BusMapErrorFallback } from '@/components/ErrorBoundary';
 import { useNotificationCount } from '@/lib/NotificationContext';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import BottomSheet from '@/components/BottomSheet';
 import PlaceCard from '@/components/PlaceCard';
 import ShareRouteSheet from '@/components/ShareRouteSheet';
@@ -69,6 +70,7 @@ export default function Home() {
   const [flyTo, setFlyTo] = useState(null);
 
   const location = useLocation();
+  const navigate = useNavigate();
   // Защита от неконтролируемых параллельных запросов геолокации при повторных
   // нажатиях кнопки «Моё местоположение» / включении автоцентра.
   const locateLockRef = useRef(false);
@@ -261,11 +263,18 @@ export default function Home() {
     try { if(currentUser?.id) supabase.from('route_history').insert({ user_id: currentUser.id, start_lat: item.lat, start_lng: item.lng, transport_mode: 'driving', polyline: item }).then(()=>{}); } catch{}
   }, [routes, currentUser?.id]);
 
+  // Стабильная ссылка: иначе каждый рендер Home создаёт новый колбэк
+  // и useStopNotifier перезапускает свой эффект на каждое изменение стейта.
+  const handleStopNotification = useCallback(
+    (n) => addLocalNotification(n),
+    [addLocalNotification],
+  );
+
   useStopNotifier({
     vehicles,
     watchedStop,
     route: selectedRoute,
-    onNotification: (n) => addLocalNotification(n),
+    onNotification: handleStopNotification,
   });
 
   useEffect(() => {
@@ -361,6 +370,7 @@ export default function Home() {
   useEffect(() => {
     let interval;
     let retryDelay = 5000;
+    let cancelled = false; // эффект размонтирован — ответ уже не применяем
 
     const fetchVehicles = async () => {
       if (!selectedCity) { setVehicles([]); return; }
@@ -370,13 +380,18 @@ export default function Home() {
         let q = supabase.from('vehicles').select('*').eq('is_active', true);
         if (selectedRoute) q = q.eq('route_id', selectedRoute.id);
         const { data, error } = await q;
+        if (cancelled) return; // эффект уже размонтирован — стейт не трогаем
         if (error) throw error;
         const all = data || [];
-        const result = selectedRoute ? all : all.filter(v => new Set(routes.map(r => r.id)).has(v.route_id));
+        const inCity = selectedRoute ? all : all.filter(v => new Set(routes.map(r => r.id)).has(v.route_id));
+        // Устаревший GPS-след не считаем активным (п. 8 ТЗ) — фильтруем на клиенте
+        const now = Date.now();
+        const result = inCity.filter(v => isVehicleLive(v, now));
         setVehicles(result);
         setIsOffline(false);
         retryDelay = 5000;
       } catch {
+        if (cancelled) return;
         setIsOffline(true);
         clearInterval(interval);
         retryDelay = Math.min(retryDelay * 1.5, 30000);
@@ -387,9 +402,35 @@ export default function Home() {
     interval = setInterval(fetchVehicles, 5000);
     // сеть вернулась — сразу пробуем, не ждём тик
     const goOnline = () => fetchVehicles();
+    // Realtime сообщил об изменении vehicles — рефетч вне зависимости от тика
+    const goRefresh = () => fetchVehicles();
     window.addEventListener('online', goOnline);
-    return () => { clearInterval(interval); window.removeEventListener('online', goOnline); };
+    window.addEventListener('karta_vehicles_refresh', goRefresh);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('karta_vehicles_refresh', goRefresh);
+    };
   }, [selectedCity, selectedRoute, routesKey]);
+
+  // Realtime: мгновенное обновление вместо ожидания тика опроса.
+  // Опрос остаётся как fallback (обрыв соединения, вкладка в фоне).
+  // Debounce: шторм UPDATE от нескольких водителей схлопываем в один рефетч.
+  useEffect(() => {
+    if (!selectedCity) return undefined;
+    let debounce = null;
+    const channel = supabase
+      .channel(`vehicles-map-${selectedCity.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicles' }, () => {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('karta_vehicles_refresh'));
+        }, 800);
+      })
+      .subscribe();
+    return () => { clearTimeout(debounce); supabase.removeChannel(channel); };
+  }, [selectedCity]);
 
   const mapCenter = selectedCity?.lat && selectedCity?.lng
     ? [selectedCity.lat, selectedCity.lng]
@@ -417,6 +458,25 @@ export default function Home() {
       .catch(() => { if (!cancelled) toast.info('Адрес не найден на карте'); });
     return () => { cancelled = true; };
   }, [location.search]);
+
+  // Deep-link с панели водителя: /?route=<id> — выбрать маршрут на карте
+  // и поднять камеру к его первой остановке. Работает только когда маршруты
+  // уже загружены; после применения параметр очищается, чтобы повторное
+  // нажатие «Карта маршрута» снова подняло камеру.
+  useEffect(() => {
+    const routeId = new URLSearchParams(location.search).get('route');
+    if (!routeId || !routes.length) return;
+    const r = routes.find((x) => x.id === routeId);
+    if (!r) return;
+    setSelectedRoute((prev) => (prev?.id === routeId ? prev : r));
+    const firstStop = (r.stops || []).find((s) => s?.lat && s?.lng);
+    if (firstStop) setFlyTo({ lat: firstStop.lat, lng: firstStop.lng, zoom: 15 });
+    // Чужие query (?q= из deep-link бизнеса и т.п.) сохраняем — стираем только route
+    const nextParams = new URLSearchParams(location.search);
+    nextParams.delete('route');
+    const qs = nextParams.toString();
+    navigate({ pathname: '/', search: qs ? `?${qs}` : '' }, { replace: true });
+  }, [location.search, routes, navigate]);
 
   const handleLocateUser = useCallback(() => {
     if (!navigator.geolocation) { toast.error('Геолокация не поддерживается'); return; }
