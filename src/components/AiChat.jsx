@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, X, Send, Loader2, Trash2, Volume2, VolumeX, Copy, Check, MapPin, Route, CarTaxiFront, Mic, MicOff, Radar } from 'lucide-react';
 import { askAssistant, getChatSuggestions, speakText, stopSpeak, resolvePlaceFromText, getMyPosition } from '@/lib/aiAssistant';
+import { speechErrorText } from '@/lib/speech';
 import { isGeminiConfigured, geminiErrorText } from '@/lib/gemini';
 import { toast } from 'sonner';
 
@@ -150,8 +151,20 @@ export default function AiChat({ cityName, mapContext = {}, navMode = false }) {
       rec.interimResults = false;
       rec.maxAlternatives = 1;
       rec.onstart = () => setListening(true);
-      rec.onend = () => { setListening(false); recogRef.current = null; };
-      rec.onerror = () => { setListening(false); recogRef.current = null; };
+      rec.onend = () => {
+        setListening(false);
+        // Старый экземпляр не должен обнулить реф нового (гонка при
+        // быстром повторном нажатии после ошибки).
+        if (recogRef.current === rec) recogRef.current = null;
+      };
+      rec.onerror = (e) => {
+        setListening(false);
+        if (recogRef.current === rec) recogRef.current = null;
+        // aborted — намеренная остановка, остальные ошибки иначе
+        // глотаются: пользователь жмёт микрофон и ничего не видит.
+        const msg = speechErrorText(e?.error);
+        if (msg) toast.error(msg);
+      };
       rec.onresult = (e) => {
         const txt = e.results?.[0]?.[0]?.transcript || '';
         if (txt.trim()) {

@@ -163,7 +163,7 @@ npm run build
 
 | # | Проверка | Факт |
 |---|---|---|
-| 9 | Заголовки HTML | ✅ `nosniff`, `SAMEORIGIN`, `strict-origin-when-cross-origin`, `geolocation=(self), camera=(self), microphone=()`, `same-origin-allow-popups`, HSTS |
+| 9 | Заголовки HTML | ✅ `nosniff`, `SAMEORIGIN`, `strict-origin-when-cross-origin`, `geolocation=(self), camera=(self), microphone=(self)`, `same-origin-allow-popups`, HSTS |
 | 10 | Кэш ассетов | ✅ `/assets/index-CMJc75zU.js` → `public, max-age=31536000, immutable` |
 | 11 | Приложение после смены конфига | ✅ 200, «Karta-AD», 0 ошибок в консоли, 0 ответов ≥400 |
 

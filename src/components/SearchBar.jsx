@@ -6,6 +6,8 @@ import { isGeminiConfigured } from '@/lib/gemini';
 import { useLanguage } from '@/lib/useLanguage';
 import { supabase } from '@/api/supabase';
 import { getCachedLastLocation, saveLastLocation } from '@/lib/locationCache';
+import { speechErrorText } from '@/lib/speech';
+import { toast } from 'sonner';
 
 export default function SearchBar({ cityId, selectedCity, selectedCountry: _selectedCountry, onSelectResult, mapCenter }) {
   const { t } = useLanguage();
@@ -237,9 +239,12 @@ export default function SearchBar({ cityId, selectedCity, selectedCountry: _sele
   };
   const startVoice = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
+    if (!SR) { toast.error('Голосовой ввод не поддерживается в этом браузере'); return; }
     const rec = new SR(); rec.lang='ru-RU'; rec.interimResults=false;
-    rec.onstart=()=>setListening(true); rec.onend=()=>setListening(false);
+    rec.onstart=()=>setListening(true);
+    rec.onend=()=>setListening(false);
+    // Ошибки распознавания не глотаем: раньше кнопка молча не срабатывала.
+    rec.onerror=(e)=>{ setListening(false); const m = speechErrorText(e?.error); if (m) toast.error(m); };
     rec.onresult=(e)=>{ const txt=e.results[0][0].transcript; voiceAskedRef.current = true; setQuery(txt); setShowHistory(false); };
     rec.start();
   };

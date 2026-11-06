@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { Construction, Camera, MessageSquare, AlertTriangle, Ban, Mic, ImagePlus, X, ArrowUp, ArrowDown, Calendar, ChevronDown, ChevronUp, MapPin } from 'lucide-react';
 import { supabase } from '@/api/supabase';
 import { toast } from 'sonner';
+import { speechErrorText } from '@/lib/speech';
 
 const CATS = [
   { id: 'roadwork', label: 'Ремонт', shortLabel: 'Ремонт', icon: Construction, color: '#ef4444', desc: 'Дорожные работы' },
@@ -98,6 +99,8 @@ export default function MapEventsSheet({ center, onClose, onPickHint, eventLine=
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if(!SR) return toast.error('Голос не поддерживается');
     const rec = new SR(); rec.lang='ru-RU'; rec.onstart=()=>setListening(true); rec.onend=()=>setListening(false);
+    // Ошибки распознавания не глотаем: раньше кнопка молча не срабатывала.
+    rec.onerror=(e)=>{ setListening(false); const m = speechErrorText(e?.error); if (m) toast.error(m); };
     rec.onresult=(e)=> setComment(prev=> (prev? prev+' ':'') + e.results[0][0].transcript);
     try{ navigator.vibrate?.(20); }catch{}
     rec.start();

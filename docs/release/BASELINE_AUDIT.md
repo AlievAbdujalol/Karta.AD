@@ -134,7 +134,7 @@
   ревалидации статики на мобильных сетях.
 - **Исправление:** блок `headers` в `vercel.json` — `nosniff`,
   `SAMEORIGIN`, `strict-origin-when-cross-origin`,
-  `geolocation=(self), camera=(self), microphone=()`,
+  `geolocation=(self), camera=(self), microphone=(self)`,
   `same-origin-allow-popups` (нужен для `window.open` в шаринге) и
   `Cache-Control: public, max-age=31536000, immutable` для `/assets/*`.
 - **Проверка:** `src/test/securityHeaders.test.js` — 8 статических тестов на

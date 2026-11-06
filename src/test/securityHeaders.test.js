@@ -10,7 +10,8 @@
  *
  * Тест статический: читает vercel.json, а не прод — CI не ходит в интернет.
  * Значения выбраны под реальные зависимости приложения: геолокация нужна
- * карте и такси, камера — загрузке фото в поддержку, микрофон не используется.
+ * карте и такси, камера — загрузке фото в поддержку, микрофон — голосовому
+ * вводу в чате помощника и поиске.
  * COOP — `same-origin-allow-popups`, потому что шаринг открывает окна через
  * window.open. CSP намеренно не задаётся здесь: Leaflet, тайлы CARTO, OSRM,
  * Overpass и Nominatim требуют отдельного согласованного списка источников
@@ -43,11 +44,14 @@ describe('Vercel: защитные заголовки', () => {
     expect(headers[key]).toBe(value);
   });
 
-  it('Permissions-Policy разрешает геолокацию и камеру, но не микрофон', () => {
+  it('Permissions-Policy разрешает геолокацию, камеру и микрофон для себя', () => {
     const policy = headers['permissions-policy'] || '';
     expect(policy).toContain('geolocation=(self)');
     expect(policy).toContain('camera=(self)');
-    expect(policy).toContain('microphone=()');
+    // Микрофон нужен голосовому вводу (AiChat, SearchBar, MultiStopPlanner и др.);
+    // запрет microphone=() на проде ломал Web Speech API с not-allowed.
+    expect(policy).toContain('microphone=(self)');
+    expect(policy).not.toContain('microphone=()');
   });
 
   it('глобальные заголовки не перекрывают кэш ассетов', () => {

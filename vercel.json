@@ -23,7 +23,7 @@
         },
         {
           "key": "Permissions-Policy",
-          "value": "geolocation=(self), camera=(self), microphone=()"
+          "value": "geolocation=(self), camera=(self), microphone=(self)"
         },
         {
           "key": "Cross-Origin-Opener-Policy",

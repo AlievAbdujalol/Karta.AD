@@ -6,6 +6,7 @@ import { getSearchHistory, addToSearchHistory } from '@/lib/searchHistory';
 import { toggleFavoriteRoute } from '@/lib/favorites';
 import { estimatePublicTransportCost } from '@/lib/publicTransport';
 import { formatTJS } from '@/lib/taxi';
+import { speechErrorText } from '@/lib/speech';
 import RouteFeedback from './RouteFeedback';
 import LanguageSwitcher from './LanguageSwitcher';
 import { useLanguage } from '@/lib/useLanguage';
@@ -54,7 +55,12 @@ export default function MultiStopPlanner({ onRouteBuilt, onRequestMapPick }) {
       setStops(stops.map(s => s.id === stopId ? { ...s, name: text } : s));
       setListening(null);
     };
-    recognition.onerror = () => setListening(null);
+    recognition.onerror = (e) => {
+      setListening(null);
+      // Ошибки распознавания не глотаем: раньше кнопка молча не срабатывала.
+      const m = speechErrorText(e?.error);
+      if (m) toast.error(m);
+    };
     recognition.onend = () => setListening(null);
     recognition.start();
   };

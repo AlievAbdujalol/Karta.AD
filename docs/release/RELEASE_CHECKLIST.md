@@ -134,7 +134,7 @@ ROLLBACK;
 | 4.3 | CI-секреты (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`) заданы | ✅ (косвенно) | деплой `73f5a2b` собран GitHub Actions → `READY`; значения в Dashboard не читались |
 | 4.4 | Домен и SSL | ✅ | MCP: единственный прод-домен `karta-ad.vercel.app`, `verified: true`; HSTS `max-age=63072000; includeSubDomains; preload` |
 | 4.5 | Прод-URL отвечает 200 и отдаёт приложение | ✅ | `https://karta-ad.vercel.app` → 200, «Karta-AD», Vite-entry; Chromium: 0 ошибок в консоли, 0 ответов ≥400 |
-| 4.6 | Защитные заголовки | ✅ | живые значения: `nosniff`, `SAMEORIGIN`, `strict-origin-when-cross-origin`, `geolocation=(self), camera=(self), microphone=()`, COOP, HSTS — `vercel.json` + `securityHeaders.test.js`; CSP — `KI-10` |
+| 4.6 | Защитные заголовки | ✅ | живые значения: `nosniff`, `SAMEORIGIN`, `strict-origin-when-cross-origin`, `geolocation=(self), camera=(self), microphone=(self)`, COOP, HSTS — `vercel.json` + `securityHeaders.test.js`; CSP — `KI-10` |
 
 ## 5. Функциональные проверки
 
