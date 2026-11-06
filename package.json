@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit -p ./tsconfig.json",
     "preview": "vite preview",
     "test": "vitest",
+    "test:coverage": "vitest run --coverage --maxWorkers=2 --minWorkers=1",
     "prepare": "git config core.hooksPath .githooks || exit 0",
     "hooks:install": "git config core.hooksPath .githooks"
   },
