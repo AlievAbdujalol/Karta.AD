@@ -54,6 +54,9 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
 
   const locate = useCallback(() => {
     if (locateLockRef.current) return;
+    // Нажатие «Моё местоположение» всегда центрирует карту на пользователе
+    // и включает авто-центр (по умолчанию режим выключен).
+    if (!autoCenter) onToggleAutoCenter?.();
     if (onLocate) { onLocate(); return; }
     // Свежий кэш позиции — прыжок мгновенный, без ожидания GPS
     const cached = getCachedLastLocation(5 * 60 * 1000);
@@ -85,7 +88,7 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
       },
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
     );
-  }, [onLocate, map]);
+  }, [onLocate, map, autoCenter, onToggleAutoCenter]);
 
   // Состояние загрузки определения местоположения: либо родитель управляет процессом
   // (проп locating), либо мы сами запрашиваем GPS (защита locateLockRef).

@@ -80,13 +80,22 @@ describe('MapControls — кнопка местоположения (Crosshair)'
     expect(b).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('нажатие вызывает onLocate, но не включает автоцентр', () => {
+  it('нажатие вызывает onLocate и включает авто-центр (по умолчанию режим выключен)', () => {
     const onLocate = vi.fn();
     const onToggleAutoCenter = vi.fn();
-    const { container } = renderControls({ onLocate, onToggleAutoCenter });
+    const { container } = renderControls({ onLocate, onToggleAutoCenter, autoCenter: false });
     const b = btn(container, 'mapControls.myLocation');
     expect(b).not.toBeUndefined();
     fireEvent.click(b);
+    expect(onLocate).toHaveBeenCalledTimes(1);
+    expect(onToggleAutoCenter).toHaveBeenCalledTimes(1);
+  });
+
+  it('при уже включённом авто-центре нажатие местоположения не выключает его', () => {
+    const onLocate = vi.fn();
+    const onToggleAutoCenter = vi.fn();
+    const { container } = renderControls({ onLocate, onToggleAutoCenter, autoCenter: true });
+    fireEvent.click(btn(container, 'mapControls.myLocation'));
     expect(onLocate).toHaveBeenCalledTimes(1);
     expect(onToggleAutoCenter).not.toHaveBeenCalled();
   });

@@ -805,7 +805,7 @@ async function snapToRoad(lat, lng) {
   return { lat, lng };
 }
 
-function NavigationCamera({ followUser, userPosition, userHeading = 0, autoCenter = true, routeData }) {
+function NavigationCamera({ followUser, userPosition, userHeading = 0, autoCenter = false, routeData }) {
   const map = useMap();
 
   // выход из навигации — возвращаем север наверх
@@ -821,7 +821,8 @@ function NavigationCamera({ followUser, userPosition, userHeading = 0, autoCente
       // Масштаб: базовый 100 м (зум 16), авто-зум по скорости убран по требованию.
       // «Авто-масштаб» выключен — камера не трогает зум вовсе; недавнее
       // срабатывание karta_autoscale (приближение к манёвру, зум 16/18)
-      // держим в покое 20 с, затем возвращаем 100 м.
+      // держим в покое 20 с. Дальше при включённом «Авто-центре» возвращаем
+      // 100 м, при выключенном (дефолт) масштаб не трогаем.
       let zoom = map.getZoom();
       if (readNavSettings().auto_scale !== false && Date.now() - (window.__karta_scale_at || 0) > 20000) {
         zoom = autoCenter ? 16 : Math.max(map.getZoom(), 14);
@@ -1008,7 +1009,7 @@ function TrafficDensityLayer({ points }) {
   return null;
 }
 
-export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute: _groupRoute, panelVisible, onLocate, locating = false, tiltEnabled: _tiltEnabled = false, autoCenter = true, routeMeta = null, onPlaceSelect: _onPlaceSelect, onCenterChange, onMapClick, eventPos, eventLine=[], roadDir=0, hideEvents=false }) {
+export default function BusMap({ vehicles = [], route = null, center = [38.559, 68.773], watchedStop = null, flyTo = null, onFlyDone = null, routes = [], onRoutingOpen, onRoutingStateChange, contactLocations = [], groupRouteMembers = [], onShareTrip, groupRoute: _groupRoute, panelVisible, onLocate, locating = false, tiltEnabled: _tiltEnabled = false, autoCenter = false, routeMeta = null, onPlaceSelect: _onPlaceSelect, onCenterChange, onMapClick, eventPos, eventLine=[], roadDir=0, hideEvents=false }) {
   // стартовый слой: сохранённый либо «1 Стандарт» — все 9 слоёв работают без ключа
   const [tileIndex, setTileIndex] = useState(() => initialTileIndex());
   const [showTraffic, setShowTraffic] = useState(() => readNavSettings().show_traffic !== false); // из настроек навигатора

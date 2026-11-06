@@ -98,7 +98,10 @@ export default function Home() {
   const [shareSheet, setShareSheet] = useState(null);
   const [eventsOpen, setEventsOpen] = useState(false);
   const [tiltEnabled, setTiltEnabled] = useState(()=> { try{return localStorage.getItem('karta_tilt')==='1';}catch{return false;}});
-  const [autoCenter, setAutoCenter] = useState(true);
+  // Авто-центр по умолчанию ВЫКЛЮЧЕН: камера не должна сама уезжать к центру
+  // города — режим включает только пользователь (кнопка «Моё местоположение»
+  // или тумблер «Авто-центр» в меню «⋯»).
+  const [autoCenter, setAutoCenter] = useState(false);
   const [routeMeta, setRouteMeta] = useState(null);
   const [liveCenter, setLiveCenter] = useState(null);
   const [eventPos, setEventPos] = useState(null);
@@ -523,6 +526,9 @@ export default function Home() {
       locateLockRef.current = false;
       setLocating(false);
       toast.dismiss('locate-home');
+      // GPS не ответил — если к ещё не показывали (не прошёл фильтр свежести),
+      // всё равно показываем последнее известное место, а не центр города.
+      if (cached && !fresh) setFlyTo({ lat: cached.lat, lng: cached.lng, zoom: 16 });
       if (err?.code === 1) toast.error('Разрешите доступ к геолокации: иконка слева от адреса сайта');
       else if (err?.code === 3) toast.error('Превышено время ожидания GPS — попробуйте ещё раз');
       else if (cached) toast.warning('GPS не отвечает — показываем последнее известное место');
@@ -551,6 +557,9 @@ export default function Home() {
     if (autoCenter === autoCenterPrevRef.current) return;
     autoCenterPrevRef.current = autoCenter;
     if (!autoCenter) return;
+    // Определение уже идёт (нажата кнопка «Моё местоположение») — камера и так
+    // летит к пользователю, повторный запрос GPS не нужен.
+    if (locateLockRef.current) return;
     const cached = getCachedLastLocation(15 * 60 * 1000);
     const fresh = cached && Number.isFinite(cached.accuracy) && cached.accuracy <= 100;
     if (cached && fresh) { setFlyTo({ lat: cached.lat, lng: cached.lng, zoom: 16 }); broadcastLocation(cached); }
