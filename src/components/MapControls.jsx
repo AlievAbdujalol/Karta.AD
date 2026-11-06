@@ -1,5 +1,5 @@
-import { useState, useRef, useCallback } from 'react';
-import { Layers, Crosshair, Plus, Minus, Navigation, Share2, LocateFixed, Route, Car, Bus, MoreHorizontal } from 'lucide-react';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { Layers, Crosshair, Plus, Minus, Navigation, Share2, LocateFixed, Route, Car, Bus, MoreHorizontal, Check } from 'lucide-react';
 import { useMap } from 'react-leaflet';
 import { useLanguage } from '@/lib/useLanguage';
 import { toast } from 'sonner';
@@ -95,9 +95,67 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
   const locatePending = Boolean(locatedLocating());
   function locatedLocating() { return locatingProp || locateLockRef.current || locatingLocal; }
 
-  const cycleLayer = () => setTileIndex((i) => (i + 1) % TILE_LAYERS.length);
+  // Слои: вместо циклического переключения (9 кликов на круг) — список.
+  const [layersOpen, setLayersOpen] = useState(false);
+
+  // Закрытие списка: клик/тап вне корня (в т.ч. соседние кнопки рейки и карта)
+  // и Escape. Слушатели в фазе capture, чтобы срабатывали до stopPropagation
+  // на рейке (там перехватываются mousedown/pointerdown для карты).
+  useEffect(() => {
+    if (!layersOpen) return undefined;
+    const close = (e) => {
+      if (e.type === 'keydown') {
+        if (e.key === 'Escape') setLayersOpen(false);
+        return;
+      }
+      if (!e.target?.closest?.('[data-layer-menu-root]')) setLayersOpen(false);
+    };
+    document.addEventListener('mousedown', close, true);
+    document.addEventListener('touchstart', close, true);
+    document.addEventListener('keydown', close, true);
+    return () => {
+      document.removeEventListener('mousedown', close, true);
+      document.removeEventListener('touchstart', close, true);
+      document.removeEventListener('keydown', close, true);
+    };
+  }, [layersOpen]);
 
   const btnBase = "flex items-center justify-center rounded-2xl shadow-[0_4px_16px_rgba(15,23,42,0.1)] border border-slate-200/60 dark:border-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer select-none backdrop-blur-xl";
+
+  // Список всех слоёв: номер, название, отметка у текущего. Один тап — выбор.
+  // Растёт вверх от рейки (bottom-0): иначе на мобиле нижние слои уходили
+  // за нижний край экрана. Роли — честная группа переключателей, а не
+  // полу-меню: keyboard-паттерн WAI-ARIA Menu здесь не реализован.
+  const layerMenu = layersOpen && (
+    <div
+      role="group"
+      aria-label={t('mapControls.layerLabel')}
+      data-layer-menu
+      className="absolute bottom-0 right-full mr-2 w-56 max-h-[60vh] overflow-y-auto rounded-2xl bg-white/95 dark:bg-slate-900/95 border border-slate-200/70 dark:border-slate-800 shadow-[0_12px_40px_rgba(15,23,42,0.28)] backdrop-blur-xl p-1.5 z-10"
+    >
+      {TILE_LAYERS.map((layer, i) => {
+        const active = i === tileIndex;
+        return (
+          <button
+            key={layer.labelKey}
+            type="button"
+            aria-pressed={active}
+            onClick={() => { setTileIndex(i); setLayersOpen(false); }}
+            className={`w-full flex items-center gap-2 px-2 py-2 rounded-xl text-left text-[13px] font-semibold transition-colors ${active ? 'bg-emerald-600 text-white' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+          >
+            <span className={`w-5 h-5 shrink-0 rounded-full flex items-center justify-center text-[10px] font-black ${active ? 'bg-white/25' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>{i + 1}</span>
+            <span className="flex-1 truncate">{t(layer.labelKey)}</span>
+            {active && <Check size={14} className="shrink-0" />}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  // Границы индекса: родитель может передать устаревший tileIndex (например,
+  // сохранённый в localStorage) — не падаем на несуществующем слое.
+  const currentLayer = TILE_LAYERS[tileIndex] || TILE_LAYERS[0];
+  const layerBtnTitle = `${t('mapControls.layerLabel')} ${t(currentLayer.labelKey)}`;
 
   return (
     <>
@@ -143,10 +201,13 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
         <button onClick={() => setMoreOpen(v => !v)} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 ${(showTraffic || showTransport || autoCenter) ? '!bg-slate-700 !text-white dark:!bg-slate-600' : ''}`} title="Ещё — трафик, транспорт, авто-центр" aria-pressed={(showTraffic || showTransport || autoCenter) ? 'true' : 'false'}>
           <MoreHorizontal size={18} className="stroke-[2.2]" />
         </button>
-        <button onClick={cycleLayer} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 relative`} title={`${t('mapControls.layerLabel')} ${t(TILE_LAYERS[tileIndex].labelKey)}`}>
-          <Layers size={18} className="stroke-[2.2]" />
-          <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-600 text-white rounded-full flex items-center justify-center text-[9px] font-black border-2 border-white dark:border-slate-900 shadow-sm">{tileIndex + 1}</span>
-        </button>
+        <div className="relative" data-layer-menu-root>
+          <button onClick={() => setLayersOpen(v => !v)} aria-expanded={layersOpen} aria-label={layerBtnTitle} className={`${btnBase} w-10 h-10 bg-white/90 dark:bg-slate-900/90 relative`} title={layerBtnTitle}>
+            <Layers size={18} className="stroke-[2.2]" />
+            <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-600 text-white rounded-full flex items-center justify-center text-[9px] font-black border-2 border-white dark:border-slate-900 shadow-sm">{tileIndex + 1}</span>
+          </button>
+          {layerMenu}
+        </div>
         {onShareTrip && (
           <button onClick={onShareTrip} className={`${btnBase} w-10 h-10 !bg-gradient-to-tr !from-emerald-500 !to-teal-500 hover:!from-emerald-600 hover:!to-teal-600 !text-white border-none shadow-emerald-500/20`} title={t('groupRoute.shareTrip') || '\u041F\u043E\u0434\u0435\u043B\u0438\u0442\u044C\u0441\u044F \u043F\u043E\u0435\u0437\u0434\u043A\u043E\u0439'}>
             <Share2 size={18} className="stroke-[2.2]" />
@@ -195,10 +256,13 @@ export default function MapControls({ tileIndex, setTileIndex, finderActive, onF
         <button onClick={() => setMoreOpen(v => !v)} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 ${(showTraffic || showTransport || autoCenter) ? '!bg-slate-700 !text-white dark:!bg-slate-600' : ''}`} aria-pressed={(showTraffic || showTransport || autoCenter) ? 'true' : 'false'}>
           <MoreHorizontal size={15} className="stroke-[2.2]" />
         </button>
-        <button onClick={cycleLayer} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 relative`}>
-          <Layers size={15} className="stroke-[2.2]" />
-          <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-600 text-white rounded-full flex items-center justify-center text-[8px] font-black border-2 border-white dark:border-slate-900">{tileIndex + 1}</span>
-        </button>
+        <div className="relative" data-layer-menu-root>
+          <button onClick={() => setLayersOpen(v => !v)} aria-expanded={layersOpen} aria-label={layerBtnTitle} className={`${btnBase} w-9 h-9 bg-white/90 dark:bg-slate-900/90 relative`} title={layerBtnTitle}>
+            <Layers size={15} className="stroke-[2.2]" />
+            <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-600 text-white rounded-full flex items-center justify-center text-[8px] font-black border-2 border-white dark:border-slate-900">{tileIndex + 1}</span>
+          </button>
+          {layerMenu}
+        </div>
         {onShareTrip && (
           <button onClick={onShareTrip} className={`${btnBase} w-9 h-9 !bg-gradient-to-tr !from-emerald-500 !to-teal-500 !text-white border-none shadow-emerald-500/20`}>
             <Share2 size={15} className="stroke-[2.2]" />
