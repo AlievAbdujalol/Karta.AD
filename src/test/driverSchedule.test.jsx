@@ -193,7 +193,7 @@ describe('DriverSchedule — устойчивость и действия', () =
     await waitFor(() => expect(screen.getByTestId('path')).toHaveTextContent('/'));
   });
 
-  it('при идущем рейсе главная кнопка не завершает его, а открывает карту', async () => {
+  it('при идущем рейсе главная кнопка не завершает его, а открывает экран рейса', async () => {
     tripState.isTracking = true;
     renderPage();
     await waitFor(() => expect(screen.getByText('Остановка 1')).toBeInTheDocument());
@@ -203,7 +203,7 @@ describe('DriverSchedule — устойчивость и действия', () =
 
     fireEvent.click(screen.getByText('schedule.openTrip'));
 
-    await waitFor(() => expect(screen.getByTestId('path')).toHaveTextContent('/'));
+    await waitFor(() => expect(screen.getByTestId('path')).toHaveTextContent('/driver-active-trip'));
     expect(endTripMock).not.toHaveBeenCalled();
     expect(localStorage.getItem('karta_route_start')).toBeNull();
   });

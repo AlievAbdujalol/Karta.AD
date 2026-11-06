@@ -59,7 +59,7 @@ export default function Layout() {
             </div>
           </div>
           <div className="flex items-center gap-3 shrink-0">
-            <Link to="/driver" className="text-[11px] underline underline-offset-2 opacity-80 hover:opacity-100">
+            <Link to="/driver-active-trip" className="text-[11px] underline underline-offset-2 opacity-80 hover:opacity-100">
               {t('nav.open')}
             </Link>
             <button

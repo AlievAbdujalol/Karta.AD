@@ -510,7 +510,7 @@ export default function DriverSchedule() {
             startStopIndex={startStopIndex}
             onStart={handleStartStop}
             isTracking={isTracking}
-            onOpenMap={() => navigate('/')}
+            onOpenMap={() => navigate('/driver-active-trip')}
           />
         )}
 

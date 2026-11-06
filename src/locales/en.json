@@ -452,6 +452,23 @@
     "unscheduledBadge": "Unscheduled trip",
     "unscheduledDesc": "Starts not from the first stop — you can drive anywhere"
   },
+  "activeTrip": {
+    "inProgress": "On the way",
+    "currentStop": "Current stop",
+    "departure": "Departure",
+    "nextStop": "Next stop",
+    "upcomingStops": "Upcoming route stops",
+    "nearestBuses": "Nearest vehicles",
+    "noBuses": "No GPS data from other vehicles",
+    "noBusesHint": "The list appears when other drivers start their trips",
+    "busDriver": "Driver",
+    "stats": "Trip statistics",
+    "km": "Distance driven",
+    "kmUnit": "km",
+    "duration": "On the road",
+    "stops": "Stops",
+    "endTrip": "End trip"
+  },
   "driver": {
     "driversOnly": "Drivers only",
     "passengerRoleMessage": "Switch to driver role in profile",
